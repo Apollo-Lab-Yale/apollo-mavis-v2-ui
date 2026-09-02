@@ -2,9 +2,9 @@
  *
  * Fed from `telemetry.tracker.controller` (raw button/axis state echoed by the
  * runtime), `telemetry.tracker.device_held` (the key codes the runtime injects
- * from it — trigger → clutch, trackpad left/right → gripper rate) and
- * `telemetry.tracker.device_action` (the last device-sourced discrete action —
- * trackpad up/down → switch_arm / switch_arm_prev — which the runtime clears
+ * from it — trigger → clutch, trackpad up/down → gripper rate, trackpad
+ * left/right → rail) and `telemetry.tracker.device_action` (the last
+ * device-sourced discrete action — menu click → switch_arm — which the runtime clears
  * ~1 s after it fired, so it renders as a flash chip). Codes are mapped back to
  * actions/labels through the served keymap; the controller glyph per action
  * comes from the static `CONTROLLER_GLYPHS` table (the keymap has no
@@ -181,16 +181,16 @@ export function ControllerView({
       <div className="ctrl-row">
         <span className="dim ctrl-label">trackpad</span>
         <div className="trackpad" data-testid="controller-trackpad">
-          <span className="trackpad-hint trackpad-hint-top" title="switch_arm">
+          <span className="trackpad-hint trackpad-hint-top" title="gripper_open">
             ▲
           </span>
-          <span className="trackpad-hint trackpad-hint-bottom" title="switch_arm_prev">
+          <span className="trackpad-hint trackpad-hint-bottom" title="gripper_close">
             ▼
           </span>
-          <span className="trackpad-hint trackpad-hint-left" title="gripper_close">
+          <span className="trackpad-hint trackpad-hint-left" title="rail_neg">
             ◀
           </span>
-          <span className="trackpad-hint trackpad-hint-right" title="gripper_open">
+          <span className="trackpad-hint trackpad-hint-right" title="rail_pos">
             ▶
           </span>
           <span
@@ -217,7 +217,12 @@ export function ControllerView({
       <div className="ctrl-row">
         <span className="dim ctrl-label">buttons</span>
         <Chip id="controller-grip" on={!!controller.grip} label="grip" title="button 7" />
-        <Chip id="controller-menu" on={!!controller.menu} label="menu" title="button 6" />
+        <Chip
+          id="controller-menu"
+          on={!!controller.menu}
+          label="menu"
+          title="button 6 · switch_arm"
+        />
         <Chip id="controller-system" on={!!controller.system} label="system" title="button 3" />
         <span className="dim" style={{ fontSize: 11 }}>
           menu + system = pairing combo (never mapped)

@@ -83,13 +83,15 @@ export function gamepadGlyph(label: string | null | undefined): string {
  * so this is the one static table in the UI. Keyed by action name — never by
  * key code — so a re-bound key in the served keymap still shows the right
  * controller hint. Trackpad clicks are classified by position at the press
- * edge: left/right = gripper rate (held), up/down = arm switch (discrete). */
+ * edge: up/down = gripper rate (held), left/right = rail (held); the menu
+ * button is switch_arm (discrete). `switch_arm_prev` has no controller input. */
 export const CONTROLLER_GLYPHS: Readonly<Record<string, string>> = {
   tracker_clutch: "trigger",
-  gripper_close: "pad ◀",
-  gripper_open: "pad ▶",
-  switch_arm: "pad ▲",
-  switch_arm_prev: "pad ▼",
+  gripper_open: "pad ▲",
+  gripper_close: "pad ▼",
+  rail_neg: "pad ◀",
+  rail_pos: "pad ▶",
+  switch_arm: "menu",
 };
 
 /** Controller glyph for a keymap action ("tracker_clutch" → "trigger"), or null. */

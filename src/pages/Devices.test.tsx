@@ -423,8 +423,8 @@ describe("Devices page", () => {
     expect(screen.queryByTestId("controller-trigger-bar")).toBeNull();
     expect(screen.queryByTestId("controller-held")).toBeNull();
 
-    // Trigger pulled + clicked, pad clicked on the right → KeyC + KeyH injected
-    // (plus an unexpected code, shown raw); a trackpad-up click fired switch_arm.
+    // Trigger pulled + clicked, pad clicked up → KeyC + KeyH injected
+    // (plus an unexpected code, shown raw); a menu click fired switch_arm.
     act(() =>
       telemetry.push(
         makeTelemetry({
@@ -473,17 +473,22 @@ describe("Devices page", () => {
     expect(clutch.title).toBe("KeyC · tracker clutch (hold)");
     const open = screen.getByTestId("controller-held-gripper_open");
     expect(open.dataset["lit"]).toBe("true");
-    expect(open.textContent).toBe("pad ▶ → gripper_open (H)");
+    expect(open.textContent).toBe("pad ▲ → gripper_open (H)");
     const close = screen.getByTestId("controller-held-gripper_close");
     expect(close.dataset["lit"]).toBe("false");
-    expect(close.textContent).toBe("pad ◀ → gripper_close (F)");
-    // Discrete rows (trackpad up/down) light from device_action, not device_held.
+    expect(close.textContent).toBe("pad ▼ → gripper_close (F)");
+    const railNeg = screen.getByTestId("controller-held-rail_neg");
+    expect(railNeg.dataset["lit"]).toBe("false");
+    expect(railNeg.textContent).toBe("pad ◀ → rail_neg (←)");
+    const railPos = screen.getByTestId("controller-held-rail_pos");
+    expect(railPos.dataset["lit"]).toBe("false");
+    expect(railPos.textContent).toBe("pad ▶ → rail_pos (→)");
+    // Discrete row (menu click) lights from device_action, not device_held.
     const next = screen.getByTestId("controller-held-switch_arm");
     expect(next.dataset["lit"]).toBe("true");
-    expect(next.textContent).toBe("pad ▲ → switch_arm (Tab)");
-    const prev = screen.getByTestId("controller-held-switch_arm_prev");
-    expect(prev.dataset["lit"]).toBe("false");
-    expect(prev.textContent).toBe("pad ▼ → switch_arm_prev (Z)");
+    expect(next.textContent).toBe("menu → switch_arm (Tab)");
+    // switch_arm_prev has no controller input → no chip.
+    expect(screen.queryByTestId("controller-held-switch_arm_prev")).toBeNull();
     const flash = screen.getByTestId("controller-device-action");
     expect(flash.textContent).toBe("switch_arm");
     expect(flash.dataset["lit"]).toBe("true");
