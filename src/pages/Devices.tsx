@@ -127,7 +127,7 @@ export function Devices() {
             No session streams
           </div>
         )}
-        <TrackerPanel tracker={tracker} />
+        <TrackerPanel tracker={tracker} bindings={bindings} />
       </div>
       <div className="side-panel">
         <SessionControls

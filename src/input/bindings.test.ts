@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { KEYMAP } from "../../tests/mocks/fixtures";
 import type { KeymapEntry } from "../gen";
-import { actionFor, buildBindings, keycapLabel } from "./bindings";
+import {
+  CONTROLLER_GLYPHS,
+  actionFor,
+  buildBindings,
+  controllerGlyph,
+  keycapLabel,
+} from "./bindings";
 
 describe("buildBindings", () => {
   const b = buildBindings(KEYMAP);
@@ -49,5 +55,30 @@ describe("buildBindings", () => {
     expect(keycapLabel("KeyW")).toBe("W");
     expect(keycapLabel("ArrowLeft")).toBe("←");
     expect(keycapLabel("Space")).toBe("Space");
+  });
+});
+
+describe("controllerGlyph (13-tracker §1.1 static table, keyed by action)", () => {
+  it("maps exactly the three controller-driven actions", () => {
+    expect(Object.keys(CONTROLLER_GLYPHS).sort()).toEqual([
+      "gripper_close",
+      "gripper_open",
+      "tracker_clutch",
+    ]);
+    expect(controllerGlyph("tracker_clutch")).toBe("trigger");
+    expect(controllerGlyph("gripper_open")).toBe("pad ▲");
+    expect(controllerGlyph("gripper_close")).toBe("pad ▼");
+  });
+
+  it("returns null for every other action and for missing input", () => {
+    expect(controllerGlyph("rail_pos")).toBeNull();
+    expect(controllerGlyph("switch_arm")).toBeNull();
+    expect(controllerGlyph(null)).toBeNull();
+    expect(controllerGlyph(undefined)).toBeNull();
+  });
+
+  it("every action in the table exists in the served keymap", () => {
+    const actions = new Set(KEYMAP.map((e) => e.action));
+    for (const a of Object.keys(CONTROLLER_GLYPHS)) expect(actions.has(a)).toBe(true);
   });
 });

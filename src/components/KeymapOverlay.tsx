@@ -1,6 +1,8 @@
-/** Keybinding hint overlay, driven entirely by the fetched keymap (05-ui §8.2). */
+/** Keybinding hint overlay, driven entirely by the fetched keymap (05-ui §8.2).
+ * Glyph columns: keycap, gamepad (`KeymapEntry.gamepad`) and Vive controller
+ * (static `CONTROLLER_GLYPHS` keyed by action — 13-tracker §1.1). */
 import type { KeymapEntry } from "../gen";
-import { gamepadGlyph, keycapLabel } from "../input/bindings";
+import { controllerGlyph, gamepadGlyph, keycapLabel } from "../input/bindings";
 import type { Mode } from "../lib/types";
 
 export interface KeymapOverlayProps {
@@ -49,6 +51,15 @@ export function KeymapOverlay({
       </button>
       {open && (
         <table className="keymap">
+          <thead>
+            <tr className="dim" data-testid="keymap-head">
+              <th>key</th>
+              <th className="pad-col">gamepad</th>
+              <th className="ctrl-col">controller</th>
+              <th />
+              <th />
+            </tr>
+          </thead>
           <tbody>
             {GROUP_ORDER.flatMap((g) =>
               visible
@@ -62,6 +73,18 @@ export function KeymapOverlay({
                       {e.gamepad ? (
                         <kbd className="pad" title={`gamepad ${e.gamepad}`}>
                           {gamepadGlyph(e.gamepad)}
+                        </kbd>
+                      ) : (
+                        <span className="dim">—</span>
+                      )}
+                    </td>
+                    <td className="ctrl-col" data-testid={`keyrow-${e.code}-ctrl`}>
+                      {controllerGlyph(e.action) ? (
+                        <kbd
+                          className="ctrl"
+                          title={`Vive controller ${controllerGlyph(e.action)}`}
+                        >
+                          {controllerGlyph(e.action)}
                         </kbd>
                       ) : (
                         <span className="dim">—</span>

@@ -73,4 +73,17 @@ describe("KeymapOverlay", () => {
     expect(screen.getByTestId("keyrow-KeyH-pad").textContent).toBe("Ⓐ");
     expect(screen.getByTestId("keyrow-KeyW-pad").textContent).toBe("—");
   });
+
+  it("shows a controller glyph column (static table by action, 13-tracker §1.1)", () => {
+    mount("teleop", true);
+    expect(screen.getByTestId("keymap-head").textContent).toContain("controller");
+    expect(screen.getByTestId("keyrow-KeyC-ctrl").textContent).toBe("trigger");
+    expect(screen.getByTestId("keyrow-KeyH-ctrl").textContent).toBe("pad ▲");
+    expect(screen.getByTestId("keyrow-KeyF-ctrl").textContent).toBe("pad ▼");
+    // Grip / menu / system are never mapped; other rows show a dash.
+    expect(screen.getByTestId("keyrow-Tab-ctrl").textContent).toBe("—");
+    expect(screen.getByTestId("keyrow-KeyZ-ctrl").textContent).toBe("—");
+    expect(screen.getByTestId("keyrow-ArrowLeft-ctrl").textContent).toBe("—");
+    expect(screen.getByTestId("keyrow-KeyW-ctrl").textContent).toBe("—");
+  });
 });

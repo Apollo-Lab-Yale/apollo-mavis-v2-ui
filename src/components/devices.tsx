@@ -10,18 +10,32 @@ import type {
 import { gamepadGlyph, keycapLabel, type Bindings } from "../input/bindings";
 import { GAMEPAD_LABELS } from "../input/gamepad";
 import type { GamepadState } from "../store";
+import { ControllerView } from "./ControllerView";
 import { TrackerTrail } from "./TrackerTrail";
 
 const f3 = (v: number) => v.toFixed(3);
 
 // ---------------------------------------------------------------------------
-// Gamepad
+// Gamepad — secondary input since 2026-09-02 (13-tracker §1.1: the Vive
+// controller supplies pose + buttons). Collapsed until a pad connects; the
+// adapter keeps running regardless, so a plugged-in pad still works.
 
 export function GamepadPanel({ pad, bindings }: { pad: GamepadState; bindings: Bindings | null }) {
+  const [open, setOpen] = useState(pad.connected);
+  useEffect(() => {
+    if (pad.connected) setOpen(true);
+  }, [pad.connected]);
   return (
-    <div className="panel" data-testid="gamepad-panel">
-      <div className="kv">
-        <strong>Gamepad</strong>
+    <details
+      className="panel"
+      data-testid="gamepad-panel"
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary className="kv summary" data-testid="gamepad-summary">
+        <strong>
+          {open ? "▾" : "▸"} Gamepad <span className="dim">(optional)</span>
+        </strong>
         <span>
           <span
             className={`chip ${pad.connected ? "chip-green" : "chip-grey"}`}
@@ -36,7 +50,7 @@ export function GamepadPanel({ pad, bindings }: { pad: GamepadState; bindings: B
             {pad.armed ? "ARMED" : "idle"}
           </span>
         </span>
-      </div>
+      </summary>
       <div className="kv mono dim" style={{ fontSize: 12 }}>
         <span data-testid="gamepad-id">{pad.id ?? "—"}</span>
         <span data-testid="gamepad-mapping">
@@ -92,7 +106,7 @@ export function GamepadPanel({ pad, bindings }: { pad: GamepadState; bindings: B
           );
         })}
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -131,7 +145,13 @@ function PoseRow({ name, pose }: { name: string; pose: PoseMsg | null | undefine
   );
 }
 
-export function TrackerPanel({ tracker }: { tracker: TrackerTelemetry | null }) {
+export interface TrackerPanelProps {
+  tracker: TrackerTelemetry | null;
+  /** Served keymap, used to label the controller's injected codes (§1.1). */
+  bindings?: Bindings | null;
+}
+
+export function TrackerPanel({ tracker, bindings = null }: TrackerPanelProps) {
   const z = tracker?.pose_world?.position[2];
   return (
     <div className="panel" data-testid="tracker-panel">
@@ -177,6 +197,11 @@ export function TrackerPanel({ tracker }: { tracker: TrackerTelemetry | null }) 
           {tracker.detail}
         </div>
       )}
+      <ControllerView
+        controller={tracker?.controller ?? null}
+        deviceHeld={tracker?.device_held ?? []}
+        bindings={bindings}
+      />
       <table className="pose-table">
         <tbody>
           <PoseRow name="raw" pose={tracker?.pose_raw} />

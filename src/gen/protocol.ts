@@ -189,7 +189,17 @@ export type T5 = "telemetry";
 export type AgeS = number | null;
 export type Backend = "libsurvive" | "fake" | "none";
 export type Clutch = boolean;
+export type Grip = boolean;
+export type Menu = boolean;
+export type System = boolean;
+export type TrackpadClick = boolean;
+export type TrackpadTouch = boolean;
+export type TrackpadX = number;
+export type TrackpadY = number;
+export type Trigger = number;
+export type TriggerPressed = boolean;
 export type Detail1 = string;
+export type DeviceHeld = string[];
 export type EngagedArm2 = string | null;
 export type ObjectName = string;
 export type RateHz = number;
@@ -539,13 +549,18 @@ export interface SessionTelemetry {
  *
  * Device fields are populated even without a session; session fields
  * (``engaged_arm``, ``anchor_tcp``, ``target_tcp``) are ``None`` otherwise.
+ * ``controller`` echoes the raw controller inputs (``None`` when the backend
+ * reports no controller) and ``device_held`` the key codes the runtime
+ * injects from them (13-tracker §1.1); a stale sample yields an empty list.
  */
 export interface TrackerTelemetry {
   age_s?: AgeS;
   anchor_tcp?: PoseMsg | null;
   backend: Backend;
   clutch?: Clutch;
+  controller?: ControllerTelemetry | null;
   detail?: Detail1;
+  device_held?: DeviceHeld;
   engaged_arm?: EngagedArm2;
   object_name?: ObjectName;
   pose_raw?: PoseMsg | null;
@@ -555,6 +570,25 @@ export interface TrackerTelemetry {
   settings: TrackerSettingsMsg;
   status: Status;
   target_tcp?: PoseMsg | null;
+}
+/**
+ * Raw Vive-controller input state (13-tracker §1.1), additive.
+ *
+ * Mirrors the libsurvive button/axis events for the tracked object. Axis
+ * conventions: ``trigger`` 0..1; ``trackpad_x``/``trackpad_y`` -1..1 with
+ * +y = top. ``trackpad_touch`` is finger contact, ``trackpad_click`` the
+ * physical press. ``menu`` + ``system`` is the pairing combo (never mapped).
+ */
+export interface ControllerTelemetry {
+  grip?: Grip;
+  menu?: Menu;
+  system?: System;
+  trackpad_click?: TrackpadClick;
+  trackpad_touch?: TrackpadTouch;
+  trackpad_x?: TrackpadX;
+  trackpad_y?: TrackpadY;
+  trigger?: Trigger;
+  trigger_pressed?: TriggerPressed;
 }
 /**
  * Live tracker teleop settings echoed in telemetry (13-tracker §3.5).

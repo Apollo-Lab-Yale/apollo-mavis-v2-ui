@@ -39,6 +39,19 @@ from `GET /api/keymap` (`KeymapEntry.gamepad`); the first mapped press
 auto-arms capture while the control link is open and this tab is the
 controller.
 
+Since 2026-09-02 the lab's only input is the Vive Pro controller (13-tracker
+§1.1): the runtime turns its trigger / trackpad presses into key codes itself
+and echoes the raw state as `telemetry.tracker.controller` plus the injected
+codes as `telemetry.tracker.device_held`. The `#/devices` tracker panel shows
+them (trigger bar + pressed chip, trackpad dot with +y up, touch/click and
+grip/menu/system chips, one lit action chip per injected code labelled via the
+served keymap; "controller: none" when the backend reports no controller). The
+gamepad panel is collapsed by default (still functional) and the keymap overlay
+has a third "controller" glyph column. The served keymap has no controller
+field, so the controller glyphs come from one static per-action table,
+`CONTROLLER_GLYPHS` in `src/input/bindings.ts` (`tracker_clutch` → trigger,
+`gripper_open` → pad ▲, `gripper_close` → pad ▼).
+
 ## Generated types
 
 `src/gen/` is generated from the core JSON schemas (pydantic →

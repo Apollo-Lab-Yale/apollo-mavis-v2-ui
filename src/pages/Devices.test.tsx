@@ -1,6 +1,7 @@
 /** Devices page smoke (13-tracker §5): mock control + telemetry servers, a
- * TelemetryMsg carrying `tracker`, a fake gamepad, settings → ActionMsg,
- * session start via POST /api/session. */
+ * TelemetryMsg carrying `tracker` (+ `controller` / `device_held`, 13-tracker
+ * §1.1), a fake gamepad, settings → ActionMsg, session start via POST
+ * /api/session. */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WebSocket as MockWebSocket } from "mock-socket";
 import { MemoryRouter } from "react-router-dom";
@@ -104,6 +105,8 @@ describe("Devices page", () => {
     expect(screen.getByTestId("tracker-z").textContent).toBe("1.100 m");
     expect(screen.getByTestId("pose-world").textContent).toContain("0.120, 0.210, 1.100");
     expect(screen.getByTestId("tracker-clutch").textContent).toBe("released");
+    // `controller` omitted by the fixture (pre-§1.1 runtime) → none.
+    expect(screen.getByTestId("controller-status").textContent).toBe("controller: none");
     expect(screen.getByTestId("tracker-settings-echo").textContent).toContain("yaw 90°");
     expect((screen.getByTestId("tracker-yaw") as HTMLInputElement).value).toBe("90");
     expect((screen.getByTestId("tracker-scale") as HTMLInputElement).value).toBe("1.5");
@@ -164,6 +167,11 @@ describe("Devices page", () => {
     await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
     await waitFor(() => expect(useStore.getState().bindings).not.toBeNull());
     expect(screen.getByTestId("gamepad-connected").textContent).toBe("no gamepad");
+    // Secondary input: the panel is a collapsed <details> until a pad connects.
+    const panel = screen.getByTestId("gamepad-panel") as HTMLDetailsElement;
+    expect(panel.tagName).toBe("DETAILS");
+    expect(panel.open).toBe(false);
+    expect(screen.getByTestId("gamepad-summary").textContent).toContain("optional");
 
     const buttons = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 }));
     pad = {
@@ -177,6 +185,7 @@ describe("Devices page", () => {
     await waitFor(() =>
       expect(screen.getByTestId("gamepad-connected").textContent).toBe("connected"),
     );
+    await waitFor(() => expect(panel.open).toBe(true));
     expect(screen.getByTestId("gamepad-id").textContent).toBe("Xbox Wireless Controller");
     expect(screen.getByTestId("gamepad-mapping").textContent).toContain("standard");
     expect(screen.getByTestId("gp-map-A").textContent).toContain("gripper_open");
@@ -204,5 +213,116 @@ describe("Devices page", () => {
     await waitFor(() =>
       expect(screen.getByTestId("gamepad-connected").textContent).toBe("no gamepad"),
     );
+  }, 15000);
+  it("controller sub-panel: none when null; chips, trigger bar and pad dot from telemetry", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    await waitFor(() => expect(useStore.getState().bindings).not.toBeNull());
+    expect(screen.getByTestId("controller-status").textContent).toBe("controller: none");
+
+    // Backend reports no controller → explicit null.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({ tracker: makeTracker({ controller: null, device_held: [] }) }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByTestId("tracker-status").textContent).toBe("tracking"));
+    expect(screen.getByTestId("controller-status").textContent).toBe("controller: none");
+    expect(screen.queryByTestId("controller-trigger-bar")).toBeNull();
+    expect(screen.queryByTestId("controller-held")).toBeNull();
+
+    // Trigger pulled + clicked, pad clicked in the upper half → KeyC + KeyH injected
+    // (plus an unexpected code, shown raw).
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 2,
+          tracker: makeTracker({
+            clutch: true,
+            engaged_arm: "grip",
+            controller: {
+              trigger: 0.63,
+              trigger_pressed: true,
+              trackpad_touch: true,
+              trackpad_click: true,
+              trackpad_x: 0.5,
+              trackpad_y: 0.6,
+              grip: false,
+              menu: false,
+              system: false,
+            },
+            device_held: ["KeyC", "KeyH", "F13"],
+          }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("controller-status").textContent).toBe("controller: live"),
+    );
+    expect(screen.getByTestId("controller-trigger-fill").style.width).toBe("63%"); // jsdom normalises "63.0%"
+    expect(screen.getByTestId("controller-trigger-bar").getAttribute("aria-valuenow")).toBe("0.63");
+    expect(screen.getByTestId("controller-trigger-value").textContent).toBe("0.63");
+    expect(screen.getByTestId("controller-trigger-pressed").dataset["lit"]).toBe("true");
+    const dot = screen.getByTestId("controller-pad-dot");
+    expect(dot.style.left).toBe("75%"); // x = +0.5 → right of centre
+    expect(dot.style.top).toBe("20%"); // y = +0.6 → upper part (+y = top)
+    expect(dot.className).toContain("trackpad-dot-click");
+    expect(screen.getByTestId("controller-pad-touch").dataset["lit"]).toBe("true");
+    expect(screen.getByTestId("controller-pad-click").dataset["lit"]).toBe("true");
+    expect(screen.getByTestId("controller-pad-xy").textContent).toBe("x +0.50 · y +0.60");
+    expect(screen.getByTestId("controller-grip").dataset["lit"]).toBe("false");
+    expect(screen.getByTestId("controller-menu").dataset["lit"]).toBe("false");
+    expect(screen.getByTestId("controller-system").dataset["lit"]).toBe("false");
+    // device_held codes → lit action chips labelled via the served keymap.
+    const clutch = screen.getByTestId("controller-held-tracker_clutch");
+    expect(clutch.dataset["lit"]).toBe("true");
+    expect(clutch.textContent).toBe("trigger → tracker_clutch (C)");
+    expect(clutch.title).toBe("KeyC · tracker clutch (hold)");
+    const open = screen.getByTestId("controller-held-gripper_open");
+    expect(open.dataset["lit"]).toBe("true");
+    expect(open.textContent).toBe("pad ▲ → gripper_open (H)");
+    const close = screen.getByTestId("controller-held-gripper_close");
+    expect(close.dataset["lit"]).toBe("false");
+    expect(close.textContent).toBe("pad ▼ → gripper_close (F)");
+    const extra = screen.getByTestId("controller-held-F13");
+    expect(extra.dataset["lit"]).toBe("true");
+    expect(extra.textContent).toBe("F13");
+
+    // Released; grip/menu/system down; stale sample → device_held empty, dot idle at bottom-left.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 3,
+          tracker: makeTracker({
+            status: "stale",
+            controller: {
+              trigger: 0,
+              trigger_pressed: false,
+              trackpad_touch: false,
+              trackpad_click: false,
+              trackpad_x: -1,
+              trackpad_y: -1,
+              grip: true,
+              menu: true,
+              system: true,
+            },
+            device_held: [],
+          }),
+        }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByTestId("controller-grip").dataset["lit"]).toBe("true"));
+    expect(screen.getByTestId("controller-menu").dataset["lit"]).toBe("true");
+    expect(screen.getByTestId("controller-system").dataset["lit"]).toBe("true");
+    expect(screen.getByTestId("controller-held-tracker_clutch").dataset["lit"]).toBe("false");
+    expect(screen.getByTestId("controller-held-gripper_open").dataset["lit"]).toBe("false");
+    expect(screen.queryByTestId("controller-held-F13")).toBeNull();
+    expect(screen.getByTestId("controller-trigger-fill").style.width).toBe("0%");
+    expect(screen.getByTestId("controller-trigger-pressed").dataset["lit"]).toBe("false");
+    const idle = screen.getByTestId("controller-pad-dot");
+    expect(idle.style.left).toBe("0%");
+    expect(idle.style.top).toBe("100%");
+    expect(idle.className).toContain("trackpad-dot-idle");
+    expect(screen.getByTestId("controller-pad-xy").textContent).toBe("x -1.00 · y -1.00");
   }, 15000);
 });
