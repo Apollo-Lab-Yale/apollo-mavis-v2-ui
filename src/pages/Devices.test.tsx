@@ -1,7 +1,8 @@
 /** Devices page smoke (13-tracker §5): mock control + telemetry servers, a
- * TelemetryMsg carrying `tracker` (+ `controller` / `device_held`, 13-tracker
- * §1.1), a fake gamepad, settings → ActionMsg, session start via POST
- * /api/session. */
+ * TelemetryMsg carrying `tracker` (+ `controller` / `device_held` /
+ * `device_action` / `pose_filtered`), a fake gamepad (incl. the release-all
+ * latch), the settings form's commit semantics + nack toasts, the keyboard
+ * capture surface (KeyC clutch) and session start via POST /api/session. */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WebSocket as MockWebSocket } from "mock-socket";
 import { MemoryRouter } from "react-router-dom";
@@ -85,84 +86,211 @@ describe("Devices page", () => {
       </MemoryRouter>,
     );
 
-  it("renders tracker telemetry, echoes settings, sends tracker_settings, starts a session", async () => {
+  const pushTracker = (over: Parameters<typeof makeTracker>[0], seq = 1) =>
+    act(() =>
+      telemetry.push(
+        makeTelemetry({ seq, arms: [], active_arm: null, tracker: makeTracker(over) }),
+      ),
+    );
+
+  it("renders tracker telemetry (incl. filter echo + filtered pose), starts a grip-first session", async () => {
     mount();
     await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
     await waitFor(() => expect(useStore.getState().bindings).not.toBeNull());
     expect(screen.getByTestId("no-streams")).toBeInTheDocument();
     expect(screen.getByTestId("tracker-status").textContent).toContain("no telemetry");
-
-    // Telemetry with a tracker block (pre-session: device fields only).
-    const settings = { yaw_deg: 90, pos_scale: 1.5, follow_rotation: false };
-    act(() =>
-      telemetry.push(
-        makeTelemetry({ arms: [], active_arm: null, tracker: makeTracker({ settings }) }),
-      ),
+    // No session → the settings form is disabled with a reason.
+    expect((screen.getByTestId("tracker-yaw") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByTestId("tracker-settings-disabled").textContent).toContain(
+      "Start a session",
     );
+
+    // Telemetry with a tracker block (pre-session: device fields only), tuned filter.
+    const settings = {
+      yaw_deg: 90,
+      pos_scale: 1.5,
+      follow_rotation: false,
+      filter_enabled: false,
+      filter_min_cutoff_hz: 2.5,
+      filter_beta: 0.2,
+    };
+    pushTracker({ settings });
     await waitFor(() => expect(screen.getByTestId("tracker-status").textContent).toBe("tracking"));
     expect(screen.getByTestId("tracker-device").textContent).toContain("backend fake");
     expect(screen.getByTestId("tracker-device").textContent).toContain("120.0 Hz");
     expect(screen.getByTestId("tracker-z").textContent).toBe("1.100 m");
     expect(screen.getByTestId("pose-world").textContent).toContain("0.120, 0.210, 1.100");
+    expect(screen.getByTestId("pose-filtered").textContent).toBe("filtered—"); // not reported yet
     expect(screen.getByTestId("tracker-clutch").textContent).toBe("released");
     // `controller` omitted by the fixture (pre-§1.1 runtime) → none.
     expect(screen.getByTestId("controller-status").textContent).toBe("controller: none");
-    expect(screen.getByTestId("tracker-settings-echo").textContent).toContain("yaw 90°");
+    const echo = screen.getByTestId("tracker-settings-echo").textContent ?? "";
+    expect(echo).toContain("yaw 90°");
+    expect(echo).toContain("scale 1.5");
+    expect(echo).toContain("rotation off");
+    expect(echo).toContain("filter off (cutoff 2.5 Hz, beta 0.2)");
     expect((screen.getByTestId("tracker-yaw") as HTMLInputElement).value).toBe("90");
     expect((screen.getByTestId("tracker-scale") as HTMLInputElement).value).toBe("1.5");
+    expect((screen.getByTestId("tracker-filter-cutoff") as HTMLInputElement).value).toBe("2.5");
+    expect((screen.getByTestId("tracker-filter-beta") as HTMLInputElement).value).toBe("0.2");
     expect((screen.getByTestId("tracker-follow-rotation") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("tracker-filter-enabled") as HTMLInputElement).checked).toBe(false);
     expect(screen.getByTestId("tracker-trail")).toBeInTheDocument();
 
-    // Engaged clutch → chip shows the arm.
-    act(() =>
-      telemetry.push(
-        makeTelemetry({
-          seq: 2,
-          tracker: makeTracker({
-            settings,
-            seq: 43,
-            clutch: true,
-            engaged_arm: "view",
-            anchor_tcp: { position: [0.3, 0.0, 0.4], orientation: [1, 0, 0, 0] },
-            target_tcp: { position: [0.32, 0.01, 0.4], orientation: [1, 0, 0, 0] },
-          }),
-        }),
+    // Legacy producer (no filter fields) → additive defaults in the echo.
+    pushTracker({ settings: { yaw_deg: 0, pos_scale: 1, follow_rotation: true } }, 2);
+    await waitFor(() =>
+      expect(screen.getByTestId("tracker-settings-echo").textContent).toContain(
+        "filter on (cutoff 1 Hz, beta 0.05)",
       ),
     );
-    await waitFor(() => expect(screen.getByTestId("tracker-clutch").textContent).toContain("view"));
+    expect((screen.getByTestId("tracker-filter-enabled") as HTMLInputElement).checked).toBe(true);
+
+    // Engaged clutch with a filtered pose → chip shows the arm, filtered row + z.
+    pushTracker(
+      {
+        settings,
+        seq: 43,
+        clutch: true,
+        engaged_arm: "grip",
+        pose_filtered: { position: [0.121, 0.209, 1.098], orientation: [1, 0, 0, 0] },
+        anchor_tcp: { position: [0.3, 0.0, 0.4], orientation: [1, 0, 0, 0] },
+        target_tcp: { position: [0.32, 0.01, 0.4], orientation: [1, 0, 0, 0] },
+      },
+      3,
+    );
+    await waitFor(() => expect(screen.getByTestId("tracker-clutch").textContent).toContain("grip"));
     expect(screen.getByTestId("pose-anchor").textContent).toContain("0.300");
+    expect(screen.getByTestId("pose-filtered").textContent).toContain("0.121, 0.209, 1.098");
+    expect(screen.getByTestId("tracker-z").textContent).toBe("1.098 m"); // from pose_filtered
 
-    // Settings form → ActionMsg tracker_settings.
-    fireEvent.change(screen.getByTestId("tracker-scale"), { target: { value: "2" } });
-    fireEvent.click(screen.getByTestId("tracker-follow-rotation"));
-    fireEvent.change(screen.getByTestId("tracker-scale"), { target: { value: "9" } }); // out of range → dropped
-    await waitFor(() => expect(control.actions.length).toBe(2));
-    expect(control.actions[0]).toMatchObject({ name: "tracker_settings", args: { pos_scale: 2 } });
-    expect(control.actions[1]).toMatchObject({
-      name: "tracker_settings",
-      args: { follow_rotation: true },
-    });
-
-    // Session start → fixed spec, streams appear.
+    // Session start → fixed spec: gripper arm first (active by default), streams appear.
     fireEvent.click(screen.getByTestId("session-start"));
     await screen.findByTestId("session-stop");
     expect(posts[0]).toEqual(DEVICES_SESSION_SPEC);
     expect(posts[0]).toMatchObject({
       mode: "teleop",
       kind: "sim",
-      arms: ["view", "grip"],
-      frames: { view: "arm_base:view", grip: "arm_base:grip" },
+      arms: ["grip", "view"],
+      frames: { grip: "arm_base:grip", view: "arm_base:view" },
       sim_scene: "mavis_v2",
     });
     expect(screen.getByTestId("session-summary").textContent).toContain("mavis_v2");
+    expect(screen.getByTestId("session-summary").textContent).toContain("arms grip, view");
     expect(screen.getByTestId("stream-sim")).toBeInTheDocument();
     expect(screen.getByTestId("stream-cam0")).toBeInTheDocument();
+    // With a session the form is live.
+    expect((screen.getByTestId("tracker-yaw") as HTMLInputElement).disabled).toBe(false);
+    expect(screen.queryByTestId("tracker-settings-disabled")).toBeNull();
     fireEvent.click(screen.getByTestId("session-stop"));
     await screen.findByTestId("session-start");
     expect(useStore.getState().session).toBeNull();
   }, 15000);
 
-  it("gamepad panel lights raw buttons + mapped actions, auto-arms, feeds the held set", async () => {
+  it("settings form commits on Enter / blur (never per keystroke), drops out-of-range, toasts nacks", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    await waitFor(() => expect(useStore.getState().bindings).not.toBeNull());
+    const settings = {
+      yaw_deg: 90,
+      pos_scale: 1.5,
+      follow_rotation: false,
+      filter_enabled: false,
+      filter_min_cutoff_hz: 2.5,
+      filter_beta: 0.2,
+    };
+    pushTracker({ settings });
+    await waitFor(() => expect(screen.getByTestId("tracker-status").textContent).toBe("tracking"));
+    fireEvent.click(screen.getByTestId("session-start"));
+    await screen.findByTestId("session-stop");
+    await waitFor(() =>
+      expect((screen.getByTestId("tracker-scale") as HTMLInputElement).disabled).toBe(false),
+    );
+
+    // Typing alone sends nothing.
+    const scale = screen.getByTestId("tracker-scale") as HTMLInputElement;
+    fireEvent.focus(scale);
+    fireEvent.change(scale, { target: { value: "2" } });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(control.actions.length).toBe(0);
+    // Echo frames while editing do not clobber the draft.
+    pushTracker({ settings }, 5);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(scale.value).toBe("2");
+    // Enter commits exactly one action.
+    fireEvent.keyDown(scale, { key: "Enter" });
+    await waitFor(() => expect(control.actions.length).toBe(1));
+    expect(control.actions[0]).toMatchObject({ name: "tracker_settings", args: { pos_scale: 2 } });
+    // Same value again on blur → unchanged vs the draft? No: unchanged vs the ECHO
+    // is what is skipped; the echo still says 1.5 so blur re-sends 2 once.
+    fireEvent.blur(scale);
+    await waitFor(() => expect(control.actions.length).toBe(2));
+    // Out of range → dropped and the field snaps back to the echoed value.
+    fireEvent.focus(scale);
+    fireEvent.change(scale, { target: { value: "9" } });
+    fireEvent.blur(scale);
+    await waitFor(() => expect(scale.value).toBe("1.5"));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(control.actions.length).toBe(2);
+    // Unchanged vs the echo → nothing sent.
+    fireEvent.focus(scale);
+    fireEvent.change(scale, { target: { value: "1.5" } });
+    fireEvent.keyDown(scale, { key: "Enter" });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(control.actions.length).toBe(2);
+
+    // Filter fields → the new TrackerSettingsArgs keys.
+    const cutoff = screen.getByTestId("tracker-filter-cutoff") as HTMLInputElement;
+    fireEvent.focus(cutoff);
+    fireEvent.change(cutoff, { target: { value: "3" } });
+    fireEvent.blur(cutoff);
+    await waitFor(() => expect(control.actions.length).toBe(3));
+    expect(control.actions[2]).toMatchObject({
+      name: "tracker_settings",
+      args: { filter_min_cutoff_hz: 3 },
+    });
+    const beta = screen.getByTestId("tracker-filter-beta") as HTMLInputElement;
+    fireEvent.focus(beta);
+    fireEvent.change(beta, { target: { value: "0.5" } });
+    fireEvent.keyDown(beta, { key: "Enter" });
+    await waitFor(() => expect(control.actions.length).toBe(4));
+    expect(control.actions[3]).toMatchObject({
+      name: "tracker_settings",
+      args: { filter_beta: 0.5 },
+    });
+    fireEvent.change(beta, { target: { value: "7" } }); // > 5 → dropped on blur
+    fireEvent.blur(beta);
+    await waitFor(() => expect(beta.value).toBe("0.2"));
+    fireEvent.click(screen.getByTestId("tracker-filter-enabled"));
+    fireEvent.click(screen.getByTestId("tracker-follow-rotation"));
+    await waitFor(() => expect(control.actions.length).toBe(6));
+    expect(control.actions[4]).toMatchObject({ args: { filter_enabled: true } });
+    expect(control.actions[5]).toMatchObject({ args: { follow_rotation: true } });
+    expect(control.actions.every((a) => a.name === "tracker_settings")).toBe(true);
+
+    // Nack → one toast (page-specific, the generic one is suppressed), pending cleared.
+    control.ackOk = false;
+    control.ackDetail = "tracker backend none";
+    const yaw = screen.getByTestId("tracker-yaw") as HTMLInputElement;
+    fireEvent.focus(yaw);
+    fireEvent.change(yaw, { target: { value: "45" } });
+    fireEvent.keyDown(yaw, { key: "Enter" });
+    await waitFor(() => expect(control.actions.length).toBe(7));
+    const toast = await screen.findByTestId("toast");
+    expect(toast.textContent).toBe("tracker_settings rejected: tracker backend none");
+    expect(toast.className).toContain("toast-error");
+    await new Promise((r) => setTimeout(r, 40));
+    expect(screen.getAllByTestId("toast").length).toBe(1);
+    expect(useStore.getState().devices.pendingTrackerSettings).toBeNull();
+    // Nack without detail still toasts.
+    control.ackDetail = "";
+    fireEvent.change(yaw, { target: { value: "46" } });
+    fireEvent.keyDown(yaw, { key: "Enter" });
+    await waitFor(() => expect(screen.getAllByTestId("toast").length).toBe(2));
+    expect(screen.getAllByTestId("toast")[1]!.textContent).toBe("tracker_settings rejected");
+  }, 15000);
+
+  it("gamepad panel lights raw buttons + mapped actions, auto-arms, feeds the held set, latches on blur", async () => {
     mount();
     await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
     await waitFor(() => expect(useStore.getState().bindings).not.toBeNull());
@@ -195,9 +323,31 @@ describe("Devices page", () => {
     buttons[0] = { pressed: true, value: 1 }; // A → KeyH (held)
     await waitFor(() => expect(screen.getByTestId("gp-map-A").dataset["lit"]).toBe("true"));
     expect(screen.getByTestId("gp-btn-0").className).toContain("raw-cell-lit");
-    await screen.findByTestId("gamepad-armed-chip");
+    // Armed chip comes from the shared TeleopSurface (same surface as the cockpit).
+    const chip = await screen.findByTestId("gamepad-armed-chip");
+    expect(chip.textContent).toBe("GAMEPAD");
+    expect(screen.getByTestId("teleop-surface")).toContainElement(chip);
     expect(useStore.getState().gamepad.armed).toBe(true);
     await waitFor(() => expect(control.lastHeld).toEqual(["KeyH"]));
+
+    // Blur while A is held → release-all + LATCHED chip; A still down → nothing.
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    await waitFor(() => expect(useStore.getState().gamepad.armed).toBe(false));
+    await screen.findByTestId("gamepad-latched");
+    await waitFor(() => expect(control.lastHeld).toEqual([]));
+    const keysBefore = control.keys.length;
+    await new Promise((r) => setTimeout(r, 120));
+    expect(control.lastHeld).toEqual([]);
+    expect(control.keys.length).toBe(keysBefore); // heartbeat off
+    expect(useStore.getState().gamepad.armed).toBe(false);
+    // Release → latch lifts; press again → works.
+    buttons[0] = { pressed: false, value: 0 };
+    await waitFor(() => expect(screen.queryByTestId("gamepad-latched")).toBeNull());
+    buttons[0] = { pressed: true, value: 1 };
+    await waitFor(() => expect(control.lastHeld).toEqual(["KeyH"]));
+    expect(useStore.getState().gamepad.armed).toBe(true);
 
     buttons[0] = { pressed: false, value: 0 };
     buttons[5] = { pressed: true, value: 1 }; // RB → switch_arm (discrete)
@@ -213,6 +363,48 @@ describe("Devices page", () => {
     await waitFor(() =>
       expect(screen.getByTestId("gamepad-connected").textContent).toBe("no gamepad"),
     );
+  }, 15000);
+
+  it("keyboard capture surface: click to arm, KeyC clutch + Tab switch_arm work on the devices page", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    await waitFor(() => expect(useStore.getState().bindings).not.toBeNull());
+    const surface = screen.getByTestId("teleop-surface");
+    expect(surface).toContainElement(screen.getByTestId("no-streams"));
+    expect(screen.queryByTestId("capturing-chip")).toBeNull();
+    fireEvent.click(surface);
+    await screen.findByTestId("capturing-chip");
+    expect(useStore.getState().captureArmed).toBe(true);
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "KeyC", cancelable: true, bubbles: true }),
+      );
+    });
+    await waitFor(() => expect(control.lastHeld).toEqual(["KeyC"]));
+    // Heartbeat keeps flowing while the clutch is held.
+    const n = control.keys.length;
+    await new Promise((r) => setTimeout(r, 150));
+    expect(control.keys.length).toBeGreaterThanOrEqual(n + 2);
+    expect(control.lastHeld).toEqual(["KeyC"]);
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { code: "KeyC", cancelable: true, bubbles: true }),
+      );
+    });
+    await waitFor(() => expect(control.lastHeld).toEqual([]));
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "Tab", cancelable: true, bubbles: true }),
+      );
+    });
+    await waitFor(() => expect(control.actions.some((a) => a.name === "switch_arm")).toBe(true));
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "Escape", cancelable: true, bubbles: true }),
+      );
+    });
+    await waitFor(() => expect(screen.queryByTestId("capturing-chip")).toBeNull());
+    expect(useStore.getState().captureArmed).toBe(false);
   }, 15000);
   it("controller sub-panel: none when null; chips, trigger bar and pad dot from telemetry", async () => {
     mount();
@@ -231,8 +423,8 @@ describe("Devices page", () => {
     expect(screen.queryByTestId("controller-trigger-bar")).toBeNull();
     expect(screen.queryByTestId("controller-held")).toBeNull();
 
-    // Trigger pulled + clicked, pad clicked in the upper half → KeyC + KeyH injected
-    // (plus an unexpected code, shown raw).
+    // Trigger pulled + clicked, pad clicked on the right → KeyC + KeyH injected
+    // (plus an unexpected code, shown raw); a trackpad-up click fired switch_arm.
     act(() =>
       telemetry.push(
         makeTelemetry({
@@ -252,6 +444,7 @@ describe("Devices page", () => {
               system: false,
             },
             device_held: ["KeyC", "KeyH", "F13"],
+            device_action: "switch_arm",
           }),
         }),
       ),
@@ -280,10 +473,21 @@ describe("Devices page", () => {
     expect(clutch.title).toBe("KeyC · tracker clutch (hold)");
     const open = screen.getByTestId("controller-held-gripper_open");
     expect(open.dataset["lit"]).toBe("true");
-    expect(open.textContent).toBe("pad ▲ → gripper_open (H)");
+    expect(open.textContent).toBe("pad ▶ → gripper_open (H)");
     const close = screen.getByTestId("controller-held-gripper_close");
     expect(close.dataset["lit"]).toBe("false");
-    expect(close.textContent).toBe("pad ▼ → gripper_close (F)");
+    expect(close.textContent).toBe("pad ◀ → gripper_close (F)");
+    // Discrete rows (trackpad up/down) light from device_action, not device_held.
+    const next = screen.getByTestId("controller-held-switch_arm");
+    expect(next.dataset["lit"]).toBe("true");
+    expect(next.textContent).toBe("pad ▲ → switch_arm (Tab)");
+    const prev = screen.getByTestId("controller-held-switch_arm_prev");
+    expect(prev.dataset["lit"]).toBe("false");
+    expect(prev.textContent).toBe("pad ▼ → switch_arm_prev (Z)");
+    const flash = screen.getByTestId("controller-device-action");
+    expect(flash.textContent).toBe("switch_arm");
+    expect(flash.dataset["lit"]).toBe("true");
+    expect(flash.className).toContain("chip-flash");
     const extra = screen.getByTestId("controller-held-F13");
     expect(extra.dataset["lit"]).toBe("true");
     expect(extra.textContent).toBe("F13");
@@ -307,11 +511,17 @@ describe("Devices page", () => {
               system: true,
             },
             device_held: [],
+            device_action: null,
           }),
         }),
       ),
     );
     await waitFor(() => expect(screen.getByTestId("controller-grip").dataset["lit"]).toBe("true"));
+    expect(screen.getByTestId("controller-held-switch_arm").dataset["lit"]).toBe("false");
+    const cleared = screen.getByTestId("controller-device-action");
+    expect(cleared.textContent).toBe("no recent action");
+    expect(cleared.dataset["lit"]).toBe("false");
+    expect(cleared.className).not.toContain("chip-flash");
     expect(screen.getByTestId("controller-menu").dataset["lit"]).toBe("true");
     expect(screen.getByTestId("controller-system").dataset["lit"]).toBe("true");
     expect(screen.getByTestId("controller-held-tracker_clutch").dataset["lit"]).toBe("false");

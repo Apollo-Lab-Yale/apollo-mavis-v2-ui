@@ -77,13 +77,33 @@ describe("KeymapOverlay", () => {
   it("shows a controller glyph column (static table by action, 13-tracker §1.1)", () => {
     mount("teleop", true);
     expect(screen.getByTestId("keymap-head").textContent).toContain("controller");
+    // Trigger click = clutch; trackpad click classified by position at the press
+    // edge: left/right = gripper rate (held), up/down = arm switch (discrete).
     expect(screen.getByTestId("keyrow-KeyC-ctrl").textContent).toBe("trigger");
-    expect(screen.getByTestId("keyrow-KeyH-ctrl").textContent).toBe("pad ▲");
-    expect(screen.getByTestId("keyrow-KeyF-ctrl").textContent).toBe("pad ▼");
-    // Grip / menu / system are never mapped; other rows show a dash.
-    expect(screen.getByTestId("keyrow-Tab-ctrl").textContent).toBe("—");
-    expect(screen.getByTestId("keyrow-KeyZ-ctrl").textContent).toBe("—");
+    expect(screen.getByTestId("keyrow-KeyF-ctrl").textContent).toBe("pad ◀");
+    expect(screen.getByTestId("keyrow-KeyH-ctrl").textContent).toBe("pad ▶");
+    expect(screen.getByTestId("keyrow-Tab-ctrl").textContent).toBe("pad ▲");
+    expect(screen.getByTestId("keyrow-KeyZ-ctrl").textContent).toBe("pad ▼");
+    // Rail stays on D-pad / arrows; translate keys have no controller input;
+    // grip / menu / system are never mapped.
     expect(screen.getByTestId("keyrow-ArrowLeft-ctrl").textContent).toBe("—");
+    expect(screen.getByTestId("keyrow-ArrowRight-ctrl").textContent).toBe("—");
     expect(screen.getByTestId("keyrow-KeyW-ctrl").textContent).toBe("—");
+    expect(screen.getByTestId("keyrow-KeyI-ctrl").textContent).toBe("—");
+  });
+
+  it("controller glyphs are keyed by action, so the column follows a re-bound keymap", () => {
+    const rebound = KEYMAP.map((e) => (e.action === "switch_arm" ? { ...e, code: "KeyM" } : e));
+    render(
+      <KeymapOverlay
+        entries={rebound}
+        mode="teleop"
+        activeArmHasRail
+        open
+        onToggle={() => undefined}
+      />,
+    );
+    expect(screen.queryByTestId("keyrow-Tab")).toBeNull();
+    expect(screen.getByTestId("keyrow-KeyM-ctrl").textContent).toBe("pad ▲");
   });
 });

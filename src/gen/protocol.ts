@@ -199,16 +199,23 @@ export type TrackpadY = number;
 export type Trigger = number;
 export type TriggerPressed = boolean;
 export type Detail1 = string;
+export type DeviceAction = string | null;
 export type DeviceHeld = string[];
 export type EngagedArm2 = string | null;
 export type ObjectName = string;
 export type RateHz = number;
 export type Seq2 = number;
+export type FilterBeta = number;
+export type FilterEnabled = boolean;
+export type FilterMinCutoffHz = number;
 export type FollowRotation = boolean;
 export type PosScale = number;
 export type YawDeg = number;
 export type Status = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
 export type Ts3 = number;
+export type FilterBeta1 = number | null;
+export type FilterEnabled1 = boolean | null;
+export type FilterMinCutoffHz1 = number | null;
 export type FollowRotation1 = boolean | null;
 export type PosScale1 = number | null;
 export type YawDeg1 = number | null;
@@ -552,6 +559,10 @@ export interface SessionTelemetry {
  * ``controller`` echoes the raw controller inputs (``None`` when the backend
  * reports no controller) and ``device_held`` the key codes the runtime
  * injects from them (13-tracker §1.1); a stale sample yields an empty list.
+ * ``device_action`` is the last device-sourced discrete action (e.g.
+ * ``"switch_arm"``), cleared by the runtime ~1 s after it fired.
+ * ``pose_filtered`` is the aligned pose after the One Euro filter (§4), i.e.
+ * what the anchor/delta math actually consumes; ``None`` when no sample.
  */
 export interface TrackerTelemetry {
   age_s?: AgeS;
@@ -560,9 +571,11 @@ export interface TrackerTelemetry {
   clutch?: Clutch;
   controller?: ControllerTelemetry | null;
   detail?: Detail1;
+  device_action?: DeviceAction;
   device_held?: DeviceHeld;
   engaged_arm?: EngagedArm2;
   object_name?: ObjectName;
+  pose_filtered?: PoseMsg | null;
   pose_raw?: PoseMsg | null;
   pose_world?: PoseMsg | null;
   rate_hz?: RateHz;
@@ -591,20 +604,32 @@ export interface ControllerTelemetry {
   trigger_pressed?: TriggerPressed;
 }
 /**
- * Live tracker teleop settings echoed in telemetry (13-tracker §3.5).
+ * Live tracker teleop settings echoed in telemetry (13-tracker §3.5, §4).
+ *
+ * The ``filter_*`` fields are the *effective* One Euro pose-filter settings
+ * (config defaults, overridable live via ``tracker_settings``); they default
+ * here so pre-filter producers still validate.
  */
 export interface TrackerSettingsMsg {
+  filter_beta?: FilterBeta;
+  filter_enabled?: FilterEnabled;
+  filter_min_cutoff_hz?: FilterMinCutoffHz;
   follow_rotation: FollowRotation;
   pos_scale: PosScale;
   yaw_deg: YawDeg;
 }
 /**
- * Args for ``name == "tracker_settings"`` (13-tracker §3.4).
+ * Args for ``name == "tracker_settings"`` (13-tracker §3.4, §4 "Pose filter").
  *
  * Every field is optional; omitted (``None``) fields leave the live runtime
- * setting unchanged.
+ * setting unchanged. The ``filter_*`` fields tune the runtime's One Euro pose
+ * filter live (debug page); a change while the clutch is engaged re-anchors
+ * instead of moving the arm (13-tracker §4 "Anchor and re-seed rules").
  */
 export interface TrackerSettingsArgs {
+  filter_beta?: FilterBeta1;
+  filter_enabled?: FilterEnabled1;
+  filter_min_cutoff_hz?: FilterMinCutoffHz1;
   follow_rotation?: FollowRotation1;
   pos_scale?: PosScale1;
   yaw_deg?: YawDeg1;

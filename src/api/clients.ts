@@ -45,7 +45,9 @@ export function anyArmed(): boolean {
   return armedSources.size > 0;
 }
 
-type AckListener = (a: AckMsg) => void;
+/** Ack listener; return `true` to mark the ack handled (suppresses the generic
+ * nack toast so a page can show its own, e.g. the tracker settings form). */
+type AckListener = (a: AckMsg) => boolean | void;
 const ackListeners = new Set<AckListener>();
 export function onAck(fn: AckListener): () => void {
   ackListeners.add(fn);
@@ -88,8 +90,10 @@ export function getControl(): ControlClient {
       getHeld: heldUnion,
       onHello: handleHello,
       onAck: (a) => {
-        for (const fn of ackListeners) fn(a);
-        if (!a.ok && a.detail) useStore.getState().addToast(`${a.name}: ${a.detail}`, "error");
+        let handled = false;
+        for (const fn of ackListeners) if (fn(a) === true) handled = true;
+        if (!handled && !a.ok && a.detail)
+          useStore.getState().addToast(`${a.name}: ${a.detail}`, "error");
       },
       onStatus: (s) => {
         useStore.getState().setConn("control", s);

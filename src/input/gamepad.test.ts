@@ -260,6 +260,104 @@ describe("GamepadAdapter", () => {
     adapter.stop();
   });
 
+  it("release-all latch: blur while RT is held → nothing re-injected until RT is released", () => {
+    const pad = makePad();
+    const { adapter, onHeldChange, onAction, onArmedChange, snapshots } = setup(pad);
+    pad.press(7, 1); // RT → KeyC (clutch)
+    tick();
+    expect(adapter.held.has("KeyC")).toBe(true);
+    expect(adapter.isArmed).toBe(true);
+    window.dispatchEvent(new Event("blur"));
+    expect(adapter.held.size).toBe(0);
+    expect(adapter.isArmed).toBe(false);
+    expect(adapter.isLatched).toBe(true);
+    onHeldChange.mockClear();
+    onArmedChange.mockClear();
+    // RT is STILL pressed on the next polls: no press edge, heartbeat stays off.
+    tick(5);
+    expect(adapter.held.size).toBe(0);
+    expect(onHeldChange).not.toHaveBeenCalled();
+    expect(onArmedChange).not.toHaveBeenCalled();
+    expect(adapter.isArmed).toBe(false);
+    expect(adapter.isLatched).toBe(true);
+    expect(snapshots[snapshots.length - 1]).toMatchObject({ latched: true, armed: false });
+    // A different control pressed while latched is ignored too (discrete row).
+    pad.press(5); // RB → switch_arm
+    tick();
+    expect(onAction).not.toHaveBeenCalled();
+    pad.release(5);
+    // Release RT → latch lifts; press again → clutch works and re-arms.
+    pad.release(7);
+    tick();
+    expect(adapter.isLatched).toBe(false);
+    expect(adapter.held.size).toBe(0);
+    pad.press(7, 1);
+    tick();
+    expect(adapter.held.has("KeyC")).toBe(true);
+    expect(onHeldChange).toHaveBeenCalledTimes(1);
+    expect(onArmedChange).toHaveBeenCalledTimes(1);
+    expect(onArmedChange).toHaveBeenCalledWith(true);
+    expect(snapshots[snapshots.length - 1]).toMatchObject({ latched: false, armed: true });
+    adapter.stop();
+  });
+
+  it("release-all latch: hidden and link-down latch too; focus return lifts it without re-firing", () => {
+    const pad = makePad();
+    let linkOpen = true;
+    const { adapter, onHeldChange, onAction, onArmedChange } = setup(pad, () => linkOpen);
+    pad.press(0); // A → KeyH (held)
+    tick();
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(adapter.isLatched).toBe(true);
+    onHeldChange.mockClear();
+    onArmedChange.mockClear();
+    tick(3); // A still held → nothing
+    expect(adapter.held.size).toBe(0);
+    expect(onHeldChange).not.toHaveBeenCalled();
+    // Page visible + focused again while A is still held: latch lifts, but the
+    // held control does not re-fire — only NEW press edges count from here on.
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus"));
+    expect(adapter.isLatched).toBe(false);
+    tick(2);
+    expect(adapter.held.size).toBe(0);
+    expect(onHeldChange).not.toHaveBeenCalled();
+    expect(adapter.isArmed).toBe(false);
+    pad.press(5); // RB → switch_arm: a genuinely new edge → accepted, arms
+    tick();
+    expect(onAction).toHaveBeenCalledWith("switch_arm");
+    expect(onArmedChange).toHaveBeenLastCalledWith(true);
+    pad.release(5);
+    pad.release(0);
+    tick();
+    pad.press(0);
+    tick();
+    expect(adapter.held.has("KeyH")).toBe(true); // release + press → works
+    // Link down → latched; link back while A still held → still nothing.
+    linkOpen = false;
+    tick();
+    expect(adapter.held.size).toBe(0);
+    expect(adapter.isLatched).toBe(true);
+    linkOpen = true;
+    onHeldChange.mockClear();
+    tick(3);
+    expect(adapter.held.size).toBe(0);
+    expect(onHeldChange).not.toHaveBeenCalled();
+    expect(adapter.isArmed).toBe(false);
+    pad.release(0);
+    tick();
+    expect(adapter.isLatched).toBe(false);
+    pad.press(0);
+    tick();
+    expect(adapter.held.has("KeyH")).toBe(true);
+    adapter.stop();
+  });
+
   it("labels absent from the served keymap are never injected", () => {
     const pad = makePad();
     const noRt = buildBindings(KEYMAP.filter((e) => e.gamepad !== "RT" && e.gamepad !== "A"));

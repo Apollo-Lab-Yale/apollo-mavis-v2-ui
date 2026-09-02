@@ -41,6 +41,9 @@ export interface GamepadState {
   axes: readonly number[]; // raw axes (-1..1)
   active: readonly string[]; // mapped labels ("A", "RT", …) currently active
   armed: boolean; // gamepad auto-armed capture (heartbeat running)
+  /** Release-all latch (blur/hidden/link-down): press edges ignored until every
+   * mapped control is released or focus + visibility return (13-tracker §5). */
+  latched: boolean;
 }
 
 export const GAMEPAD_IDLE: GamepadState = {
@@ -53,6 +56,7 @@ export const GAMEPAD_IDLE: GamepadState = {
   axes: [],
   active: [],
   armed: false,
+  latched: false,
 };
 
 /** Devices-page state that is not part of telemetry. */

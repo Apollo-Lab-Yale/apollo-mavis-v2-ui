@@ -49,6 +49,18 @@ export function GamepadPanel({ pad, bindings }: { pad: GamepadState; bindings: B
           >
             {pad.armed ? "ARMED" : "idle"}
           </span>
+          {pad.latched && (
+            <>
+              {" "}
+              <span
+                className="chip chip-amber"
+                data-testid="gamepad-latched"
+                title="release-all latched (blur / hidden / link down): release every control to resume"
+              >
+                LATCHED
+              </span>
+            </>
+          )}
         </span>
       </summary>
       <div className="kv mono dim" style={{ fontSize: 12 }}>
@@ -152,7 +164,8 @@ export interface TrackerPanelProps {
 }
 
 export function TrackerPanel({ tracker, bindings = null }: TrackerPanelProps) {
-  const z = tracker?.pose_world?.position[2];
+  // Prefer the filtered pose (what the anchor/delta math consumes, §4).
+  const z = (tracker?.pose_filtered ?? tracker?.pose_world)?.position[2];
   return (
     <div className="panel" data-testid="tracker-panel">
       <div className="kv">
@@ -200,18 +213,20 @@ export function TrackerPanel({ tracker, bindings = null }: TrackerPanelProps) {
       <ControllerView
         controller={tracker?.controller ?? null}
         deviceHeld={tracker?.device_held ?? []}
+        deviceAction={tracker?.device_action ?? null}
         bindings={bindings}
       />
       <table className="pose-table">
         <tbody>
           <PoseRow name="raw" pose={tracker?.pose_raw} />
           <PoseRow name="world" pose={tracker?.pose_world} />
+          <PoseRow name="filtered" pose={tracker?.pose_filtered} />
           <PoseRow name="anchor" pose={tracker?.anchor_tcp} />
           <PoseRow name="target" pose={tracker?.target_tcp} />
         </tbody>
       </table>
       <div className="kv">
-        <span className="dim">z (world)</span>
+        <span className="dim">z ({tracker?.pose_filtered ? "filtered" : "world"})</span>
         <span className="mono" style={{ fontSize: 20 }} data-testid="tracker-z">
           {z == null ? "—" : `${f3(z)} m`}
         </span>
@@ -222,88 +237,197 @@ export function TrackerPanel({ tracker, bindings = null }: TrackerPanelProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Settings
+// Settings — commit semantics (13-tracker §5): a numeric field is sent as one
+// `tracker_settings` action on COMMIT (Enter or blur), never per keystroke;
+// checkboxes commit on click. Fields the operator is not editing follow the
+// echoed `telemetry.tracker.settings`. Values outside the TrackerSettingsArgs
+// bounds are never sent — the field snaps back to the echoed value.
+
+type NumericKey = "yaw_deg" | "pos_scale" | "filter_min_cutoff_hz" | "filter_beta";
+
+interface NumericField {
+  key: NumericKey;
+  label: string;
+  testId: string;
+  step: number;
+  min?: number;
+  max?: number;
+}
+
+/** Bounds mirror `TrackerSettingsArgs` (core protocol/control.py). */
+export const TRACKER_NUMERIC_FIELDS: readonly NumericField[] = [
+  { key: "yaw_deg", label: "yaw_deg", testId: "tracker-yaw", step: 1 },
+  {
+    key: "pos_scale",
+    label: "pos_scale (0.1–3)",
+    testId: "tracker-scale",
+    step: 0.1,
+    min: 0.1,
+    max: 3,
+  },
+  {
+    key: "filter_min_cutoff_hz",
+    label: "filter_min_cutoff_hz (0.05–50)",
+    testId: "tracker-filter-cutoff",
+    step: 0.1,
+    min: 0.05,
+    max: 50,
+  },
+  {
+    key: "filter_beta",
+    label: "filter_beta (0–5)",
+    testId: "tracker-filter-beta",
+    step: 0.01,
+    min: 0,
+    max: 5,
+  },
+];
+
+/** Effective settings with the additive filter defaults filled in. */
+export function effectiveSettings(s: TrackerSettingsMsg): Required<TrackerSettingsMsg> {
+  return {
+    yaw_deg: s.yaw_deg,
+    pos_scale: s.pos_scale,
+    follow_rotation: s.follow_rotation,
+    filter_enabled: s.filter_enabled ?? true,
+    filter_min_cutoff_hz: s.filter_min_cutoff_hz ?? 1.0,
+    filter_beta: s.filter_beta ?? 0.05,
+  };
+}
+
+const DEFAULT_DRAFT: Record<NumericKey, string> = {
+  yaw_deg: "0",
+  pos_scale: "1",
+  filter_min_cutoff_hz: "1",
+  filter_beta: "0.05",
+};
 
 export interface TrackerSettingsFormProps {
   settings: TrackerSettingsMsg | null; // echoed by telemetry
+  /** True when there is no session, the control link is down or the role is observer. */
   disabled: boolean;
+  /** Shown under the form while disabled (e.g. "start a session to tune"). */
+  disabledReason?: string;
   onChange(args: TrackerSettingsArgs): void; // → sendAction("tracker_settings", args)
 }
 
-export function TrackerSettingsForm({ settings, disabled, onChange }: TrackerSettingsFormProps) {
-  const [yaw, setYaw] = useState("0");
-  const [scale, setScale] = useState("1");
-  const editing = useRef(new Set<string>());
+export function TrackerSettingsForm({
+  settings,
+  disabled,
+  disabledReason,
+  onChange,
+}: TrackerSettingsFormProps) {
+  const [draft, setDraft] = useState<Record<NumericKey, string>>(DEFAULT_DRAFT);
+  const editing = useRef(new Set<NumericKey>());
+  const live = settings ? effectiveSettings(settings) : null;
 
   // Server-authoritative: refresh fields the operator is not editing.
   useEffect(() => {
-    if (!settings) return;
-    if (!editing.current.has("yaw")) setYaw(String(settings.yaw_deg));
-    if (!editing.current.has("scale")) setScale(String(settings.pos_scale));
+    if (!live) return;
+    setDraft((d) => {
+      let next = d;
+      for (const f of TRACKER_NUMERIC_FIELDS) {
+        if (editing.current.has(f.key)) continue;
+        const v = String(live[f.key]);
+        if (next[f.key] !== v) next = { ...next, [f.key]: v };
+      }
+      return next;
+    });
+    // `live` is derived per render; the echoed object is what changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
-  const sendNumber = (key: "yaw_deg" | "pos_scale", raw: string) => {
+  const commit = (f: NumericField) => {
+    const raw = draft[f.key];
     const v = Number(raw);
-    if (raw.trim() === "" || !Number.isFinite(v)) return;
-    if (key === "pos_scale" && (v < 0.1 || v > 3)) return; // TrackerSettingsArgs bounds
-    onChange({ [key]: v });
+    const valid =
+      raw.trim() !== "" &&
+      Number.isFinite(v) &&
+      (f.min === undefined || v >= f.min) &&
+      (f.max === undefined || v <= f.max);
+    if (!valid) {
+      // Snap back to the echoed value (or the default) — never send out-of-range args.
+      setDraft((d) => ({ ...d, [f.key]: live ? String(live[f.key]) : DEFAULT_DRAFT[f.key] }));
+      return;
+    }
+    if (live && live[f.key] === v) return; // unchanged → nothing to send
+    onChange({ [f.key]: v });
   };
 
+  const echo = live
+    ? `live: yaw ${live.yaw_deg}° · scale ${live.pos_scale} · rotation ${
+        live.follow_rotation ? "on" : "off"
+      } · filter ${live.filter_enabled ? "on" : "off"} (cutoff ${live.filter_min_cutoff_hz} Hz, beta ${
+        live.filter_beta
+      })`
+    : "live: — (no telemetry)";
+
   return (
-    <div className="panel" data-testid="tracker-settings">
+    <fieldset className="panel settings-form" data-testid="tracker-settings" disabled={disabled}>
       <strong>Tracker settings</strong>
-      <label className="kv">
-        <span>yaw_deg</span>
-        <input
-          type="number"
-          step={1}
-          value={yaw}
-          disabled={disabled}
-          data-testid="tracker-yaw"
-          onFocus={() => editing.current.add("yaw")}
-          onBlur={() => editing.current.delete("yaw")}
-          onChange={(e) => {
-            setYaw(e.target.value);
-            sendNumber("yaw_deg", e.target.value);
-          }}
-        />
-      </label>
-      <label className="kv">
-        <span>pos_scale (0.1–3)</span>
-        <input
-          type="number"
-          step={0.1}
-          min={0.1}
-          max={3}
-          value={scale}
-          disabled={disabled}
-          data-testid="tracker-scale"
-          onFocus={() => editing.current.add("scale")}
-          onBlur={() => editing.current.delete("scale")}
-          onChange={(e) => {
-            setScale(e.target.value);
-            sendNumber("pos_scale", e.target.value);
-          }}
-        />
-      </label>
+      {TRACKER_NUMERIC_FIELDS.map((f) => (
+        <label className="kv" key={f.key}>
+          <span>{f.label}</span>
+          <input
+            type="number"
+            step={f.step}
+            min={f.min}
+            max={f.max}
+            value={draft[f.key]}
+            disabled={disabled}
+            data-testid={f.testId}
+            onFocus={() => editing.current.add(f.key)}
+            onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commit(f);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setDraft((d) => ({ ...d, [f.key]: live ? String(live[f.key]) : d[f.key] }));
+                e.currentTarget.blur();
+              }
+            }}
+            onBlur={() => {
+              editing.current.delete(f.key);
+              commit(f);
+            }}
+          />
+        </label>
+      ))}
       <label className="kv">
         <span>follow_rotation</span>
         <input
           type="checkbox"
-          checked={settings?.follow_rotation ?? true}
+          checked={live?.follow_rotation ?? true}
           disabled={disabled}
           data-testid="tracker-follow-rotation"
           onChange={(e) => onChange({ follow_rotation: e.target.checked })}
         />
       </label>
+      <label className="kv">
+        <span>filter_enabled (One Euro)</span>
+        <input
+          type="checkbox"
+          checked={live?.filter_enabled ?? true}
+          disabled={disabled}
+          data-testid="tracker-filter-enabled"
+          onChange={(e) => onChange({ filter_enabled: e.target.checked })}
+        />
+      </label>
       <div className="mono dim" style={{ fontSize: 12 }} data-testid="tracker-settings-echo">
-        {settings
-          ? `live: yaw ${settings.yaw_deg}° · scale ${settings.pos_scale} · rotation ${
-              settings.follow_rotation ? "on" : "off"
-            }`
-          : "live: — (no telemetry)"}
+        {echo}
       </div>
-    </div>
+      <div className="dim" style={{ fontSize: 11 }}>
+        Numbers are sent on Enter / blur (not per keystroke); a settings change while clutched
+        re-anchors — the arm never moves.
+      </div>
+      {disabled && disabledReason && (
+        <div className="dim" style={{ fontSize: 12 }} data-testid="tracker-settings-disabled">
+          {disabledReason}
+        </div>
+      )}
+    </fieldset>
   );
 }
 

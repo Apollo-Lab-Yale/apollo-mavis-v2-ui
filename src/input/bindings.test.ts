@@ -59,20 +59,27 @@ describe("buildBindings", () => {
 });
 
 describe("controllerGlyph (13-tracker §1.1 static table, keyed by action)", () => {
-  it("maps exactly the three controller-driven actions", () => {
+  it("maps exactly the five controller-driven actions (§1.1 mapping table)", () => {
     expect(Object.keys(CONTROLLER_GLYPHS).sort()).toEqual([
       "gripper_close",
       "gripper_open",
+      "switch_arm",
+      "switch_arm_prev",
       "tracker_clutch",
     ]);
     expect(controllerGlyph("tracker_clutch")).toBe("trigger");
-    expect(controllerGlyph("gripper_open")).toBe("pad ▲");
-    expect(controllerGlyph("gripper_close")).toBe("pad ▼");
+    expect(controllerGlyph("gripper_close")).toBe("pad ◀");
+    expect(controllerGlyph("gripper_open")).toBe("pad ▶");
+    expect(controllerGlyph("switch_arm")).toBe("pad ▲");
+    expect(controllerGlyph("switch_arm_prev")).toBe("pad ▼");
   });
 
   it("returns null for every other action and for missing input", () => {
+    // Rail stays on D-pad / arrows; grip / menu / system are never mapped.
     expect(controllerGlyph("rail_pos")).toBeNull();
-    expect(controllerGlyph("switch_arm")).toBeNull();
+    expect(controllerGlyph("rail_neg")).toBeNull();
+    expect(controllerGlyph("translate_x_pos")).toBeNull();
+    expect(controllerGlyph("takeover_toggle")).toBeNull();
     expect(controllerGlyph(null)).toBeNull();
     expect(controllerGlyph(undefined)).toBeNull();
   });

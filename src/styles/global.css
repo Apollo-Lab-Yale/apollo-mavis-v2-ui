@@ -495,6 +495,42 @@ kbd.pad {
   background: var(--green);
   border-color: var(--green);
 }
+/* Left/right trackpad hints (gripper rate) sit on the horizontal axis. */
+.trackpad-hint-left,
+.trackpad-hint-right {
+  top: 50%;
+  left: auto;
+  transform: translateY(-50%);
+}
+.trackpad-hint-left {
+  left: 4px;
+}
+.trackpad-hint-right {
+  right: 4px;
+}
+/* Device-sourced discrete action (device_action): flashes when it fires. */
+.chip-flash {
+  animation: chipflash 0.9s ease-out 1;
+}
+@keyframes chipflash {
+  0% {
+    filter: brightness(1.8);
+    transform: scale(1.12);
+  }
+  100% {
+    filter: none;
+    transform: none;
+  }
+}
+/* Tracker settings form is a <fieldset> so `disabled` cascades. */
+fieldset.settings-form {
+  border: 1px solid var(--border);
+  margin: 0;
+  min-width: 0;
+}
+fieldset.settings-form:disabled {
+  opacity: 0.6;
+}
 kbd.ctrl {
   border-color: var(--amber);
   color: var(--amber);

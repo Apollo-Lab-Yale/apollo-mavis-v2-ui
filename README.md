@@ -29,7 +29,10 @@ CI chain: `npm install && npm run lint && npm run gen:check && npm test && npm r
 
 `#/` landing · `#/teleop` `#/collect` `#/dagger` `#/inference` (session-guarded
 cockpits) · `#/devices` (gamepad + Vive-tracker debug page, no session
-required; can start a fixed `teleop`/`sim`/`mavis_v2` session).
+required; can start a fixed `teleop`/`sim`/`mavis_v2` session with arms
+`grip`,`view` — gripper arm active by default). The devices page wraps its
+video area in the same click-to-arm `TeleopSurface` as the cockpit, so keyboard
+teleop (incl. the `KeyC` clutch, Tab/Z arm switch) works there too.
 
 Gamepad input (13-tracker §5) is read in the browser (`src/input/gamepad.ts`,
 50 Hz poll) and folded into the same `/ws/control` channel as the keyboard:
@@ -37,7 +40,12 @@ held rows become codes in `KeysMsg.held` (union of keyboard + gamepad),
 discrete rows become `ActionMsg`. Which pad control drives which row comes
 from `GET /api/keymap` (`KeymapEntry.gamepad`); the first mapped press
 auto-arms capture while the control link is open and this tab is the
-controller.
+controller. Release-all on blur / hidden / link-down / pad loss is _latched_:
+no new press edges are accepted until every mapped control reads released (or
+focus + visibility return — a control still held across the latch never
+re-fires by itself), so an RT held through an alt-tab cannot re-engage the
+clutch or restart the heartbeat on its own. The gamepad panel shows a LATCHED
+chip while the latch is engaged.
 
 Since 2026-09-02 the lab's only input is the Vive Pro controller (13-tracker
 §1.1): the runtime turns its trigger / trackpad presses into key codes itself
@@ -49,8 +57,21 @@ served keymap; "controller: none" when the backend reports no controller). The
 gamepad panel is collapsed by default (still functional) and the keymap overlay
 has a third "controller" glyph column. The served keymap has no controller
 field, so the controller glyphs come from one static per-action table,
-`CONTROLLER_GLYPHS` in `src/input/bindings.ts` (`tracker_clutch` → trigger,
-`gripper_open` → pad ▲, `gripper_close` → pad ▼).
+`CONTROLLER_GLYPHS` in `src/input/bindings.ts` (13-tracker §1.1 mapping:
+`tracker_clutch` → trigger, `gripper_close` → pad ◀, `gripper_open` → pad ▶,
+`switch_arm` → pad ▲, `switch_arm_prev` → pad ▼; trackpad clicks are
+classified by position at the press edge). Device-sourced discrete actions
+arrive as `telemetry.tracker.device_action` (cleared by the runtime ~1 s after
+firing) and render as a flash chip; `telemetry.tracker.pose_filtered` (the
+One Euro-filtered pose the anchor/delta math consumes) is shown next to
+`pose_world` and drives the top-down trail when present.
+
+The tracker settings form (`yaw_deg`, `pos_scale`, `follow_rotation`, and the
+pose-filter fields `filter_enabled`, `filter_min_cutoff_hz` 0.05–50,
+`filter_beta` 0–5) sends one `tracker_settings` action per COMMIT (Enter or
+blur; checkboxes on click), never per keystroke; out-of-range values are never
+sent (the field snaps back to the echoed value). Nacks (`ok: false`) surface as
+toasts and the form is disabled without a running session.
 
 ## Generated types
 

@@ -1,10 +1,14 @@
 /** Vive-controller sub-panel of the tracker panel (13-tracker §1.1).
  *
  * Fed from `telemetry.tracker.controller` (raw button/axis state echoed by the
- * runtime) and `telemetry.tracker.device_held` (the key codes the runtime
- * injects from it). Codes are mapped back to actions/labels through the served
- * keymap; the controller glyph per action comes from the static
- * `CONTROLLER_GLYPHS` table (the keymap has no controller field).
+ * runtime), `telemetry.tracker.device_held` (the key codes the runtime injects
+ * from it — trigger → clutch, trackpad left/right → gripper rate) and
+ * `telemetry.tracker.device_action` (the last device-sourced discrete action —
+ * trackpad up/down → switch_arm / switch_arm_prev — which the runtime clears
+ * ~1 s after it fired, so it renders as a flash chip). Codes are mapped back to
+ * actions/labels through the served keymap; the controller glyph per action
+ * comes from the static `CONTROLLER_GLYPHS` table (the keymap has no
+ * controller field).
  */
 import type { ControllerTelemetry } from "../gen";
 import { CONTROLLER_GLYPHS, keycapLabel, type Bindings } from "../input/bindings";
@@ -12,6 +16,8 @@ import { CONTROLLER_GLYPHS, keycapLabel, type Bindings } from "../input/bindings
 export interface ControllerViewProps {
   controller: ControllerTelemetry | null | undefined;
   deviceHeld: readonly string[];
+  /** `telemetry.tracker.device_action` — null/undefined when nothing recent. */
+  deviceAction?: string | null;
   bindings: Bindings | null;
 }
 
@@ -42,19 +48,26 @@ function Chip({
   );
 }
 
-/** One lit chip per controller-mapped action, plus any unexpected injected code. */
+/** One chip per controller-mapped action — held rows lit while their code is
+ * in `device_held`, discrete rows lit while `device_action` names them — plus
+ * any unexpected injected code. */
 function HeldCodes({
   deviceHeld,
+  deviceAction,
   bindings,
 }: {
   deviceHeld: readonly string[];
+  deviceAction: string | null;
   bindings: Bindings | null;
 }) {
   const mapped = new Set<string>();
   const chips = Object.entries(CONTROLLER_GLYPHS).map(([action, glyph]) => {
     const row = bindings?.entries.find((e) => e.action === action) ?? null;
     if (row) mapped.add(row.code);
-    const lit = row !== null && deviceHeld.includes(row.code);
+    const lit =
+      row?.kind === "discrete"
+        ? deviceAction === action
+        : row !== null && deviceHeld.includes(row.code);
     return (
       <Chip
         key={action}
@@ -87,7 +100,12 @@ function HeldCodes({
   );
 }
 
-export function ControllerView({ controller, deviceHeld, bindings }: ControllerViewProps) {
+export function ControllerView({
+  controller,
+  deviceHeld,
+  deviceAction = null,
+  bindings,
+}: ControllerViewProps) {
   if (!controller) {
     return (
       <div className="controller" data-testid="controller-view">
@@ -118,10 +136,21 @@ export function ControllerView({ controller, deviceHeld, bindings }: ControllerV
           controller: live
         </span>
       </div>
-      <div className="dim" style={{ fontSize: 12 }}>
-        injected codes (device_held, via the served keymap)
+      <div className="kv">
+        <span className="dim" style={{ fontSize: 12 }}>
+          injected codes (device_held) · last discrete action (device_action)
+        </span>
+        <span
+          key={deviceAction ?? "none"}
+          className={`chip ${deviceAction ? "chip-amber chip-flash" : "chip-grey"}`}
+          data-testid="controller-device-action"
+          data-lit={deviceAction !== null}
+          title="device-sourced discrete action, cleared by the runtime ~1 s after it fired"
+        >
+          {deviceAction ?? "no recent action"}
+        </span>
       </div>
-      <HeldCodes deviceHeld={deviceHeld} bindings={bindings} />
+      <HeldCodes deviceHeld={deviceHeld} deviceAction={deviceAction} bindings={bindings} />
       <div className="ctrl-row">
         <span className="dim ctrl-label">trigger</span>
         <span
@@ -152,8 +181,18 @@ export function ControllerView({ controller, deviceHeld, bindings }: ControllerV
       <div className="ctrl-row">
         <span className="dim ctrl-label">trackpad</span>
         <div className="trackpad" data-testid="controller-trackpad">
-          <span className="trackpad-hint trackpad-hint-top">▲</span>
-          <span className="trackpad-hint trackpad-hint-bottom">▼</span>
+          <span className="trackpad-hint trackpad-hint-top" title="switch_arm">
+            ▲
+          </span>
+          <span className="trackpad-hint trackpad-hint-bottom" title="switch_arm_prev">
+            ▼
+          </span>
+          <span className="trackpad-hint trackpad-hint-left" title="gripper_close">
+            ◀
+          </span>
+          <span className="trackpad-hint trackpad-hint-right" title="gripper_open">
+            ▶
+          </span>
           <span
             className={`trackpad-dot${dotTone}`}
             style={{ left: pct((x + 1) / 2), top: pct((1 - y) / 2) }}

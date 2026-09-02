@@ -2,8 +2,10 @@
  *
  * Telemetry arrives at 25 Hz and replaces the whole object, so this component
  * never puts per-frame data in React state: it subscribes to the store,
- * appends `pose_world` into a ring buffer (~5 s) and repaints a canvas ref.
- * Anchor (amber ring) and target (green cross) are drawn while engaged.
+ * appends the tracker pose into a ring buffer (~5 s) and repaints a canvas
+ * ref. The trail follows `pose_filtered` (what the anchor/delta math consumes,
+ * 13-tracker §4) when the runtime reports it, else `pose_world`. Anchor (amber
+ * ring) and target (green cross) are drawn while engaged.
  */
 import { useEffect, useRef } from "react";
 import type { TrackerTelemetry } from "../gen";
@@ -145,11 +147,14 @@ export function TrackerTrail({ seconds = 5, hz = 25, size = 360 }: TrackerTrailP
         count = 0;
         head = 0;
         lastSeq = null;
-      } else if (tr.pose_world) {
-        const seq = tr.seq ?? telemetrySeq;
-        if (seq !== lastSeq) {
-          lastSeq = seq;
-          push(tr.pose_world.position[0], tr.pose_world.position[1]);
+      } else {
+        const pose = tr.pose_filtered ?? tr.pose_world;
+        if (pose) {
+          const seq = tr.seq ?? telemetrySeq;
+          if (seq !== lastSeq) {
+            lastSeq = seq;
+            push(pose.position[0], pose.position[1]);
+          }
         }
       }
       draw(tr);

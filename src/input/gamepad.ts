@@ -15,6 +15,13 @@
  * Release-all (clear held + empty-set transition + disarm) on
  * `gamepaddisconnected`, window blur, hidden visibilitychange, explicit
  * disarm, and whenever `canArm()` turns false (control link not open).
+ *
+ * Release-all from blur / hidden / link-down / pad loss is LATCHED (13-tracker
+ * §5): the adapter accepts no new press edges until every mapped control
+ * reads released, or the page is focused and visible again. A control that
+ * was held across the latch never re-fires by itself — it has to be released
+ * and pressed again — so an RT still held when the tab comes back cannot
+ * re-engage the clutch or restart the heartbeat on its own.
  */
 import type { ActionName } from "../lib/types";
 import type { Bindings } from "./bindings";
@@ -111,9 +118,12 @@ export interface GamepadSnapshot {
   axes: number[];
   active: GamepadLabel[];
   armed: boolean;
+  /** Release-all latch engaged: no press edges accepted until all mapped
+   * controls are released (or focus + visibility return). */
+  latched: boolean;
 }
 
-const idleSnapshot = (armed: boolean): GamepadSnapshot => ({
+const idleSnapshot = (armed: boolean, latched = false): GamepadSnapshot => ({
   connected: false,
   index: null,
   id: null,
@@ -123,6 +133,7 @@ const idleSnapshot = (armed: boolean): GamepadSnapshot => ({
   axes: [],
   active: [],
   armed,
+  latched,
 });
 
 export interface GamepadAdapterOpts {
@@ -151,6 +162,7 @@ export class GamepadAdapter {
   readonly held = new Set<string>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private armed = false;
+  private latched = false;
   private prev: Record<GamepadLabel, boolean> | null = null;
   private rtMin = 0;
   private padIndex: number | null = null;
@@ -165,11 +177,17 @@ export class GamepadAdapter {
     return this.armed;
   }
 
+  /** Release-all latch state (see class doc). */
+  get isLatched(): boolean {
+    return this.latched;
+  }
+
   start(): void {
     if (this.timer !== null) return;
     this.timer = setInterval(() => this.poll(), this.opts.pollMs ?? GAMEPAD_POLL_MS);
     this.target?.addEventListener("gamepaddisconnected", this.onDisconnected);
     this.target?.addEventListener("blur", this.onBlur);
+    this.target?.addEventListener("focus", this.onFocus);
     document.addEventListener("visibilitychange", this.onVisibility);
   }
 
@@ -180,8 +198,10 @@ export class GamepadAdapter {
     }
     this.target?.removeEventListener("gamepaddisconnected", this.onDisconnected);
     this.target?.removeEventListener("blur", this.onBlur);
+    this.target?.removeEventListener("focus", this.onFocus);
     document.removeEventListener("visibilitychange", this.onVisibility);
     this.releaseAll();
+    this.latched = false;
     this.publish(null);
   }
 
@@ -192,6 +212,23 @@ export class GamepadAdapter {
     this.prev = null;
     if (hadHeld) this.opts.onHeldChange();
     this.disarm();
+  }
+
+  /** Release-all + latch (blur / hidden / link-down / pad loss). */
+  private latchReleaseAll(): void {
+    this.releaseAll();
+    this.latched = true;
+  }
+
+  /** Focus + visibility returned: lift the latch WITHOUT re-firing controls
+   * that are still held — snapshot the current pad state as `prev` so only
+   * genuinely new press edges are accepted from here on. */
+  private unlatch(): void {
+    if (!this.latched) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    const pad = this.pickPad();
+    this.prev = pad ? normalizeGamepad(pad, this.rtMin).pressed : null;
+    this.latched = false;
   }
 
   disarm(): void {
@@ -208,10 +245,12 @@ export class GamepadAdapter {
     return true;
   }
 
-  private readonly onDisconnected = () => this.releaseAll();
-  private readonly onBlur = () => this.releaseAll();
+  private readonly onDisconnected = () => this.latchReleaseAll();
+  private readonly onBlur = () => this.latchReleaseAll();
+  private readonly onFocus = () => this.unlatch();
   private readonly onVisibility = () => {
-    if (document.visibilityState === "hidden") this.releaseAll();
+    if (document.visibilityState === "hidden") this.latchReleaseAll();
+    else this.unlatch();
   };
 
   private pickPad(): GamepadLike | null {
@@ -230,7 +269,7 @@ export class GamepadAdapter {
   poll(): void {
     const pad = this.pickPad();
     if (!pad) {
-      if (this.held.size > 0 || this.armed) this.releaseAll();
+      if (this.held.size > 0 || this.armed) this.latchReleaseAll();
       this.publish(null);
       return;
     }
@@ -241,11 +280,23 @@ export class GamepadAdapter {
     const n = normalizeGamepad(pad, this.rtMin);
     const bindings = this.opts.getBindings();
 
-    // Link down / role lost → release-all, but keep reporting the raw pad.
+    // Link down / role lost → release-all (latched), but keep reporting the raw pad.
     if (!this.opts.canArm()) {
-      if (this.held.size > 0 || this.armed) this.releaseAll();
+      if (this.held.size > 0 || this.armed) this.latchReleaseAll();
       this.publish(n);
       return;
+    }
+
+    // Latched: track the pad state but inject nothing until every mapped
+    // control reads released (focus/visibility return lifts it via unlatch()).
+    if (this.latched) {
+      const anyMapped = GAMEPAD_LABELS.some((l) => n.pressed[l] && bindings?.gamepad.has(l));
+      if (anyMapped) {
+        this.prev = n.pressed;
+        this.publish(n);
+        return;
+      }
+      this.latched = false;
     }
 
     const prev = this.prev ?? ({} as Record<GamepadLabel, boolean>);
@@ -289,8 +340,9 @@ export class GamepadAdapter {
           axes: n.axes.map((v) => Math.round(v * 100) / 100),
           active: GAMEPAD_LABELS.filter((l) => n.pressed[l]),
           armed: this.armed,
+          latched: this.latched,
         }
-      : idleSnapshot(this.armed);
+      : idleSnapshot(this.armed, this.latched);
     const key = JSON.stringify(snap);
     if (key === this.lastKey) return; // publish only on change (50 Hz poll)
     this.lastKey = key;

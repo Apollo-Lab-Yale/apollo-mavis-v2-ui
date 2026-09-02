@@ -78,14 +78,18 @@ export function gamepadGlyph(label: string | null | undefined): string {
   return glyphs[label] ?? label;
 }
 
-/** Vive-controller input per ACTION (13-tracker §1.1). The served keymap has no
- * controller field (the runtime injects key codes, not labels), so this is the
- * one static table in the UI. Keyed by action name — never by key code — so a
- * re-bound key in the served keymap still shows the right controller hint. */
+/** Vive-controller input per ACTION (13-tracker §1.1 mapping table). The served
+ * keymap has no controller field (the runtime injects key codes, not labels),
+ * so this is the one static table in the UI. Keyed by action name — never by
+ * key code — so a re-bound key in the served keymap still shows the right
+ * controller hint. Trackpad clicks are classified by position at the press
+ * edge: left/right = gripper rate (held), up/down = arm switch (discrete). */
 export const CONTROLLER_GLYPHS: Readonly<Record<string, string>> = {
   tracker_clutch: "trigger",
-  gripper_open: "pad ▲",
-  gripper_close: "pad ▼",
+  gripper_close: "pad ◀",
+  gripper_open: "pad ▶",
+  switch_arm: "pad ▲",
+  switch_arm_prev: "pad ▼",
 };
 
 /** Controller glyph for a keymap action ("tracker_clutch" → "trigger"), or null. */
