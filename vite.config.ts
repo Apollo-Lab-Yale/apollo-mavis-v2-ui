@@ -1,7 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-const runtime = process.env.APOLLO_RUNTIME_URL ?? "http://localhost:8000";
+const runtime = process.env.APOLLO_RUNTIME_URL ?? "http://localhost:8765";
 
 export default defineConfig({
   plugins: [react()],

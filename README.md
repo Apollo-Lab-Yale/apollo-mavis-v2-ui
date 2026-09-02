@@ -13,7 +13,7 @@ and `OffscreenCanvas` are all Baseline there.
 ```
 npm install
 npm run dev         # Vite dev server; proxies /api /ws /video to
-                    # $APOLLO_RUNTIME_URL (default http://localhost:8000)
+                    # $APOLLO_RUNTIME_URL (default http://localhost:8765)
 npm run build       # typecheck + production build → dist/
 npm test            # vitest (jsdom; no runtime or hardware needed)
 npm run lint        # eslint (flat config)
