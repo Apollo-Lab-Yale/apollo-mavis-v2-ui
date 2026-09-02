@@ -41,7 +41,8 @@ describe("buildBindings", () => {
   it("actionFor resolves discrete codes only", () => {
     expect(actionFor(b, "Tab")).toBe("switch_arm");
     expect(actionFor(b, "KeyW")).toBeNull();
-    expect(actionFor(b, "KeyZ")).toBeNull();
+    expect(actionFor(b, "KeyZ")).toBe("switch_arm_prev");
+    expect(actionFor(b, "KeyP")).toBeNull();
   });
 
   it("keycapLabel formats codes for the overlay", () => {

@@ -1,6 +1,6 @@
 /** Keybinding hint overlay, driven entirely by the fetched keymap (05-ui §8.2). */
 import type { KeymapEntry } from "../gen";
-import { keycapLabel } from "../input/bindings";
+import { gamepadGlyph, keycapLabel } from "../input/bindings";
 import type { Mode } from "../lib/types";
 
 export interface KeymapOverlayProps {
@@ -16,6 +16,7 @@ const GROUP_ORDER: KeymapEntry["group"][] = [
   "rotate",
   "gripper",
   "rail",
+  "tracker",
   "session",
   "episode",
 ];
@@ -56,6 +57,15 @@ export function KeymapOverlay({
                   <tr key={e.code} data-testid={`keyrow-${e.code}`}>
                     <td>
                       <kbd>{keycapLabel(e.code)}</kbd>
+                    </td>
+                    <td className="pad-col" data-testid={`keyrow-${e.code}-pad`}>
+                      {e.gamepad ? (
+                        <kbd className="pad" title={`gamepad ${e.gamepad}`}>
+                          {gamepadGlyph(e.gamepad)}
+                        </kbd>
+                      ) : (
+                        <span className="dim">—</span>
+                      )}
                     </td>
                     <td>{rowLabel(e, mode)}</td>
                     <td className="dim">{e.group}</td>

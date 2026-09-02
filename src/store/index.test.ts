@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { makeTelemetry } from "../../tests/mocks/fixtures";
+import { makeTelemetry, makeTracker } from "../../tests/mocks/fixtures";
 import type { SessionInfo } from "../gen";
-import { selectActiveArm, selectControlLinkDown, useStore } from "./index";
+import {
+  DEVICES_IDLE,
+  GAMEPAD_IDLE,
+  selectActiveArm,
+  selectControlLinkDown,
+  selectTracker,
+  useStore,
+} from "./index";
 
 const session: SessionInfo = {
   session_id: "s1",
@@ -26,6 +33,22 @@ describe("store", () => {
     expect(useStore.getState().session).toBeNull();
     expect(useStore.getState().telemetry).toBeNull();
     expect(useStore.getState().captureArmed).toBe(false);
+  });
+
+  it("resetForEpochChange clears the gamepad + devices slices", () => {
+    const st = useStore.getState();
+    st.setGamepad({ connected: true, id: "pad", armed: true, active: ["A"] });
+    st.setDevices({ startedScene: "mavis_v2", pendingTrackerSettings: { yaw_deg: 1 } });
+    expect(useStore.getState().gamepad.armed).toBe(true);
+    useStore.getState().resetForEpochChange();
+    expect(useStore.getState().gamepad).toEqual(GAMEPAD_IDLE);
+    expect(useStore.getState().devices).toEqual(DEVICES_IDLE);
+  });
+
+  it("selectTracker reads telemetry.tracker (null when absent)", () => {
+    expect(selectTracker(useStore.getState())).toBeNull();
+    useStore.getState().setTelemetry(makeTelemetry({ tracker: makeTracker() }));
+    expect(selectTracker(useStore.getState())?.backend).toBe("fake");
   });
 
   it("selectControlLinkDown tracks conn.control", () => {

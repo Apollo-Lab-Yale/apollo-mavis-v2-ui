@@ -60,9 +60,9 @@ describe("useKeyCapture", () => {
     expect(key("keydown", "KeyW").defaultPrevented).toBe(true);
     expect(key("keydown", "Tab").defaultPrevented).toBe(true);
     expect(key("keydown", "ArrowLeft").defaultPrevented).toBe(true); // rail always bound
-    expect(key("keydown", "KeyZ").defaultPrevented).toBe(false); // unbound → browser default
+    expect(key("keydown", "KeyP").defaultPrevented).toBe(false); // unbound → browser default
     expect(key("keyup", "KeyW").defaultPrevented).toBe(true);
-    expect(key("keyup", "KeyZ").defaultPrevented).toBe(false);
+    expect(key("keyup", "KeyP").defaultPrevented).toBe(false);
   });
 
   it("does nothing while disarmed", () => {

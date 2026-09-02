@@ -1,6 +1,6 @@
 /** Click-to-arm capture surface wrapping the StreamGrid (05-ui §8.2, §9). */
 import { useEffect } from "react";
-import { setHeldSource } from "../api/clients";
+import { setArmedSource, setHeldSource } from "../api/clients";
 import type { ControlClient } from "../api/ws/control";
 import type { Bindings } from "../input/bindings";
 import { useKeyCapture } from "../input/useKeyCapture";
@@ -18,13 +18,15 @@ export interface TeleopSurfaceProps {
 export function TeleopSurface({ enabled, mode, bindings, control, children }: TeleopSurfaceProps) {
   const controlOpen = useStore((s) => s.conn.control === "open");
   const setCaptureArmed = useStore((s) => s.setCaptureArmed);
+  const gamepadArmed = useStore((s) => s.gamepad.armed);
 
   const capture = useKeyCapture({
     bindings,
     onHeldChange: () => control.notifyTransition(),
     onAction: (name) => control.sendAction(name),
     onArmedChange: (armed) => {
-      control.setArmed(armed);
+      // Heartbeat runs while ANY source (keyboard, gamepad) is armed.
+      setArmedSource("keyboard", armed);
       setCaptureArmed(armed);
     },
   });
@@ -58,6 +60,14 @@ export function TeleopSurface({ enabled, mode, bindings, control, children }: Te
       {capture.armed && (
         <span className="surface-chip chip chip-green" data-testid="capturing-chip">
           CAPTURING — Esc to release
+        </span>
+      )}
+      {gamepadArmed && (
+        <span
+          className="surface-chip chip chip-blue surface-chip-2"
+          data-testid="gamepad-armed-chip"
+        >
+          GAMEPAD
         </span>
       )}
       {mode === "inference" && (

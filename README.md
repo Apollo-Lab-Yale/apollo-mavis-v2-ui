@@ -25,6 +25,20 @@ npm run gen:check   # regenerate + diff — CI guard against protocol drift
 
 CI chain: `npm install && npm run lint && npm run gen:check && npm test && npm run build`.
 
+## Routes
+
+`#/` landing · `#/teleop` `#/collect` `#/dagger` `#/inference` (session-guarded
+cockpits) · `#/devices` (gamepad + Vive-tracker debug page, no session
+required; can start a fixed `teleop`/`sim`/`mavis_v2` session).
+
+Gamepad input (13-tracker §5) is read in the browser (`src/input/gamepad.ts`,
+50 Hz poll) and folded into the same `/ws/control` channel as the keyboard:
+held rows become codes in `KeysMsg.held` (union of keyboard + gamepad),
+discrete rows become `ActionMsg`. Which pad control drives which row comes
+from `GET /api/keymap` (`KeymapEntry.gamepad`); the first mapped press
+auto-arms capture while the control link is open and this tab is the
+controller.
+
 ## Generated types
 
 `src/gen/` is generated from the core JSON schemas (pydantic →

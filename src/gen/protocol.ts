@@ -4,24 +4,28 @@
 export type Detail = string;
 export type Name =
   | "switch_arm"
+  | "switch_arm_prev"
   | "takeover_toggle"
   | "episode_new"
   | "episode_save"
   | "episode_discard"
   | "save_profile"
   | "set_initial_condition"
-  | "joint_target";
+  | "joint_target"
+  | "tracker_settings";
 export type Ok = boolean;
 export type T = "ack";
 export type Name1 =
   | "switch_arm"
+  | "switch_arm_prev"
   | "takeover_toggle"
   | "episode_new"
   | "episode_save"
   | "episode_discard"
   | "save_profile"
   | "set_initial_condition"
-  | "joint_target";
+  | "joint_target"
+  | "tracker_settings";
 export type T1 = "action";
 export type ArmId = string;
 export type Connected = boolean;
@@ -61,7 +65,8 @@ export type Mode = "jog" | "goto";
 export type Positions = number[];
 export type Action = string;
 export type Code = string;
-export type Group = "translate" | "rotate" | "gripper" | "rail" | "session" | "episode";
+export type Gamepad = string | null;
+export type Group = "translate" | "rotate" | "gripper" | "rail" | "session" | "episode" | "tracker";
 export type Kind2 = "held" | "discrete";
 export type Label1 = string;
 export type RequiresRail = boolean;
@@ -181,7 +186,22 @@ export type StartFromProgress = number | null;
 export type State3 = string;
 export type TrainerAlive = boolean | null;
 export type T5 = "telemetry";
+export type AgeS = number | null;
+export type Backend = "libsurvive" | "fake" | "none";
+export type Clutch = boolean;
+export type Detail1 = string;
+export type EngagedArm2 = string | null;
+export type ObjectName = string;
+export type RateHz = number;
+export type Seq2 = number;
+export type FollowRotation = boolean;
+export type PosScale = number;
+export type YawDeg = number;
+export type Status = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
 export type Ts3 = number;
+export type FollowRotation1 = boolean | null;
+export type PosScale1 = number | null;
+export type YawDeg1 = number | null;
 export type Arms5 = ArmStatusInfo[];
 export type AvailableKinds = ("hardware" | "sim")[];
 export type Cameras1 = CameraInfo[];
@@ -207,6 +227,7 @@ export interface ApolloProtocol {
   SetInitialConditionArgs?: SetInitialConditionArgs;
   StateProfile?: StateProfile;
   TelemetryMsg?: TelemetryMsg;
+  TrackerSettingsArgs?: TrackerSettingsArgs;
   WorkcellStatus?: WorkcellStatus;
 }
 /**
@@ -284,11 +305,12 @@ export interface JointTargetArgs {
   positions: Positions;
 }
 /**
- * One keyboard binding row.
+ * One keyboard binding row (optionally mirrored on the gamepad).
  */
 export interface KeymapEntry {
   action: Action;
   code: Code;
+  gamepad?: Gamepad;
   group: Group;
   kind: Kind2;
   label: Label1;
@@ -417,6 +439,7 @@ export interface TelemetryMsg {
   seq: Seq1;
   session?: SessionTelemetry | null;
   t?: T5;
+  tracker?: TrackerTelemetry | null;
   ts: Ts3;
 }
 /**
@@ -510,6 +533,47 @@ export interface SessionTelemetry {
   start_from_progress?: StartFromProgress;
   state: State3;
   trainer_alive?: TrainerAlive;
+}
+/**
+ * Vive-tracker block (13-tracker §3.5), additive.
+ *
+ * Device fields are populated even without a session; session fields
+ * (``engaged_arm``, ``anchor_tcp``, ``target_tcp``) are ``None`` otherwise.
+ */
+export interface TrackerTelemetry {
+  age_s?: AgeS;
+  anchor_tcp?: PoseMsg | null;
+  backend: Backend;
+  clutch?: Clutch;
+  detail?: Detail1;
+  engaged_arm?: EngagedArm2;
+  object_name?: ObjectName;
+  pose_raw?: PoseMsg | null;
+  pose_world?: PoseMsg | null;
+  rate_hz?: RateHz;
+  seq?: Seq2;
+  settings: TrackerSettingsMsg;
+  status: Status;
+  target_tcp?: PoseMsg | null;
+}
+/**
+ * Live tracker teleop settings echoed in telemetry (13-tracker §3.5).
+ */
+export interface TrackerSettingsMsg {
+  follow_rotation: FollowRotation;
+  pos_scale: PosScale;
+  yaw_deg: YawDeg;
+}
+/**
+ * Args for ``name == "tracker_settings"`` (13-tracker §3.4).
+ *
+ * Every field is optional; omitted (``None``) fields leave the live runtime
+ * setting unchanged.
+ */
+export interface TrackerSettingsArgs {
+  follow_rotation?: FollowRotation1;
+  pos_scale?: PosScale1;
+  yaw_deg?: YawDeg1;
 }
 /**
  * GET /api/workcell response.

@@ -12,6 +12,8 @@ export interface Bindings {
   held: ReadonlySet<string>; // kind === "held"
   discrete: ReadonlyMap<string, ActionName>; // code → action
   byGroup: ReadonlyMap<KeymapEntry["group"], KeymapEntry[]>;
+  /** Gamepad control label ("A", "RT", "DpadLeft", …) → keymap row (13-tracker §1). */
+  gamepad: ReadonlyMap<string, KeymapEntry>;
   entries: readonly KeymapEntry[];
 }
 
@@ -20,6 +22,7 @@ export function buildBindings(entries: KeymapEntry[]): Bindings {
   const held = new Set<string>();
   const discrete = new Map<string, ActionName>();
   const byGroup = new Map<KeymapEntry["group"], KeymapEntry[]>();
+  const gamepad = new Map<string, KeymapEntry>();
   for (const e of entries) {
     bound.add(e.code);
     if (e.kind === "held") held.add(e.code);
@@ -27,8 +30,9 @@ export function buildBindings(entries: KeymapEntry[]): Bindings {
     const g = byGroup.get(e.group);
     if (g) g.push(e);
     else byGroup.set(e.group, [e]);
+    if (e.gamepad) gamepad.set(e.gamepad, e);
   }
-  return { bound, held, discrete, byGroup, entries };
+  return { bound, held, discrete, byGroup, gamepad, entries };
 }
 
 export function actionFor(bindings: Bindings, code: string): ActionName | null {
@@ -52,4 +56,24 @@ export function keycapLabel(code: string): string {
     Slash: "/",
   };
   return special[code] ?? code;
+}
+
+/** Short glyph for a `KeymapEntry.gamepad` label ("DpadLeft" → "◁", "RT" → "RT"). */
+export function gamepadGlyph(label: string | null | undefined): string {
+  if (!label) return "";
+  const glyphs: Record<string, string> = {
+    DpadLeft: "◁",
+    DpadRight: "▷",
+    DpadUp: "△",
+    DpadDown: "▽",
+    A: "Ⓐ",
+    B: "Ⓑ",
+    X: "Ⓧ",
+    Y: "Ⓨ",
+    LB: "LB",
+    RB: "RB",
+    LT: "LT",
+    RT: "RT",
+  };
+  return glyphs[label] ?? label;
 }

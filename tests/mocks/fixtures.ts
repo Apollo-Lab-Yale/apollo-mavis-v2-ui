@@ -8,6 +8,7 @@ import type {
   ProfileInfo,
   SceneInfo,
   TelemetryMsg,
+  TrackerTelemetry,
   WorkcellStatus,
 } from "../../src/gen";
 
@@ -41,6 +42,27 @@ export function makeTelemetry(over: Partial<TelemetryMsg> = {}): TelemetryMsg {
     episode: null,
     dagger: null,
     inference: null,
+    ...over,
+  };
+}
+
+/** Tracker block (13-tracker §3.5): a tracking `fake` backend, clutch released. */
+export function makeTracker(over: Partial<TrackerTelemetry> = {}): TrackerTelemetry {
+  return {
+    backend: "fake",
+    status: "tracking",
+    detail: "scripted circle",
+    object_name: "WM0",
+    seq: 42,
+    rate_hz: 120.0,
+    age_s: 0.004,
+    pose_raw: { position: [0.1, 0.2, 1.1], orientation: [1, 0, 0, 0] },
+    pose_world: { position: [0.12, 0.21, 1.1], orientation: [1, 0, 0, 0] },
+    clutch: false,
+    engaged_arm: null,
+    anchor_tcp: null,
+    target_tcp: null,
+    settings: { yaw_deg: 0.0, pos_scale: 1.0, follow_rotation: true },
     ...over,
   };
 }

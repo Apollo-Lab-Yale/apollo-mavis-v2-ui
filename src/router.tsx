@@ -3,6 +3,7 @@ import { createHashRouter, redirect } from "react-router-dom";
 import { getSession } from "./api/rest";
 import type { Mode } from "./lib/types";
 import { useStore } from "./store";
+import { Devices } from "./pages/Devices";
 import { Landing } from "./pages/Landing";
 import { Collect, Dagger, Inference, Teleop } from "./pages/modes";
 
@@ -25,6 +26,7 @@ export function makeSessionLoader(mode: Mode) {
 
 export const router = createHashRouter([
   { path: "/", element: <Landing /> },
+  { path: "/devices", element: <Devices /> }, // no session loader (13-tracker §5)
   { path: "/teleop", element: <Teleop />, loader: makeSessionLoader("teleop") },
   { path: "/collect", element: <Collect />, loader: makeSessionLoader("collect") },
   { path: "/dagger", element: <Dagger />, loader: makeSessionLoader("dagger") },

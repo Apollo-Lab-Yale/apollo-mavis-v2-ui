@@ -56,4 +56,21 @@ describe("KeymapOverlay", () => {
     mount("teleop", true);
     expect(screen.queryByTestId("keyrow-Space")).toBeNull();
   });
+
+  it("renders the tracker group (KeyC clutch) with its RT gamepad glyph", () => {
+    mount("teleop", false);
+    const row = screen.getByTestId("keyrow-KeyC");
+    expect(row.textContent).toContain("tracker clutch");
+    expect(row.textContent).toContain("tracker");
+    expect(screen.getByTestId("keyrow-KeyC-pad").textContent).toBe("RT");
+  });
+
+  it("shows gamepad glyphs from KeymapEntry.gamepad and a dash for unmapped rows", () => {
+    mount("teleop", true);
+    expect(screen.getByTestId("keyrow-Tab-pad").textContent).toBe("RB");
+    expect(screen.getByTestId("keyrow-KeyZ-pad").textContent).toBe("LB");
+    expect(screen.getByTestId("keyrow-ArrowLeft-pad").textContent).toBe("◁");
+    expect(screen.getByTestId("keyrow-KeyH-pad").textContent).toBe("Ⓐ");
+    expect(screen.getByTestId("keyrow-KeyW-pad").textContent).toBe("—");
+  });
 });

@@ -9,6 +9,7 @@ import type {
   KeymapEntry,
   SessionInfo,
   TelemetryMsg,
+  TrackerSettingsArgs,
   WorkcellStatus,
 } from "../gen";
 import type { Bindings } from "../input/bindings";
@@ -27,7 +28,47 @@ export interface VideoTileStats {
   status: WsStatus;
 }
 
+/** Browser-side gamepad snapshot (13-tracker §5) — written by the adapter,
+ * read by the Devices page and the armed chip. Raw arrays are the browser's
+ * own button/axis order; `active` holds the mapped labels currently pressed. */
+export interface GamepadState {
+  connected: boolean;
+  index: number | null;
+  id: string | null;
+  mapping: string | null;
+  buttons: readonly number[]; // raw button values (0..1)
+  pressed: readonly boolean[]; // raw button pressed flags
+  axes: readonly number[]; // raw axes (-1..1)
+  active: readonly string[]; // mapped labels ("A", "RT", …) currently active
+  armed: boolean; // gamepad auto-armed capture (heartbeat running)
+}
+
+export const GAMEPAD_IDLE: GamepadState = {
+  connected: false,
+  index: null,
+  id: null,
+  mapping: null,
+  buttons: [],
+  pressed: [],
+  axes: [],
+  active: [],
+  armed: false,
+};
+
+/** Devices-page state that is not part of telemetry. */
+export interface DevicesState {
+  /** Last `tracker_settings` args sent, until telemetry echoes them. */
+  pendingTrackerSettings: TrackerSettingsArgs | null;
+  /** Scene id of a session started from the Devices page (SessionInfo has none). */
+  startedScene: string | null;
+}
+
+export const DEVICES_IDLE: DevicesState = { pendingTrackerSettings: null, startedScene: null };
+
 export interface AppState {
+  // devices
+  gamepad: GamepadState;
+  devices: DevicesState;
   // session
   session: SessionInfo | null;
   workcell: WorkcellStatus | null;
@@ -53,12 +94,16 @@ export interface AppState {
   setVideoStats(id: string, s: VideoTileStats): void;
   addToast(text: string, tone?: Toast["tone"]): void;
   dismissToast(id: number): void;
+  setGamepad(g: Partial<GamepadState>): void;
+  setDevices(d: Partial<DevicesState>): void;
   resetForEpochChange(): void;
 }
 
 let toastSeq = 0;
 
 export const useStore = create<AppState>()((set) => ({
+  gamepad: GAMEPAD_IDLE,
+  devices: DEVICES_IDLE,
   session: null,
   workcell: null,
   keymap: null,
@@ -84,6 +129,8 @@ export const useStore = create<AppState>()((set) => ({
   addToast: (text, tone = "info") =>
     set((st) => ({ toasts: [...st.toasts, { id: ++toastSeq, text, tone }] })),
   dismissToast: (id) => set((st) => ({ toasts: st.toasts.filter((t) => t.id !== id) })),
+  setGamepad: (g) => set((st) => ({ gamepad: { ...st.gamepad, ...g } })),
+  setDevices: (d) => set((st) => ({ devices: { ...st.devices, ...d } })),
   resetForEpochChange: () =>
     set({
       session: null,
@@ -92,6 +139,8 @@ export const useStore = create<AppState>()((set) => ({
       telemetryStale: false,
       captureArmed: false,
       video: {},
+      gamepad: GAMEPAD_IDLE,
+      devices: DEVICES_IDLE,
     }),
 }));
 
@@ -111,3 +160,4 @@ export const selectEpisode = (s: AppState) => s.telemetry?.episode ?? null;
 export const selectDagger = (s: AppState) => s.telemetry?.dagger ?? null;
 export const selectInference = (s: AppState) => s.telemetry?.inference ?? null;
 export const selectControlLinkDown = (s: AppState): boolean => s.conn.control !== "open";
+export const selectTracker = (s: AppState) => s.telemetry?.tracker ?? null;

@@ -39,13 +39,29 @@ vi.stubGlobal(
   ),
 );
 
-// Minimal 2D context recording drawImage calls.
+// Minimal 2D context recording drawImage calls; path/text ops are no-ops
+// (the tracker trail canvas draws lines/arcs/text).
 const ctx2d = {
   drawImage: (...args: unknown[]) => {
     canvasStub.drawCalls.push({ args });
   },
   clearRect: vi.fn(),
   fillRect: vi.fn(),
+  strokeRect: vi.fn(),
+  beginPath: vi.fn(),
+  moveTo: vi.fn(),
+  lineTo: vi.fn(),
+  arc: vi.fn(),
+  stroke: vi.fn(),
+  fill: vi.fn(),
+  fillText: vi.fn(),
+  save: vi.fn(),
+  restore: vi.fn(),
+  setLineDash: vi.fn(),
+  strokeStyle: "",
+  fillStyle: "",
+  lineWidth: 1,
+  font: "",
 };
 HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement, kind: string) {
   return kind === "2d" ? (ctx2d as unknown as CanvasRenderingContext2D) : null;

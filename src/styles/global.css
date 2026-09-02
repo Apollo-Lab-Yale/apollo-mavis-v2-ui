@@ -349,3 +349,66 @@ kbd {
   background: var(--red);
   animation: pulse 1s ease-in-out infinite;
 }
+
+/* Gamepad / tracker devices page (13-tracker §5). */
+.surface-chip-2 {
+  left: 220px;
+}
+kbd.pad {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.pad-col {
+  width: 44px;
+}
+.nav-link {
+  color: var(--blue);
+  text-decoration: none;
+  align-self: center;
+}
+.nav-link:hover {
+  text-decoration: underline;
+}
+.devices {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 12px;
+  padding: 12px;
+}
+.devices-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.raw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 4px;
+}
+.raw-cell {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.raw-cell-lit {
+  border-color: var(--green);
+  background: rgba(46, 204, 113, 0.18);
+}
+.mapped-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.trail-canvas {
+  width: 100%;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: block;
+}
+.pose-table td {
+  padding: 1px 6px;
+  font-size: 12px;
+}

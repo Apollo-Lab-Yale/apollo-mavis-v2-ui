@@ -5,10 +5,44 @@ import { ControlClient } from "./ws/control";
 import { TelemetryClient } from "./ws/telemetry";
 import { getSession } from "./rest";
 
-let heldGetter: () => ReadonlySet<string> = () => new Set();
-/** TeleopSurface registers the capture hook's held ref here. */
+/** Held-code sources (keyboard capture, gamepad adapter, …) — the control
+ * client sends the UNION of every registered source (13-tracker §5). */
+const heldSources = new Map<string, () => ReadonlySet<string>>();
+
+/** Register (or replace) a named held-code source; returns its unregister fn. */
+export function registerHeldSource(id: string, fn: () => ReadonlySet<string>): () => void {
+  heldSources.set(id, fn);
+  return () => {
+    if (heldSources.get(id) === fn) heldSources.delete(id);
+  };
+}
+
+/** TeleopSurface registers the keyboard capture hook's held ref here. */
 export function setHeldSource(fn: () => ReadonlySet<string>): void {
-  heldGetter = fn;
+  registerHeldSource("keyboard", fn);
+}
+
+/** Union of all registered held sources (what every KeysMsg carries). */
+export function heldUnion(): ReadonlySet<string> {
+  if (heldSources.size === 1) {
+    for (const fn of heldSources.values()) return fn();
+  }
+  const out = new Set<string>();
+  for (const fn of heldSources.values()) for (const c of fn()) out.add(c);
+  return out;
+}
+
+/** Capture-arming sources: the heartbeat runs while ANY source is armed. */
+const armedSources = new Set<string>();
+
+export function setArmedSource(id: string, armed: boolean): void {
+  if (armed) armedSources.add(id);
+  else armedSources.delete(id);
+  control?.setArmed(armedSources.size > 0);
+}
+
+export function anyArmed(): boolean {
+  return armedSources.size > 0;
 }
 
 type AckListener = (a: AckMsg) => void;
@@ -44,12 +78,14 @@ export function resetClients(): void {
   control = null;
   telemetry?.close();
   telemetry = null;
+  heldSources.clear();
+  armedSources.clear();
 }
 
 export function getControl(): ControlClient {
   if (!control) {
     control = new ControlClient({
-      getHeld: () => heldGetter(),
+      getHeld: heldUnion,
       onHello: handleHello,
       onAck: (a) => {
         for (const fn of ackListeners) fn(a);
@@ -60,6 +96,7 @@ export function getControl(): ControlClient {
       },
     });
     control.connect();
+    if (armedSources.size > 0) control.setArmed(true);
   }
   return control;
 }

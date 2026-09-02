@@ -5,6 +5,7 @@ import { getControl, getTelemetry } from "../api/clients";
 import { endSession, getKeymap, getProfiles, getWorkcell } from "../api/rest";
 import type { ProfileInfo } from "../gen";
 import { buildBindings } from "../input/bindings";
+import { useGamepad } from "../input/useGamepad";
 import type { Mode } from "../lib/types";
 import { selectActiveArm, useStore } from "../store";
 import { ArmIndicator } from "../components/ArmIndicator";
@@ -37,6 +38,7 @@ export function Cockpit({ mode }: { mode: Mode }) {
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
 
   const control = getControl();
+  useGamepad(); // gamepad rows ride the same control channel (13-tracker §5)
 
   useEffect(() => {
     getTelemetry(); // connect once

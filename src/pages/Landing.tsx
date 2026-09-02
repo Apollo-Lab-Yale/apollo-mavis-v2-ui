@@ -1,6 +1,6 @@
 /** Landing page (05-ui §8.1): discovery, session assembly, mode launch. */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   createSession,
   getCameras,
@@ -191,7 +191,12 @@ export function Landing() {
 
   return (
     <div className="landing">
-      <h1>apollo-xarm7</h1>
+      <div className="kv">
+        <h1 style={{ margin: 0 }}>apollo-xarm7</h1>
+        <Link to="/devices" data-testid="nav-devices" className="nav-link">
+          Devices (gamepad / tracker) ▸
+        </Link>
+      </div>
       {workcell && (
         <WorkcellKindToggle
           kind={kind}
