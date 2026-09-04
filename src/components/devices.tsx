@@ -11,6 +11,12 @@ import { gamepadGlyph, keycapLabel, type Bindings } from "../input/bindings";
 import { GAMEPAD_LABELS } from "../input/gamepad";
 import type { GamepadState } from "../store";
 import { ControllerView } from "./ControllerView";
+import {
+  activePhaseLabel,
+  fmtWhen,
+  isCalibrationActive,
+  type WizardKind,
+} from "./TrackerCalibrationWizard";
 import { TrackerTrail } from "./TrackerTrail";
 
 const f3 = (v: number) => v.toFixed(3);
@@ -191,7 +197,26 @@ export function TrackerPanel({ tracker, bindings = null }: TrackerPanelProps) {
             {tracker?.clutch
               ? `CLUTCH${tracker.engaged_arm ? ` · ${tracker.engaged_arm}` : ""}`
               : "released"}
-          </span>
+          </span>{" "}
+          {tracker && (
+            <span
+              className={`chip ${tracker.charging ? "chip-green" : "chip-grey"}`}
+              data-testid="tracker-charging"
+              title={
+                tracker.charging == null
+                  ? "controller USB-power state not reported by libsurvive"
+                  : tracker.charging
+                    ? "controller on external (USB) power"
+                    : "controller running on battery (a drained battery weakens the radio link)"
+              }
+            >
+              {tracker.charging == null
+                ? "battery —"
+                : tracker.charging
+                  ? "🔌 charging"
+                  : "🔋 battery"}
+            </span>
+          )}
         </span>
       </div>
       {tracker && (
@@ -428,6 +453,106 @@ export function TrackerSettingsForm({
         </div>
       )}
     </fieldset>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Calibration (phase-10, 13-tracker §4/§5): entry points for the two wizard
+// kinds plus the persisted calibration state. Both flows are session-less REST
+// operations (`/api/tracker/calibration`), so the panel is gated on the
+// tracker/backend and on the ABSENCE of a session; progress lives in telemetry.
+
+export interface CalibrationPanelProps {
+  tracker: TrackerTelemetry | null;
+  session: SessionInfo | null;
+  onOpen(kind: WizardKind): void;
+}
+
+/** Why both wizard buttons are disabled (undefined = enabled). */
+export function calibrationDisabledReason(
+  tracker: TrackerTelemetry | null,
+  session: SessionInfo | null,
+): string | undefined {
+  if (!tracker) return "No tracker telemetry.";
+  if (tracker.backend === "none") return "Tracker backend is none — nothing to calibrate.";
+  if (tracker.calibration == null) return "Runtime reports no calibration state (upgrade it).";
+  if (session) return "Stop the session first.";
+  return undefined;
+}
+
+export function CalibrationPanel({ tracker, session, onOpen }: CalibrationPanelProps) {
+  const cal = tracker?.calibration ?? null;
+  const reason = calibrationDisabledReason(tracker, session);
+  // Same predicate as the wizard's Close→confirm: mirrors the runtime's `active`
+  // (which 409s session start and the other kind's start), incl. the two
+  // not-yet-finished `done` states (validated/not installed, fitted/not applied).
+  const activeCal = cal && isCalibrationActive(cal) ? cal : null;
+  const activeKind = activeCal ? (activeCal.kind ?? "none") : null;
+  const button = (kind: WizardKind, label: string) => (
+    <button
+      disabled={reason !== undefined || (activeKind !== null && activeKind !== kind)}
+      title={
+        activeKind !== null && activeKind !== kind
+          ? `${activeKind} calibration in progress`
+          : undefined
+      }
+      onClick={() => onOpen(kind)}
+      data-testid={`calibration-open-${kind}`}
+    >
+      {activeKind === kind ? "Resume " : ""}
+      {label}…
+    </button>
+  );
+  return (
+    <div className="panel" data-testid="calibration-panel">
+      <div className="kv">
+        <strong>Tracker calibration</strong>
+        <span>
+          {cal == null ? (
+            <span className="chip chip-grey" data-testid="calibration-yaw-chip">
+              yaw —
+            </span>
+          ) : cal.yaw_valid === false ? (
+            <span
+              className="chip chip-amber"
+              data-testid="calibration-yaw-chip"
+              title="a base-station install re-anchored the world frame: run Yaw alignment"
+            >
+              yaw alignment needed
+            </span>
+          ) : (
+            <span className="chip chip-green" data-testid="calibration-yaw-chip">
+              {cal.yaw_calibrated_at == null
+                ? "yaw aligned (config)"
+                : `yaw aligned ${fmtWhen(cal.yaw_calibrated_at)}`}
+            </span>
+          )}
+          {activeCal !== null && (
+            <>
+              {" "}
+              <span className="chip chip-blue" data-testid="calibration-active">
+                {activeKind} · {activePhaseLabel(activeCal)}
+              </span>
+            </>
+          )}
+        </span>
+      </div>
+      <div className="mono dim" style={{ fontSize: 12 }} data-testid="calibration-installed">
+        base stations:{" "}
+        {cal?.base_station_installed_at == null
+          ? "no install recorded"
+          : `installed ${fmtWhen(cal.base_station_installed_at)}`}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {button("base_station", "Base-station calibration")}
+        {button("yaw", "Yaw alignment")}
+      </div>
+      {reason && (
+        <div className="dim" style={{ fontSize: 12 }} data-testid="calibration-disabled">
+          {reason}
+        </div>
+      )}
+    </div>
   );
 }
 

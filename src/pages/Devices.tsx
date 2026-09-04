@@ -14,6 +14,7 @@ import { useGamepad } from "../input/useGamepad";
 import { selectTracker, useStore } from "../store";
 import { ConnectionBanner, Toasts } from "../components/ConnectionBanner";
 import {
+  CalibrationPanel,
   GamepadPanel,
   SessionControls,
   TrackerPanel,
@@ -21,6 +22,7 @@ import {
 } from "../components/devices";
 import { StreamGrid } from "../components/StreamGrid";
 import { TeleopSurface } from "../components/TeleopSurface";
+import { TrackerCalibrationWizard, type WizardKind } from "../components/TrackerCalibrationWizard";
 
 /** Fixed debug session (13-tracker §1.1/§5): teleop / sim / mavis_v2. The
  * gripper arm is listed first so it is the active arm by default. */
@@ -46,6 +48,9 @@ export function Devices() {
   const role = useStore((s) => s.conn.role);
   const controlDown = useStore((s) => s.conn.control !== "open");
   const [busy, setBusy] = useState(false);
+  // Calibration wizard (phase-10): which kind is open; the flow state itself
+  // lives in telemetry.tracker.calibration, never here.
+  const [wizard, setWizard] = useState<WizardKind | null>(null);
 
   const control = getControl();
   useGamepad();
@@ -176,7 +181,15 @@ export function Devices() {
           disabledReason={settingsReason}
           onChange={onSettings}
         />
+        <CalibrationPanel tracker={tracker} session={session} onOpen={setWizard} />
       </div>
+      {wizard && (
+        <TrackerCalibrationWizard
+          kind={wizard}
+          onClose={() => setWizard(null)}
+          onSwitchKind={setWizard}
+        />
+      )}
       <Toasts />
     </div>
   );

@@ -188,6 +188,52 @@ export type TrainerAlive = boolean | null;
 export type T5 = "telemetry";
 export type AgeS = number | null;
 export type Backend = "libsurvive" | "fake" | "none";
+export type AppliedYawDeg = number | null;
+export type BackupPath = string | null;
+export type BaseStationInstalledAt = number | null;
+export type ControllerStill = boolean | null;
+export type Detail1 = string;
+export type ElapsedS = number | null;
+export type FitChecks = string[];
+export type FitResidualDeg = number | null;
+export type FittedYawDeg = number | null;
+export type InstalledPath = string | null;
+export type Kind5 = "none" | "base_station" | "yaw";
+export type Channel = number | null;
+export type Index1 = number;
+export type Reference = boolean;
+export type Scenes = number;
+export type Serial = string | null;
+export type Lighthouses = LighthouseStatus[];
+export type NextPoint = ("start" | "left" | "forward" | "right" | "back" | "up" | "down") | null;
+export type Phase =
+  | "idle"
+  | "starting"
+  | "capturing"
+  | "validating"
+  | "fitting"
+  | "installing"
+  | "done"
+  | "failed"
+  | "aborted";
+export type Scenes1 = number;
+export type StartedAt = number | null;
+export type StationsVisible = number;
+export type MaxStepMm = number;
+export type Passed = boolean;
+export type Samples = number;
+/**
+ * @minItems 3
+ * @maxItems 3
+ */
+export type StdMm = [number, number, number];
+export type ThresholdStdMm = number;
+export type ThresholdStepMm = number;
+export type YawCalibratedAt = number | null;
+export type Label3 = "start" | "left" | "forward" | "right" | "back" | "up" | "down";
+export type YawPoints = YawGesturePoint[];
+export type YawValid = boolean;
+export type Charging = boolean | null;
 export type Clutch = boolean;
 export type Grip = boolean;
 export type Menu = boolean;
@@ -198,7 +244,7 @@ export type TrackpadX = number;
 export type TrackpadY = number;
 export type Trigger = number;
 export type TriggerPressed = boolean;
-export type Detail1 = string;
+export type Detail2 = string;
 export type DeviceAction = string | null;
 export type DeviceHeld = string[];
 export type EngagedArm2 = string | null;
@@ -213,6 +259,9 @@ export type PosScale = number;
 export type YawDeg = number;
 export type Status = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
 export type Ts3 = number;
+export type Kind6 = "base_station" | "yaw";
+export type Op = "start" | "capture" | "validate" | "install" | "apply" | "abort";
+export type Point = ("start" | "left" | "forward" | "right" | "back" | "up" | "down") | null;
 export type FilterBeta1 = number | null;
 export type FilterEnabled1 = boolean | null;
 export type FilterMinCutoffHz1 = number | null;
@@ -222,7 +271,7 @@ export type YawDeg1 = number | null;
 export type Arms5 = ArmStatusInfo[];
 export type AvailableKinds = ("hardware" | "sim")[];
 export type Cameras1 = CameraInfo[];
-export type Kind5 = "hardware" | "sim";
+export type Kind7 = "hardware" | "sim";
 export type PoliciesAvailable = boolean;
 
 export interface ApolloProtocol {
@@ -244,6 +293,8 @@ export interface ApolloProtocol {
   SetInitialConditionArgs?: SetInitialConditionArgs;
   StateProfile?: StateProfile;
   TelemetryMsg?: TelemetryMsg;
+  TrackerCalibrationCommand?: TrackerCalibrationCommand;
+  TrackerCalibrationStatus?: TrackerCalibrationStatus;
   TrackerSettingsArgs?: TrackerSettingsArgs;
   WorkcellStatus?: WorkcellStatus;
 }
@@ -563,14 +614,18 @@ export interface SessionTelemetry {
  * ``"switch_arm"``), cleared by the runtime ~1 s after it fired.
  * ``pose_filtered`` is the aligned pose after the One Euro filter (§4), i.e.
  * what the anchor/delta math actually consumes; ``None`` when no sample.
+ * ``calibration`` mirrors ``GET /api/tracker/calibration`` (protocol.tracker)
+ * so the Devices-page wizard follows progress without polling.
  */
 export interface TrackerTelemetry {
   age_s?: AgeS;
   anchor_tcp?: PoseMsg | null;
   backend: Backend;
+  calibration?: TrackerCalibrationStatus | null;
+  charging?: Charging;
   clutch?: Clutch;
   controller?: ControllerTelemetry | null;
-  detail?: Detail1;
+  detail?: Detail2;
   device_action?: DeviceAction;
   device_held?: DeviceHeld;
   engaged_arm?: EngagedArm2;
@@ -583,6 +638,68 @@ export interface TrackerTelemetry {
   settings: TrackerSettingsMsg;
   status: Status;
   target_tcp?: PoseMsg | null;
+}
+/**
+ * Calibration state machine snapshot (REST response + telemetry block).
+ *
+ * ``kind``/``phase`` describe the flow in progress; the base-station and yaw
+ * field groups are only meaningful for their own kind. The persisted-state
+ * group is always filled from ``calibration_dir/tracker_calibration.json``.
+ */
+export interface TrackerCalibrationStatus {
+  applied_yaw_deg?: AppliedYawDeg;
+  backup_path?: BackupPath;
+  base_station_installed_at?: BaseStationInstalledAt;
+  controller_still?: ControllerStill;
+  detail?: Detail1;
+  elapsed_s?: ElapsedS;
+  fit_checks?: FitChecks;
+  fit_residual_deg?: FitResidualDeg;
+  fitted_yaw_deg?: FittedYawDeg;
+  installed_path?: InstalledPath;
+  kind?: Kind5;
+  lighthouses?: Lighthouses;
+  next_point?: NextPoint;
+  phase?: Phase;
+  scenes?: Scenes1;
+  started_at?: StartedAt;
+  stations_visible?: StationsVisible;
+  validation?: CalibrationValidation | null;
+  yaw_calibrated_at?: YawCalibratedAt;
+  yaw_points?: YawPoints;
+  yaw_valid?: YawValid;
+}
+/**
+ * One Lighthouse base station as seen during base-station calibration.
+ */
+export interface LighthouseStatus {
+  channel?: Channel;
+  index: Index1;
+  pose?: PoseMsg | null;
+  reference?: Reference;
+  scenes?: Scenes;
+  serial?: Serial;
+}
+/**
+ * Stationary-controller validation result (13-tracker §4).
+ *
+ * Acceptance (2026-09-03 measurements): every axis ``std_mm`` below
+ * ``threshold_std_mm`` and ``max_step_mm`` below ``threshold_step_mm``.
+ */
+export interface CalibrationValidation {
+  max_step_mm?: MaxStepMm;
+  passed?: Passed;
+  samples?: Samples;
+  std_mm?: StdMm;
+  threshold_std_mm?: ThresholdStdMm;
+  threshold_step_mm?: ThresholdStepMm;
+}
+/**
+ * One captured point of the yaw gesture.
+ */
+export interface YawGesturePoint {
+  label: Label3;
+  pose: PoseMsg;
 }
 /**
  * Raw Vive-controller input state (13-tracker §1.1), additive.
@@ -619,6 +736,14 @@ export interface TrackerSettingsMsg {
   yaw_deg: YawDeg;
 }
 /**
+ * POST /api/tracker/calibration body (illegal transitions -> 409).
+ */
+export interface TrackerCalibrationCommand {
+  kind: Kind6;
+  op: Op;
+  point?: Point;
+}
+/**
  * Args for ``name == "tracker_settings"`` (13-tracker §3.4, §4 "Pose filter").
  *
  * Every field is optional; omitted (``None``) fields leave the live runtime
@@ -641,6 +766,6 @@ export interface WorkcellStatus {
   arms: Arms5;
   available_kinds: AvailableKinds;
   cameras: Cameras1;
-  kind: Kind5;
+  kind: Kind7;
   policies_available?: PoliciesAvailable;
 }

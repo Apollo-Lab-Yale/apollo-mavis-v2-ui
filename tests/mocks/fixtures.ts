@@ -8,6 +8,7 @@ import type {
   ProfileInfo,
   SceneInfo,
   TelemetryMsg,
+  TrackerCalibrationStatus,
   TrackerTelemetry,
   WorkcellStatus,
 } from "../../src/gen";
@@ -63,6 +64,37 @@ export function makeTracker(over: Partial<TrackerTelemetry> = {}): TrackerTeleme
     anchor_tcp: null,
     target_tcp: null,
     settings: { yaw_deg: 0.0, pos_scale: 1.0, follow_rotation: true },
+    ...over,
+  };
+}
+
+/** Calibration block (13-tracker §3/§4): the idle snapshot, yaw valid. Every
+ * field has a server default, so callers override only what a phase needs. */
+export function makeCalibration(
+  over: Partial<TrackerCalibrationStatus> = {},
+): TrackerCalibrationStatus {
+  return {
+    kind: "none",
+    phase: "idle",
+    detail: "",
+    started_at: null,
+    elapsed_s: null,
+    scenes: 0,
+    lighthouses: [],
+    stations_visible: 0,
+    controller_still: null,
+    validation: null,
+    installed_path: null,
+    backup_path: null,
+    yaw_points: [],
+    next_point: null,
+    fitted_yaw_deg: null,
+    fit_residual_deg: null,
+    fit_checks: [],
+    applied_yaw_deg: null,
+    yaw_valid: true,
+    yaw_calibrated_at: null,
+    base_station_installed_at: null,
     ...over,
   };
 }

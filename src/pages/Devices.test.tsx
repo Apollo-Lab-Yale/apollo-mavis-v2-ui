@@ -2,7 +2,8 @@
  * TelemetryMsg carrying `tracker` (+ `controller` / `device_held` /
  * `device_action` / `pose_filtered`), a fake gamepad (incl. the release-all
  * latch), the settings form's commit semantics + nack toasts, the keyboard
- * capture surface (KeyC clutch) and session start via POST /api/session. */
+ * capture surface (KeyC clutch), session start via POST /api/session and the
+ * tracker-calibration panel + wizard (phase-10, REST + telemetry). */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WebSocket as MockWebSocket } from "mock-socket";
 import { MemoryRouter } from "react-router-dom";
@@ -10,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetClients } from "../api/clients";
 import type { GamepadLike } from "../input/gamepad";
 import { useStore } from "../store";
-import { KEYMAP, makeTelemetry, makeTracker } from "../../tests/mocks/fixtures";
+import { KEYMAP, makeCalibration, makeTelemetry, makeTracker } from "../../tests/mocks/fixtures";
 import { MockControlServer, MockTelemetryServer } from "../../tests/mocks/mockWs";
 import { DEVICES_SESSION_SPEC, Devices } from "./Devices";
 
@@ -20,10 +21,14 @@ describe("Devices page", () => {
   let control: MockControlServer;
   let telemetry: MockTelemetryServer;
   let posts: unknown[];
+  let calibPosts: unknown[];
+  let calib409: string | null;
   let pad: GamepadLike | null;
 
   beforeEach(() => {
     posts = [];
+    calibPosts = [];
+    calib409 = null;
     pad = null;
     vi.stubGlobal("WebSocket", MockWebSocket);
     // jsdom has no Gamepad API; the hook's default reads navigator.getGamepads.
@@ -60,6 +65,15 @@ describe("Devices page", () => {
         }
         if (url.includes("/api/keymap"))
           return new Response(JSON.stringify(KEYMAP), { status: 200 });
+        if (url.includes("/api/tracker/calibration") && init?.method === "POST") {
+          const cmd = JSON.parse(String(init.body)) as { kind: "base_station" | "yaw" };
+          calibPosts.push(cmd);
+          if (calib409) return new Response(JSON.stringify({ detail: calib409 }), { status: 409 });
+          return new Response(
+            JSON.stringify(makeCalibration({ kind: cmd.kind, phase: "starting" })),
+            { status: 200 },
+          );
+        }
         return new Response("{}", { status: 200 });
       }),
     );
@@ -77,6 +91,7 @@ describe("Devices page", () => {
     useStore.getState().setConn("control", "closed");
     useStore.getState().setConn("telemetry", "closed");
     useStore.getState().setRole(null);
+    useStore.setState({ toasts: [] }); // toasts never auto-dismiss; do not leak across tests
   });
 
   const mount = () =>
@@ -122,6 +137,9 @@ describe("Devices page", () => {
     expect(screen.getByTestId("pose-world").textContent).toContain("0.120, 0.210, 1.100");
     expect(screen.getByTestId("pose-filtered").textContent).toBe("filtered—"); // not reported yet
     expect(screen.getByTestId("tracker-clutch").textContent).toBe("released");
+    // Battery/charging chip is device-level (shown even with no controller state);
+    // `charging` omitted by the fixture → unreported. True/false states: own test below.
+    expect(screen.getByTestId("tracker-charging").textContent).toBe("battery —");
     // `controller` omitted by the fixture (pre-§1.1 runtime) → none.
     expect(screen.getByTestId("controller-status").textContent).toBe("controller: none");
     const echo = screen.getByTestId("tracker-settings-echo").textContent ?? "";
@@ -186,6 +204,19 @@ describe("Devices page", () => {
     await screen.findByTestId("session-start");
     expect(useStore.getState().session).toBeNull();
   }, 15000);
+
+  it("tracker charging chip reflects the controller USB-power state", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    pushTracker({ charging: true }, 1);
+    await waitFor(() =>
+      expect(screen.getByTestId("tracker-charging").textContent).toBe("🔌 charging"),
+    );
+    pushTracker({ charging: false }, 2);
+    await waitFor(() =>
+      expect(screen.getByTestId("tracker-charging").textContent).toBe("🔋 battery"),
+    );
+  });
 
   it("settings form commits on Enter / blur (never per keystroke), drops out-of-range, toasts nacks", async () => {
     mount();
@@ -539,5 +570,119 @@ describe("Devices page", () => {
     expect(idle.style.top).toBe("100%");
     expect(idle.className).toContain("trackpad-dot-idle");
     expect(screen.getByTestId("controller-pad-xy").textContent).toBe("x -1.00 · y -1.00");
+  }, 15000);
+
+  it("calibration panel: disabled reasons, yaw chips, opens the wizard which POSTs and toasts 409s", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    // No telemetry → both buttons disabled with a reason.
+    expect(screen.getByTestId("calibration-open-base_station")).toBeDisabled();
+    expect(screen.getByTestId("calibration-open-yaw")).toBeDisabled();
+    expect(screen.getByTestId("calibration-disabled").textContent).toBe("No tracker telemetry.");
+    expect(screen.getByTestId("calibration-yaw-chip").textContent).toBe("yaw —");
+    // Backend none.
+    pushTracker({ backend: "none", status: "no_backend", calibration: makeCalibration() }, 1);
+    await waitFor(() =>
+      expect(screen.getByTestId("calibration-disabled").textContent).toContain("backend is none"),
+    );
+    // A runtime without the block (fixture omits `calibration`) is disabled too.
+    pushTracker({}, 2);
+    await waitFor(() =>
+      expect(screen.getByTestId("calibration-disabled").textContent).toContain(
+        "no calibration state",
+      ),
+    );
+    // yaw_valid false → amber chip; last install date; buttons live.
+    pushTracker(
+      { calibration: makeCalibration({ yaw_valid: false, base_station_installed_at: 1756900000 }) },
+      3,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("calibration-yaw-chip").textContent).toBe("yaw alignment needed"),
+    );
+    expect(screen.getByTestId("calibration-yaw-chip").className).toContain("chip-amber");
+    expect(screen.getByTestId("calibration-installed").textContent).toContain("installed");
+    expect(screen.getByTestId("calibration-open-yaw")).not.toBeDisabled();
+    expect(screen.getByTestId("calibration-open-base_station")).not.toBeDisabled();
+    expect(screen.queryByTestId("calibration-disabled")).toBeNull();
+    // Session → "Stop the session first."
+    fireEvent.click(screen.getByTestId("session-start"));
+    await screen.findByTestId("session-stop");
+    expect(screen.getByTestId("calibration-disabled").textContent).toBe("Stop the session first.");
+    expect(screen.getByTestId("calibration-open-base_station")).toBeDisabled();
+    expect(screen.getByTestId("calibration-open-yaw")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("session-stop"));
+    await screen.findByTestId("session-start");
+    // yaw aligned chip with a date; a live base_station run marks the other button.
+    pushTracker(
+      { calibration: makeCalibration({ yaw_valid: true, yaw_calibrated_at: 1756900000 }) },
+      4,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("calibration-yaw-chip").textContent).toContain("yaw aligned"),
+    );
+    expect(screen.getByTestId("calibration-yaw-chip").className).toContain("chip-green");
+    expect(screen.getByTestId("calibration-installed").textContent).toContain(
+      "no install recorded",
+    );
+    pushTracker(
+      { calibration: makeCalibration({ kind: "base_station", phase: "capturing", scenes: 1 }) },
+      5,
+    );
+    await screen.findByTestId("calibration-active");
+    expect(screen.getByTestId("calibration-active").textContent).toBe("base_station · capturing");
+    expect(screen.getByTestId("calibration-open-yaw")).toBeDisabled();
+    expect(screen.getByTestId("calibration-open-base_station").textContent).toContain("Resume");
+    // yaw fitted but not applied: the runtime still counts the run as active
+    // (session start → 409), so the chip says so and base-station stays blocked.
+    pushTracker(
+      { calibration: makeCalibration({ kind: "yaw", phase: "done", fitted_yaw_deg: 102.1 }) },
+      6,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("calibration-active").textContent).toBe("yaw · done, not applied"),
+    );
+    expect(screen.getByTestId("calibration-open-base_station")).toBeDisabled();
+    expect(screen.getByTestId("calibration-open-base_station").title).toBe(
+      "yaw calibration in progress",
+    );
+    expect(screen.getByTestId("calibration-open-yaw").textContent).toContain("Resume");
+    pushTracker({ calibration: makeCalibration() }, 7);
+    await waitFor(() => expect(screen.queryByTestId("calibration-active")).toBeNull());
+
+    // Open the yaw wizard: dialog semantics, Start → POST body, telemetry drives the step.
+    fireEvent.click(screen.getByTestId("calibration-open-yaw"));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.dataset["view"]).toBe("intro");
+    fireEvent.click(screen.getByTestId("wizard-start"));
+    await waitFor(() => expect(calibPosts).toEqual([{ kind: "yaw", op: "start" }]));
+    pushTracker(
+      { calibration: makeCalibration({ kind: "yaw", phase: "capturing", next_point: "start" }) },
+      8,
+    );
+    await waitFor(() => expect(dialog.dataset["view"]).toBe("points"));
+    expect(screen.getByTestId("wizard-next-point").textContent).toBe("START");
+    // 409 → error toast with the runtime's detail.
+    calib409 = "stop the session first";
+    await waitFor(() => expect(screen.getByTestId("wizard-capture")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("wizard-capture"));
+    const toast = await screen.findByText("calibration: stop the session first");
+    expect(toast.dataset["testid"]).toBe("toast");
+    expect(toast.className).toContain("toast-error");
+    expect(calibPosts[1]).toEqual({ kind: "yaw", op: "capture" });
+    // Close while capturing → abort prompt; Continue keeps the wizard; once the
+    // run has ended Escape closes it.
+    fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+    expect(screen.getByTestId("wizard-abort-confirm")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("wizard-abort-cancel"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    pushTracker(
+      { calibration: makeCalibration({ kind: "yaw", phase: "aborted", detail: "aborted" }) },
+      9,
+    );
+    await waitFor(() => expect(dialog.dataset["view"]).toBe("failed"));
+    fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   }, 15000);
 });

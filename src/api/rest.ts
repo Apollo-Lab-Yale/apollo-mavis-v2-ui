@@ -7,6 +7,8 @@ import type {
   SceneInfo,
   SessionInfo,
   SessionSpec,
+  TrackerCalibrationCommand,
+  TrackerCalibrationStatus,
   WorkcellStatus,
 } from "../gen";
 
@@ -59,3 +61,14 @@ export async function getSession(): Promise<SessionInfo | null> {
 export const createSession = (spec: SessionSpec): Promise<SessionInfo> =>
   request("/api/session", { method: "POST", body: JSON.stringify(spec) });
 export const endSession = (): Promise<void> => request("/api/session", { method: "DELETE" });
+
+// Tracker calibration (phase-10, 13-tracker §3/§4): a session-less device
+// management flow, hence REST rather than a control-WS action; progress rides
+// telemetry as `TrackerTelemetry.calibration`. Illegal transitions are 409s
+// whose `detail` surfaces through ApiError.
+export const getTrackerCalibration = (): Promise<TrackerCalibrationStatus> =>
+  request("/api/tracker/calibration");
+export const postTrackerCalibration = (
+  cmd: TrackerCalibrationCommand,
+): Promise<TrackerCalibrationStatus> =>
+  request("/api/tracker/calibration", { method: "POST", body: JSON.stringify(cmd) });
