@@ -1,4 +1,4 @@
-/* AUTO-GENERATED from apollo-xarm7-core schemas — do not edit. */
+/* AUTO-GENERATED from apollo-mavis-v2-core schemas — do not edit. */
 /* core_version: 0.1.0 */
 
 export type Detail = string;

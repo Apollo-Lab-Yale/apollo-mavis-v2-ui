@@ -3,12 +3,12 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:f
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const src = resolve(root, "..", "apollo-xarm7-core", "schemas");
+const src = resolve(root, "..", "apollo-mavis-v2-core", "schemas");
 const dst = join(root, "schemas");
 
 if (!existsSync(src)) {
   console.error(`gen:sync: sibling checkout not found at ${src}`);
-  console.error("Clone apollo-xarm7-core next to apollo-xarm7-ui and retry.");
+  console.error("Clone apollo-mavis-v2-core next to apollo-mavis-v2-ui and retry.");
   process.exit(1);
 }
 

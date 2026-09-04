@@ -1,6 +1,6 @@
 /** gen:check — fail if vendored schemas or generated types drift.
  *
- * 1. schemas/ must byte-match ../apollo-xarm7-core/schemas (when present).
+ * 1. schemas/ must byte-match ../apollo-mavis-v2-core/schemas (when present).
  * 2. src/gen must match a fresh regeneration from schemas/.
  */
 import { spawnSync } from "node:child_process";
@@ -23,7 +23,7 @@ function diff(a: string, b: string, what: string): boolean {
 
 let ok = true;
 
-const coreSchemas = resolve(root, "..", "apollo-xarm7-core", "schemas");
+const coreSchemas = resolve(root, "..", "apollo-mavis-v2-core", "schemas");
 if (existsSync(coreSchemas)) {
   ok = diff(coreSchemas, join(root, "schemas"), "schemas/ vs core checkout") && ok;
 } else {

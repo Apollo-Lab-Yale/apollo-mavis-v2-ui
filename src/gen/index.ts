@@ -1,2 +1,2 @@
-/* AUTO-GENERATED from apollo-xarm7-core schemas — do not edit. */
+/* AUTO-GENERATED from apollo-mavis-v2-core schemas — do not edit. */
 export * from "./protocol";

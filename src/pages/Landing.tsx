@@ -192,7 +192,7 @@ export function Landing() {
   return (
     <div className="landing">
       <div className="kv">
-        <h1 style={{ margin: 0 }}>apollo-xarm7</h1>
+        <h1 style={{ margin: 0 }}>apollo-mavis-v2</h1>
         <Link to="/devices" data-testid="nav-devices" className="nav-link">
           Devices (gamepad / tracker) ▸
         </Link>

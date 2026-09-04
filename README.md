@@ -1,7 +1,7 @@
-# apollo-xarm7-ui
+# apollo-mavis-v2-ui
 
-React 18 + Vite 5 + TypeScript (strict) SPA for the apollo-xarm7 runtime.
-Talks to `apollo-xarm7-runtime` exclusively over HTTP/WebSocket on a single
+React 18 + Vite 5 + TypeScript (strict) SPA for the apollo-mavis-v2 runtime.
+Talks to `apollo-mavis-v2-runtime` exclusively over HTTP/WebSocket on a single
 origin; the UI is never in the control path.
 
 **Target browsers**: desktop Chrome/Firefox on the operator machine
@@ -18,7 +18,7 @@ npm run build       # typecheck + production build → dist/
 npm test            # vitest (jsdom; no runtime or hardware needed)
 npm run lint        # eslint (flat config)
 npm run format      # prettier
-npm run gen:sync    # copy ../apollo-xarm7-core/schemas/*.json → ./schemas/
+npm run gen:sync    # copy ../apollo-mavis-v2-core/schemas/*.json → ./schemas/
 npm run gen:types   # json-schema-to-typescript → src/gen/ (checked in)
 npm run gen:check   # regenerate + diff — CI guard against protocol drift
 ```

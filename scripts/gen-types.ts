@@ -12,7 +12,7 @@ const root = resolve(import.meta.dirname, "..");
 const schemasDir = join(root, "schemas");
 const outDir = process.argv[2] ? resolve(process.argv[2]) : join(root, "src", "gen");
 
-const BANNER = "/* AUTO-GENERATED from apollo-xarm7-core schemas — do not edit. */";
+const BANNER = "/* AUTO-GENERATED from apollo-mavis-v2-core schemas — do not edit. */";
 
 /** json-schema-to-typescript predates draft 2020-12 tuples: rewrite
  * `prefixItems` into the draft-07 positional-`items` form it understands. */
