@@ -62,8 +62,8 @@ export const STREAM_LABELS: Readonly<Record<string, string>> = {
   view_wrist_cam: "Perception · wrist cam",
   cam_front: "Environment · front",
   cam_top: "Environment · top",
-  camera1: "Camera 1",
-  camera2: "Camera 2",
+  grip_wrist: "Manipulation · wrist cam",
+  view_wrist: "Perception · wrist cam",
   sim: "Digital Twin",
   twin: "Safety twin",
 };
@@ -78,8 +78,11 @@ export const SIM_CAMERA_SLOTS = [
   "cam_front",
   "cam_top",
 ] as const;
-/** Hardware tab camera slots (+ the MicTile as the third cell). */
-export const HARDWARE_CAMERA_SLOTS = ["camera1", "camera2"] as const;
+/** Hardware tab camera slots (+ the MicTile as the third cell): the real wrist
+ * cameras (RealSense D435i colour over UVC). Ids differ from the digital twin's
+ * `grip_wrist_cam` / `view_wrist_cam` because both sets coexist in the runtime's
+ * VideoHub (Welcome page previews; twin renders during a hardware session). */
+export const HARDWARE_CAMERA_SLOTS = ["grip_wrist", "view_wrist"] as const;
 
 export const MODE_LABELS: Readonly<Record<Mode, string>> = {
   teleop: "Teleop",

@@ -641,9 +641,11 @@ export interface InferenceStatus {
  * One frame per telemetry tick (frame length = ``sample_rate / telemetry_hz``,
  * 1920 samples at 48 kHz / 25 Hz); the UI de-duplicates on ``seq``.
  * ``env_min``/``env_max`` are the per-bin min/max envelope of the frame as 64
- * int8 values (-127..127, time-ordered) for the scrolling oscilloscope;
- * ``rms_dbfs``/``peak_dbfs`` are full-scale levels (0 dBFS = |1.0|), ``None``
- * when no frame has arrived. ``status`` shares ``MicStatus`` with
+ * int8 values (-127..127, time-ordered) for the scrolling oscilloscope,
+ * quantised RELATIVE TO THE FRAME PEAK (the loudest sample maps to +-127, so a
+ * quiet room keeps its shape); absolute = ``env / 127 * 10 ** (peak_dbfs /
+ * 20)``. ``rms_dbfs``/``peak_dbfs`` are full-scale levels (0 dBFS = |1.0|),
+ * ``None`` when no frame has arrived. ``status`` shares ``MicStatus`` with
  * ``MicrophoneInfo`` (§12).
  */
 export interface MicrophoneTelemetry {

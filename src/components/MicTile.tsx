@@ -4,7 +4,10 @@
  * Data: `telemetry.microphone` (MicrophoneTelemetry, one frame per telemetry
  * tick, de-duplicated on `seq`). Drawing happens on `requestAnimationFrame`
  * only when a new frame arrived (and once after a resize) — a 3 s scrolling
- * min/max envelope oscillogram, a level bar (RMS fill), a peak-hold tick
+ * min/max envelope oscillogram on a dB scale (the wire envelope is int8
+ * relative to the frame peak; `peak_dbfs` restores the absolute level and
+ * `dbNorm` maps it with the −60 dBFS floor, so a −58 dBFS room shows a thin
+ * live band while speech fills the tile), a level bar (RMS fill), a peak-hold tick
  * (1.5 s hold, then 20 dB/s decay computed per draw), a clip indicator that
  * latches 2 s at ≥ −1 dBFS, and a tabular dBFS readout. The meter is telemetry,
  * not feedback: no CSS transitions on any value, nothing pulses. Drawing pauses
@@ -48,21 +51,35 @@ export const fmtDbfs = (db: number | null | undefined): string => {
   return db.toFixed(1);
 };
 
-/** Ring buffer of per-bin int8 min/max envelopes, oldest → newest. */
+/** Signed dB-scale scope value (−1..1) of one wire envelope sample: `v` is int8
+ * relative to the frame peak (±127 = the frame's loudest sample), `peakDbfs`
+ * restores the absolute level, and the magnitude goes through `dbNorm` (−60 dBFS
+ * floor) so quiet frames stay visible instead of collapsing onto the centerline. */
+export const envToScope = (v: number, peakDbfs: number | null | undefined): number => {
+  if (!v || peakDbfs == null || !Number.isFinite(peakDbfs)) return 0;
+  const db = peakDbfs + 20 * Math.log10(Math.min(127, Math.abs(v)) / 127);
+  return Math.sign(v) * dbNorm(db);
+};
+
+/** Ring buffer of per-bin min/max scope values (−1..1), oldest → newest. */
 export class EnvelopeBuffer {
-  readonly min: Int8Array;
-  readonly max: Int8Array;
+  readonly min: Float32Array;
+  readonly max: Float32Array;
   private head = 0;
   filled = 0;
   constructor(readonly capacity: number) {
-    this.min = new Int8Array(capacity);
-    this.max = new Int8Array(capacity);
+    this.min = new Float32Array(capacity);
+    this.max = new Float32Array(capacity);
   }
-  push(mins: readonly number[], maxs: readonly number[]): void {
+  push(
+    mins: readonly number[],
+    maxs: readonly number[],
+    peakDbfs: number | null | undefined,
+  ): void {
     const n = Math.min(mins.length, maxs.length);
     for (let i = 0; i < n; i += 1) {
-      this.min[this.head] = clampI8(mins[i] ?? 0);
-      this.max[this.head] = clampI8(maxs[i] ?? 0);
+      this.min[this.head] = envToScope(mins[i] ?? 0, peakDbfs);
+      this.max[this.head] = envToScope(maxs[i] ?? 0, peakDbfs);
       this.head = (this.head + 1) % this.capacity;
       this.filled = Math.min(this.filled + 1, this.capacity);
     }
@@ -72,7 +89,6 @@ export class EnvelopeBuffer {
     return (this.head - this.filled + i + this.capacity) % this.capacity;
   }
 }
-const clampI8 = (v: number): number => Math.max(-127, Math.min(127, Math.round(v)));
 
 interface Level {
   rms: number | null;
@@ -138,14 +154,14 @@ function drawScope(
     ctx.beginPath();
     for (let i = 0; i < buf.filled; i += 1) {
       const k = buf.index(i);
-      const y = midY - ((buf.max[k] ?? 0) / 127) * amp;
+      const y = midY - (buf.max[k] ?? 0) * amp;
       const x = x0 + i * px;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     for (let i = buf.filled - 1; i >= 0; i -= 1) {
       const k = buf.index(i);
-      ctx.lineTo(x0 + i * px, midY - ((buf.min[k] ?? 0) / 127) * amp);
+      ctx.lineTo(x0 + i * px, midY - (buf.min[k] ?? 0) * amp);
     }
     ctx.closePath();
     ctx.fillStyle = colors.accentSoft;
@@ -289,7 +305,7 @@ export function MicTile({
     if (!bufRef.current || bufRef.current.capacity !== capBins) {
       bufRef.current = new EnvelopeBuffer(capBins);
     }
-    bufRef.current.push(block.env_min ?? [], block.env_max ?? []);
+    bufRef.current.push(block.env_min ?? [], block.env_max ?? [], block.peak_dbfs ?? null);
 
     const now = performance.now();
     const lv = levelRef.current;

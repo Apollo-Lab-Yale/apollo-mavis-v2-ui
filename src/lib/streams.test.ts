@@ -38,7 +38,7 @@ describe("streams", () => {
     expect(streamLabel("unknown_cam")).toBe("unknown_cam");
     expect(MIC_LABEL).toBe("Perception · microphone");
     expect(SIM_CAMERA_SLOTS).toEqual(["grip_wrist_cam", "view_wrist_cam", "cam_front", "cam_top"]);
-    expect(HARDWARE_CAMERA_SLOTS).toEqual(["camera1", "camera2"]);
+    expect(HARDWARE_CAMERA_SLOTS).toEqual(["grip_wrist", "view_wrist"]);
     expect(TAB_LABELS).toEqual({ hardware: "Hardware", sim: "Sim" });
     expect(micSubtitle(makeMicrophoneInfo())).toBe("RØDE NT-USB Mini · 48 kHz mono");
     expect(micSubtitle(makeMicrophoneInfo({ channels: 2, sample_rate: 44100 }))).toBe(
@@ -72,6 +72,10 @@ describe("streams", () => {
     expect(
       orderStreams(["cam_front", "sim", "grip_wrist_cam", "twin", "cam_top", "view_wrist_cam"]),
     ).toEqual(["grip_wrist_cam", "view_wrist_cam", "cam_front", "cam_top", "sim", "twin"]);
-    expect(orderStreams(["sim", "camera2", "camera1"])).toEqual(["camera2", "camera1", "sim"]);
+    expect(orderStreams(["sim", "view_wrist", "grip_wrist"])).toEqual([
+      "view_wrist",
+      "grip_wrist",
+      "sim",
+    ]);
   });
 });

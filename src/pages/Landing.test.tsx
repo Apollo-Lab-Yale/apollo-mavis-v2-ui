@@ -345,7 +345,9 @@ describe("Welcome page", () => {
     const top = screen.getByTestId("stream-cam_top");
     expect(top.dataset["state"]).toBe("absent");
     expect(top.querySelector("canvas")).toBeNull();
-    expect(within(top).getByTestId("stream-absent").textContent).toContain("cam_top · no signal");
+    expect(within(top).getByTestId("stream-absent").textContent).toContain(
+      "Environment · top · no signal",
+    );
     expect(screen.getByTestId("status-sim").textContent).toBe(
       "APOLLO MAVIS V2 Digital Twin · 2 arms on rails",
     );
@@ -364,14 +366,14 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-card-view").textContent).not.toContain("View ·");
   });
 
-  it("Hardware tab: black camera1/camera2 + MicTile, 'No arms detected' caption, placeholder, four modes disabled with the reason", async () => {
+  it("Hardware tab: black grip_wrist/view_wrist + MicTile, 'No arms detected' caption, placeholder, four modes disabled with the reason", async () => {
     await mount();
     await ready();
     await switchTab("hardware");
     const grid = screen.getByTestId("camera-preview-grid");
     expect(grid.dataset["tab"]).toBe("hardware");
     expect(grid.className).toContain("obs-grid-3");
-    for (const id of ["camera1", "camera2"]) {
+    for (const id of ["grip_wrist", "view_wrist"]) {
       const tile = screen.getByTestId(`stream-${id}`);
       expect(tile.dataset["state"]).toBe("absent");
       expect(tile.querySelector("canvas")).toBeNull();
@@ -382,7 +384,7 @@ describe("Welcome page", () => {
     expect(mic.dataset["state"]).toBe("starting"); // listed live, no telemetry frame yet
     await waitFor(() =>
       expect(screen.getByTestId("status-hardware").textContent).toBe(
-        "No arms detected · camera1, camera2 · mic: RØDE NT-USB Mini (live)",
+        "No arms detected · grip_wrist, view_wrist · mic: RØDE NT-USB Mini (live)",
       ),
     );
     expect(screen.getByTestId("arm-card-placeholder").textContent).toContain("Searching for arms…");
@@ -421,9 +423,9 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-state-grip").textContent).toContain("Reachable");
     expect(screen.getByTestId("arm-card-grip").textContent).toContain("192.168.1.201");
     expect(screen.getByTestId("status-hardware").textContent).toBe(
-      "Manipulation Arm reachable, Perception Arm reachable · camera1 (live), camera2 (live) · mic: RØDE NT-USB Mini (live)",
+      "Manipulation Arm reachable, Perception Arm reachable · grip_wrist (live), view_wrist (live) · mic: RØDE NT-USB Mini (live)",
     );
-    expect(screen.getByTestId("stream-camera1").dataset["state"]).not.toBe("absent");
+    expect(screen.getByTestId("stream-grip_wrist").dataset["state"]).not.toBe("absent");
     expect(screen.getByTestId("scene-picker-twin").textContent).toContain(
       "Scene·APOLLO MAVIS V2 Digital Twin·2 arms · rails · 4 cameras",
     );
@@ -454,7 +456,7 @@ describe("Welcome page", () => {
     expect(screen.queryByTestId("mic-tile")).toBeNull();
     expect(screen.getByTestId("camera-preview-grid").className).not.toContain("obs-grid-3");
     expect(screen.getByTestId("status-hardware").textContent).toBe(
-      "Hardware workcell not configured · camera1, camera2 · mic: none",
+      "Hardware workcell not configured · grip_wrist, view_wrist · mic: none",
     );
   });
 

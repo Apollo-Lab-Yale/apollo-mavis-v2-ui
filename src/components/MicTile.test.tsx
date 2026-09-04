@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { canvas2d } from "../../tests/setup";
 import { makeMicrophone, makeMicrophoneInfo, makeTelemetry } from "../../tests/mocks/fixtures";
 import { useStore } from "../store";
-import { dbNorm, EnvelopeBuffer, fmtDbfs, MicTile } from "./MicTile";
+import { dbNorm, EnvelopeBuffer, envToScope, fmtDbfs, MicTile } from "./MicTile";
 
 const push = (over: Parameters<typeof makeMicrophone>[0]) =>
   act(() => useStore.getState().setTelemetry(makeTelemetry({ microphone: makeMicrophone(over) })));
@@ -86,12 +86,25 @@ describe("MicTile", () => {
     expect(fmtDbfs(null)).toBe("—");
     expect(fmtDbfs(-120)).toBe("-inf");
     expect(fmtDbfs(-18.34)).toBe("-18.3");
+    // envToScope: peak-relative int8 + peak_dbfs → signed dB-scale value (−1..1).
+    expect(envToScope(127, -6)).toBeCloseTo(dbNorm(-6));
+    expect(envToScope(-127, -6)).toBeCloseTo(-dbNorm(-6));
+    expect(envToScope(127, -48)).toBeCloseTo(0.2); // a quiet room stays visible
+    expect(envToScope(64, -6)).toBeLessThan(envToScope(127, -6));
+    expect(envToScope(0, -6)).toBe(0);
+    expect(envToScope(64, null)).toBe(0);
     const buf = new EnvelopeBuffer(4);
-    buf.push([-10, -20, -30], [10, 20, 30]);
+    buf.push([-127, -64, -32], [127, 64, 32], -6);
     expect(buf.filled).toBe(3);
-    expect(Array.from({ length: 3 }, (_, i) => buf.max[buf.index(i)])).toEqual([10, 20, 30]);
-    buf.push([-40, -50], [40, 200]); // clamps to int8, wraps
+    const maxes = Array.from({ length: 3 }, (_, i) => buf.max[buf.index(i)] ?? 0);
+    expect(maxes[0]).toBeCloseTo(dbNorm(-6));
+    expect(maxes[0]).toBeGreaterThan(maxes[1] ?? 0);
+    expect(maxes[1]).toBeGreaterThan(maxes[2] ?? 0);
+    expect(buf.min[buf.index(0)]).toBeCloseTo(-dbNorm(-6));
+    buf.push([-127, -10], [127, 10], -20); // wraps: the oldest sample drops out
     expect(buf.filled).toBe(4);
-    expect(Array.from({ length: 4 }, (_, i) => buf.max[buf.index(i)])).toEqual([20, 30, 40, 127]);
+    const wrapped = Array.from({ length: 4 }, (_, i) => buf.max[buf.index(i)] ?? 0);
+    expect(wrapped[0]).toBeCloseTo(maxes[1] ?? 0);
+    expect(wrapped[2]).toBeCloseTo(dbNorm(-20));
   });
 });

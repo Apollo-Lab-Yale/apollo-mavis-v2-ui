@@ -114,7 +114,7 @@ export function StreamView({
       {state === "absent" && (
         <div className="tile-center" data-testid="stream-absent">
           <Icon name="camera-off" size={28} />
-          <span>{streamId} · no signal</span>
+          <span>{displayTitle} · no signal</span>
         </div>
       )}
       {state === "closed" && (

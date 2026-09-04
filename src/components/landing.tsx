@@ -28,7 +28,7 @@ import { MicTile } from "./MicTile";
 import { StreamView } from "./StreamView";
 
 // -- ObservationGrid -----------------------------------------------------------
-// Sim: 2×2 wrist + environment cameras. Hardware: camera1, camera2 + the MicTile
+// Sim: 2×2 wrist + environment cameras. Hardware: grip_wrist, view_wrist + the MicTile
 // (when `/api/microphones` lists one). A slot whose camera is not `live` in
 // `/api/cameras` (or is missing) renders the black `absent` tile — no WebSocket.
 export interface ObservationGridProps {
@@ -235,7 +235,7 @@ export function simCaption(scene: SceneInfo | null): string {
   return `${SCENE_DISPLAY_NAME} · ${n} arm${n === 1 ? "" : "s"}${rails ? " on rails" : ""}`;
 }
 
-/** "No arms detected · camera1, camera2 · mic: RØDE NT-USB Mini (live)" — with
+/** "No arms detected · grip_wrist, view_wrist · mic: RØDE NT-USB Mini (live)" — with
  * arms (Manipulation Arm first): "Manipulation Arm reachable, Perception Arm
  * unreachable · …"; live cameras get "(live)". */
 export function hardwareCaption(

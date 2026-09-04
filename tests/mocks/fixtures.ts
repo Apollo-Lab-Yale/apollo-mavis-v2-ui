@@ -2,7 +2,7 @@
  * throughout (phase-11 §4): arms `view` (Perception Arm: wrist camera + mic,
  * no gripper) + `grip` (Manipulation Arm: xArm Gripper G2 + wrist camera), the
  * four sim preview cameras, the single `mavis_v2` scene in
- * both the sim and twin listings, a hardware workcell with `camera1`/`camera2`
+ * both the sim and twin listings, a hardware workcell with `grip_wrist`/`view_wrist`
  * and `hardware_ready`, and the RØDE microphone. */
 import keymapJson from "../../schemas/keymap.json";
 import type {
@@ -25,7 +25,7 @@ export const KEYMAP: KeymapEntry[] = keymapJson as KeymapEntry[];
 
 /** Runtime order of the mavis_v2 preview cameras (`GET /api/cameras`). */
 export const SIM_CAMERA_IDS = ["cam_front", "cam_top", "view_wrist_cam", "grip_wrist_cam"] as const;
-export const HARDWARE_CAMERA_IDS = ["camera1", "camera2"] as const;
+export const HARDWARE_CAMERA_IDS = ["grip_wrist", "view_wrist"] as const;
 
 export const JOINT_LIMITS: [number, number][] = [
   [-6.28319, 6.28319],
@@ -213,7 +213,7 @@ export function makeSimCameras(): CameraInfo[] {
   return SIM_CAMERA_IDS.map((id) => makeCamera({ camera_id: id, label: id }));
 }
 
-/** camera1 / camera2 as the hardware config lists them (v4l2, not opened). */
+/** grip_wrist / view_wrist as the hardware config lists them (v4l2, not opened). */
 export function makeHardwareCameras(live = false): CameraInfo[] {
   return HARDWARE_CAMERA_IDS.map((id) =>
     makeCamera({ camera_id: id, label: id, kind: "v4l2", fps: 30, live }),
