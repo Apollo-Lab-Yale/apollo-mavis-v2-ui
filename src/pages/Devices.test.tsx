@@ -177,12 +177,16 @@ describe("Devices page", () => {
       },
       3,
     );
-    await waitFor(() => expect(screen.getByTestId("tracker-clutch").textContent).toContain("grip"));
+    await waitFor(() =>
+      expect(screen.getByTestId("tracker-clutch").textContent).toBe(
+        "CLUTCH · Manipulation Arm (grip)",
+      ),
+    );
     expect(screen.getByTestId("pose-anchor").textContent).toContain("0.300");
     expect(screen.getByTestId("pose-filtered").textContent).toContain("0.121, 0.209, 1.098");
     expect(screen.getByTestId("tracker-z").textContent).toBe("1.098 m"); // from pose_filtered
 
-    // Session start → fixed spec: gripper arm first (active by default), streams appear.
+    // Session start → fixed spec: Manipulation Arm first (active by default), streams appear.
     fireEvent.click(screen.getByTestId("session-start"));
     await screen.findByTestId("session-stop");
     expect(posts[0]).toEqual(DEVICES_SESSION_SPEC);
@@ -194,7 +198,9 @@ describe("Devices page", () => {
       sim_scene: "mavis_v2",
     });
     expect(screen.getByTestId("session-summary").textContent).toContain("mavis_v2");
-    expect(screen.getByTestId("session-summary").textContent).toContain("arms grip, view");
+    expect(screen.getByTestId("session-summary").textContent).toContain(
+      "arms Manipulation Arm (grip), Perception Arm (view)",
+    );
     expect(screen.getByTestId("stream-sim")).toBeInTheDocument();
     expect(screen.getByTestId("stream-cam0")).toBeInTheDocument();
     // With a session the form is live.

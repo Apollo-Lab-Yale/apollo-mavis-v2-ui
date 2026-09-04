@@ -2,6 +2,7 @@
 import type {
   CameraInfo,
   KeymapEntry,
+  MicrophoneInfo,
   PolicyInfo,
   ProfileInfo,
   SceneInfo,
@@ -41,8 +42,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export const getWorkcell = (): Promise<WorkcellStatus> => request("/api/workcell");
+/** `GET /api/workcell[?kind=hardware|sim]` (phase-11): `kind` selects the
+ * workcell described (the Welcome tabs); omitted = the runtime's legacy pick. */
+export const getWorkcell = (kind?: "hardware" | "sim"): Promise<WorkcellStatus> =>
+  request(kind ? `/api/workcell?kind=${kind}` : "/api/workcell");
+/** Sim preview cameras + hardware cameras (`live: false` = configured, not opened). */
 export const getCameras = (): Promise<CameraInfo[]> => request("/api/cameras");
+/** Configured microphones (phase-11). A runtime without the route (404) means
+ * "no microphone" rather than an error. */
+export async function getMicrophones(): Promise<MicrophoneInfo[]> {
+  try {
+    return await request<MicrophoneInfo[]>("/api/microphones");
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return [];
+    throw e;
+  }
+}
 export const getScenes = (kind: "sim" | "twin"): Promise<SceneInfo[]> =>
   request(`/api/scenes?kind=${kind}`);
 export const getProfiles = (): Promise<ProfileInfo[]> => request("/api/profiles");

@@ -11,6 +11,9 @@ import { createSession, endSession, getKeymap, getSession } from "../api/rest";
 import type { SessionSpec, TrackerSettingsArgs } from "../gen";
 import { buildBindings } from "../input/bindings";
 import { useGamepad } from "../input/useGamepad";
+import { pageTitle, streamLabel } from "../lib/streams";
+import { useLingeringValue } from "../lib/useDelayedUnmount";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { selectTracker, useStore } from "../store";
 import { ConnectionBanner, Toasts } from "../components/ConnectionBanner";
 import {
@@ -20,12 +23,13 @@ import {
   TrackerPanel,
   TrackerSettingsForm,
 } from "../components/devices";
+import { SHEET_EXIT_MS } from "../components/Sheet";
 import { StreamGrid } from "../components/StreamGrid";
 import { TeleopSurface } from "../components/TeleopSurface";
 import { TrackerCalibrationWizard, type WizardKind } from "../components/TrackerCalibrationWizard";
 
 /** Fixed debug session (13-tracker §1.1/§5): teleop / sim / mavis_v2. The
- * gripper arm is listed first so it is the active arm by default. */
+ * Manipulation Arm (`grip`) is listed first so it is the active arm by default. */
 export const DEVICES_SESSION_SPEC: SessionSpec = {
   mode: "teleop",
   kind: "sim",
@@ -35,6 +39,7 @@ export const DEVICES_SESSION_SPEC: SessionSpec = {
 };
 
 export function Devices() {
+  useDocumentTitle(pageTitle("Devices"));
   const session = useStore((s) => s.session);
   const setSession = useStore((s) => s.setSession);
   const keymap = useStore((s) => s.keymap);
@@ -51,6 +56,8 @@ export function Devices() {
   // Calibration wizard (phase-10): which kind is open; the flow state itself
   // lives in telemetry.tracker.calibration, never here.
   const [wizard, setWizard] = useState<WizardKind | null>(null);
+  // Held mounted (with its last kind) for the Sheet exit after closing.
+  const wizardShown = useLingeringValue(wizard, SHEET_EXIT_MS);
 
   const control = getControl();
   useGamepad();
@@ -130,7 +137,7 @@ export function Devices() {
   );
 
   const streams = session?.streams ?? [];
-  const labels = Object.fromEntries(streams.map((s) => [s, s]));
+  const labels = Object.fromEntries(streams.map((s) => [s, streamLabel(s)]));
   const settingsDisabled = controlDown || role === "observer" || !session;
   const settingsReason = !session
     ? "Start a session to tune — tracker_settings needs a running control loop."
@@ -146,7 +153,7 @@ export function Devices() {
         <div className="kv">
           <strong>Devices — gamepad &amp; tracker</strong>
           <Link to="/" data-testid="nav-home" className="nav-link">
-            ◂ Landing
+            ◂ Welcome
           </Link>
         </div>
         <ConnectionBanner />
@@ -183,9 +190,10 @@ export function Devices() {
         />
         <CalibrationPanel tracker={tracker} session={session} onOpen={setWizard} />
       </div>
-      {wizard && (
+      {wizardShown !== null && (
         <TrackerCalibrationWizard
-          kind={wizard}
+          kind={wizardShown}
+          open={wizard !== null}
           onClose={() => setWizard(null)}
           onSwitchKind={setWizard}
         />

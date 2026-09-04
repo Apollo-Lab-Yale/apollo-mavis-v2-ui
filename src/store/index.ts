@@ -15,10 +15,14 @@ import type {
 import type { Bindings } from "../input/bindings";
 import type { WsStatus } from "../lib/types";
 
+/** Four feedback kinds (phase-11 §6): info/success auto-dismiss 6 s, warning
+ * 10 s, error persists until dismissed (see components/Toasts.tsx). */
+export type ToastTone = "info" | "success" | "warning" | "error";
+
 export interface Toast {
   id: number;
   text: string;
-  tone: "info" | "error";
+  tone: ToastTone;
 }
 
 export interface VideoTileStats {
@@ -26,6 +30,8 @@ export interface VideoTileStats {
   fps: number;
   latencyMs: number | null;
   status: WsStatus;
+  /** False until the first frame was drawn (StreamView shows "connecting", not STALE). */
+  hasFrame?: boolean;
 }
 
 /** Browser-side gamepad snapshot (13-tracker §5) — written by the adapter,

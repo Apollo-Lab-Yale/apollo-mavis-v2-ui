@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { makeProfile } from "../../tests/mocks/fixtures";
 import { ProfileActions } from "./ProfileActions";
@@ -20,13 +20,14 @@ describe("ProfileActions", () => {
     expect(onAction).toHaveBeenCalledWith("set_initial_condition");
   });
 
-  it("cancel sends nothing", () => {
+  it("cancel sends nothing; the dialog closes at once and unmounts after its exit", async () => {
     const onAction = vi.fn();
     render(<ProfileActions profiles={profiles} onAction={onAction} />);
     fireEvent.click(screen.getByTestId("set-initial-open"));
     fireEvent.click(screen.getByTestId("confirm-cancel"));
     expect(onAction).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("confirm-dialog")).toBeNull();
+    expect((screen.getByTestId("confirm-dialog") as HTMLDialogElement).open).toBe(false);
+    await waitFor(() => expect(screen.queryByTestId("confirm-dialog")).toBeNull());
   });
 
   it("save profile dialog sends save_profile with name + notes", () => {

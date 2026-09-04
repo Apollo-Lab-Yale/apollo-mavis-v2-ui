@@ -35,6 +35,7 @@ export type GripperForceCapable = boolean;
 export type HasRail = boolean;
 export type Ip = string | null;
 export type JointLimits = [number, number][];
+export type Reachable = "open" | "refused" | "unreachable" | "unknown";
 export type CameraId = string;
 export type Fps = number;
 export type Kind = "v4l2" | "realsense" | "sim";
@@ -74,6 +75,15 @@ export type Held = string[];
 export type Seq = number;
 export type T4 = "keys";
 export type Ts1 = number;
+export type Channels = number;
+export type Detail1 = string;
+export type Kind3 = "pulse" | "fake" | "none";
+export type Label2 = string;
+export type Live1 = boolean;
+export type MicId = string;
+export type SampleRate = number;
+export type Source = string | null;
+export type Status = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
 export type ActionFrame = string;
 export type ActionSpace = "delta_ee" | "abs_ee" | "joint";
 export type Path = string;
@@ -89,8 +99,8 @@ export type ProfileId = string;
 export type Name3 = string;
 export type Notes1 = string;
 export type Cameras = string[];
-export type Kind3 = "sim" | "twin";
-export type Label2 = string;
+export type Kind4 = "sim" | "twin";
+export type Label3 = string;
 export type NumArms = number;
 export type RailFlags = boolean[];
 export type SceneId = string;
@@ -102,7 +112,7 @@ export type State = string;
 export type Streams = string[];
 export type Arms2 = string[];
 export type DigitalTwinScene = string | null;
-export type Kind4 = "hardware" | "sim";
+export type Kind5 = "hardware" | "sim";
 export type Mode2 = "teleop" | "collect" | "dagger" | "inference";
 export type Policy = string | null;
 export type SimScene = string | null;
@@ -180,25 +190,38 @@ export type State2 = "idle" | "recording" | "saving";
 export type Epoch2 = string;
 export type EngagedArm1 = string | null;
 export type PolicyVersion2 = string | null;
+export type AgeS = number | null;
+export type Clipping = boolean;
+export type Detail2 = string;
+export type EnvMax = number[];
+export type EnvMin = number[];
+export type MicId1 = string;
+export type Overruns = number;
+export type PeakDbfs = number | null;
+export type RateHz = number;
+export type RmsDbfs = number | null;
+export type SampleRate1 = number;
 export type Seq1 = number;
+export type Status1 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
+export type Seq2 = number;
 export type PlanStatus = string | null;
 export type StartFromProgress = number | null;
 export type State3 = string;
 export type TrainerAlive = boolean | null;
 export type T5 = "telemetry";
-export type AgeS = number | null;
+export type AgeS1 = number | null;
 export type Backend = "libsurvive" | "fake" | "none";
 export type AppliedYawDeg = number | null;
 export type BackupPath = string | null;
 export type BaseStationInstalledAt = number | null;
 export type ControllerStill = boolean | null;
-export type Detail1 = string;
+export type Detail3 = string;
 export type ElapsedS = number | null;
 export type FitChecks = string[];
 export type FitResidualDeg = number | null;
 export type FittedYawDeg = number | null;
 export type InstalledPath = string | null;
-export type Kind5 = "none" | "base_station" | "yaw";
+export type Kind6 = "none" | "base_station" | "yaw";
 export type Channel = number | null;
 export type Index1 = number;
 export type Reference = boolean;
@@ -230,7 +253,7 @@ export type StdMm = [number, number, number];
 export type ThresholdStdMm = number;
 export type ThresholdStepMm = number;
 export type YawCalibratedAt = number | null;
-export type Label3 = "start" | "left" | "forward" | "right" | "back" | "up" | "down";
+export type Label4 = "start" | "left" | "forward" | "right" | "back" | "up" | "down";
 export type YawPoints = YawGesturePoint[];
 export type YawValid = boolean;
 export type Charging = boolean | null;
@@ -244,22 +267,22 @@ export type TrackpadX = number;
 export type TrackpadY = number;
 export type Trigger = number;
 export type TriggerPressed = boolean;
-export type Detail2 = string;
+export type Detail4 = string;
 export type DeviceAction = string | null;
 export type DeviceHeld = string[];
 export type EngagedArm2 = string | null;
 export type ObjectName = string;
-export type RateHz = number;
-export type Seq2 = number;
+export type RateHz1 = number;
+export type Seq3 = number;
 export type FilterBeta = number;
 export type FilterEnabled = boolean;
 export type FilterMinCutoffHz = number;
 export type FollowRotation = boolean;
 export type PosScale = number;
 export type YawDeg = number;
-export type Status = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
+export type Status2 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
 export type Ts3 = number;
-export type Kind6 = "base_station" | "yaw";
+export type Kind7 = "base_station" | "yaw";
 export type Op = "start" | "capture" | "validate" | "install" | "apply" | "abort";
 export type Point = ("start" | "left" | "forward" | "right" | "back" | "up" | "down") | null;
 export type FilterBeta1 = number | null;
@@ -271,7 +294,8 @@ export type YawDeg1 = number | null;
 export type Arms5 = ArmStatusInfo[];
 export type AvailableKinds = ("hardware" | "sim")[];
 export type Cameras1 = CameraInfo[];
-export type Kind7 = "hardware" | "sim";
+export type HardwareReady = boolean;
+export type Kind8 = "hardware" | "sim";
 export type PoliciesAvailable = boolean;
 
 export interface ApolloProtocol {
@@ -284,6 +308,7 @@ export interface ApolloProtocol {
   JointTargetArgs?: JointTargetArgs;
   KeymapEntry?: KeymapEntry;
   KeysMsg?: KeysMsg;
+  MicrophoneInfo?: MicrophoneInfo;
   PolicyInfo?: PolicyInfo;
   ProfileInfo?: ProfileInfo;
   SaveProfileArgs?: SaveProfileArgs;
@@ -330,6 +355,7 @@ export interface ArmStatusInfo {
   has_rail: HasRail;
   ip: Ip;
   joint_limits: JointLimits;
+  reachable?: Reachable;
 }
 /**
  * Landing-page camera card.
@@ -394,6 +420,20 @@ export interface KeysMsg {
   ts: Ts1;
 }
 /**
+ * GET /api/microphones row (RØDE NT-USB Mini on the view arm, 05-ui §8.1).
+ */
+export interface MicrophoneInfo {
+  channels?: Channels;
+  detail?: Detail1;
+  kind: Kind3;
+  label: Label2;
+  live: Live1;
+  mic_id: MicId;
+  sample_rate: SampleRate;
+  source: Source;
+  status: Status;
+}
+/**
  * GET /api/policies row (04-runtime §13.1).
  */
 export interface PolicyInfo {
@@ -427,8 +467,8 @@ export interface SaveProfileArgs {
  */
 export interface SceneInfo {
   cameras: Cameras;
-  kind: Kind3;
-  label: Label2;
+  kind: Kind4;
+  label: Label3;
   num_arms: NumArms;
   rail_flags: RailFlags;
   scene_id: SceneId;
@@ -451,7 +491,7 @@ export interface SessionSpec {
   arms: Arms2;
   digital_twin_scene?: DigitalTwinScene;
   frames: Frames;
-  kind: Kind4;
+  kind: Kind5;
   mode: Mode2;
   policy?: Policy;
   sim_scene?: SimScene;
@@ -504,7 +544,8 @@ export interface TelemetryMsg {
   episode: EpisodeStatus | null;
   epoch: Epoch2;
   inference: InferenceStatus | null;
-  seq: Seq1;
+  microphone?: MicrophoneTelemetry | null;
+  seq: Seq2;
   session?: SessionTelemetry | null;
   t?: T5;
   tracker?: TrackerTelemetry | null;
@@ -594,6 +635,33 @@ export interface InferenceStatus {
   policy_version: PolicyVersion2;
 }
 /**
+ * Microphone block (phase-11; 04-runtime §13.3), additive.
+ *
+ * Every field defaults so a producer without a microphone still validates.
+ * One frame per telemetry tick (frame length = ``sample_rate / telemetry_hz``,
+ * 1920 samples at 48 kHz / 25 Hz); the UI de-duplicates on ``seq``.
+ * ``env_min``/``env_max`` are the per-bin min/max envelope of the frame as 64
+ * int8 values (-127..127, time-ordered) for the scrolling oscilloscope;
+ * ``rms_dbfs``/``peak_dbfs`` are full-scale levels (0 dBFS = |1.0|), ``None``
+ * when no frame has arrived. ``status`` shares ``MicStatus`` with
+ * ``MicrophoneInfo`` (§12).
+ */
+export interface MicrophoneTelemetry {
+  age_s?: AgeS;
+  clipping?: Clipping;
+  detail?: Detail2;
+  env_max?: EnvMax;
+  env_min?: EnvMin;
+  mic_id?: MicId1;
+  overruns?: Overruns;
+  peak_dbfs?: PeakDbfs;
+  rate_hz?: RateHz;
+  rms_dbfs?: RmsDbfs;
+  sample_rate?: SampleRate1;
+  seq?: Seq1;
+  status?: Status1;
+}
+/**
  * Additive session-lifecycle block (04-runtime §13.3).
  */
 export interface SessionTelemetry {
@@ -618,14 +686,14 @@ export interface SessionTelemetry {
  * so the Devices-page wizard follows progress without polling.
  */
 export interface TrackerTelemetry {
-  age_s?: AgeS;
+  age_s?: AgeS1;
   anchor_tcp?: PoseMsg | null;
   backend: Backend;
   calibration?: TrackerCalibrationStatus | null;
   charging?: Charging;
   clutch?: Clutch;
   controller?: ControllerTelemetry | null;
-  detail?: Detail2;
+  detail?: Detail4;
   device_action?: DeviceAction;
   device_held?: DeviceHeld;
   engaged_arm?: EngagedArm2;
@@ -633,10 +701,10 @@ export interface TrackerTelemetry {
   pose_filtered?: PoseMsg | null;
   pose_raw?: PoseMsg | null;
   pose_world?: PoseMsg | null;
-  rate_hz?: RateHz;
-  seq?: Seq2;
+  rate_hz?: RateHz1;
+  seq?: Seq3;
   settings: TrackerSettingsMsg;
-  status: Status;
+  status: Status2;
   target_tcp?: PoseMsg | null;
 }
 /**
@@ -651,13 +719,13 @@ export interface TrackerCalibrationStatus {
   backup_path?: BackupPath;
   base_station_installed_at?: BaseStationInstalledAt;
   controller_still?: ControllerStill;
-  detail?: Detail1;
+  detail?: Detail3;
   elapsed_s?: ElapsedS;
   fit_checks?: FitChecks;
   fit_residual_deg?: FitResidualDeg;
   fitted_yaw_deg?: FittedYawDeg;
   installed_path?: InstalledPath;
-  kind?: Kind5;
+  kind?: Kind6;
   lighthouses?: Lighthouses;
   next_point?: NextPoint;
   phase?: Phase;
@@ -698,7 +766,7 @@ export interface CalibrationValidation {
  * One captured point of the yaw gesture.
  */
 export interface YawGesturePoint {
-  label: Label3;
+  label: Label4;
   pose: PoseMsg;
 }
 /**
@@ -739,7 +807,7 @@ export interface TrackerSettingsMsg {
  * POST /api/tracker/calibration body (illegal transitions -> 409).
  */
 export interface TrackerCalibrationCommand {
-  kind: Kind6;
+  kind: Kind7;
   op: Op;
   point?: Point;
 }
@@ -766,6 +834,7 @@ export interface WorkcellStatus {
   arms: Arms5;
   available_kinds: AvailableKinds;
   cameras: Cameras1;
-  kind: Kind7;
+  hardware_ready?: HardwareReady;
+  kind: Kind8;
   policies_available?: PoliciesAvailable;
 }

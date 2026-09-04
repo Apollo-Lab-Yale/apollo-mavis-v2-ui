@@ -1,4 +1,5 @@
 /** Degraded-state banners: control link down / observer / telemetry stale (05-ui §10). */
+import { armTitle } from "../lib/streams";
 import { useStore } from "../store";
 
 export function ConnectionBanner() {
@@ -27,28 +28,12 @@ export function ConnectionBanner() {
       )}
       {disconnectedArms.map((a) => (
         <div className="banner banner-red" key={a.arm_id} data-testid={`arm-down-${a.arm_id}`}>
-          {a.arm_id} DISCONNECTED — motion held
+          {armTitle(a.arm_id)} DISCONNECTED — motion held
         </div>
       ))}
     </>
   );
 }
 
-export function Toasts() {
-  const toasts = useStore((s) => s.toasts);
-  const dismiss = useStore((s) => s.dismissToast);
-  return (
-    <div className="toasts">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={`toast${t.tone === "error" ? " toast-error" : ""}`}
-          onClick={() => dismiss(t.id)}
-          data-testid="toast"
-        >
-          {t.text}
-        </div>
-      ))}
-    </div>
-  );
-}
+// Toasts moved to ./Toasts (phase-11); re-exported so page imports keep working.
+export { Toasts } from "./Toasts";

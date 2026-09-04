@@ -1,7 +1,9 @@
 /** Inference side panel — takeover = SAFETY ESCAPE, never recorded (05-ui §8.2). */
 import { useState } from "react";
 import type { InferenceStatus } from "../gen";
+import { useDelayedUnmount } from "../lib/useDelayedUnmount";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { SHEET_EXIT_MS } from "./Sheet";
 
 export interface InferencePanelProps {
   inference: InferenceStatus;
@@ -10,6 +12,7 @@ export interface InferencePanelProps {
 
 export function InferencePanel({ inference, onTerminate }: InferencePanelProps) {
   const [confirming, setConfirming] = useState(false);
+  const confirmMounted = useDelayedUnmount(confirming, SHEET_EXIT_MS);
   const takeover = inference.control_mode === "human";
   return (
     <div className="panel" data-testid="inference-panel">
@@ -48,8 +51,9 @@ export function InferencePanel({ inference, onTerminate }: InferencePanelProps) 
           Terminate session
         </button>
       )}
-      {confirming && (
+      {confirmMounted && (
         <ConfirmDialog
+          open={confirming}
           text="End the inference session?"
           confirmLabel="Terminate"
           onConfirm={() => {

@@ -60,8 +60,8 @@ describe("store", () => {
   });
 
   it("selectActiveArm resolves the server-authoritative active arm", () => {
-    useStore.getState().setTelemetry(makeTelemetry({ active_arm: "arm0" }));
-    expect(selectActiveArm(useStore.getState())?.arm_id).toBe("arm0");
+    useStore.getState().setTelemetry(makeTelemetry({ active_arm: "view" }));
+    expect(selectActiveArm(useStore.getState())?.arm_id).toBe("view");
     useStore.getState().setTelemetry(makeTelemetry({ seq: 2, active_arm: null }));
     expect(selectActiveArm(useStore.getState())).toBeNull();
   });

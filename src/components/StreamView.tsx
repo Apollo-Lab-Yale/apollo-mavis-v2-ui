@@ -1,12 +1,29 @@
-/** One video pane (landing + cockpit). Owns a <canvas> + one VideoStream. */
+/** One video pane (landing + cockpit). Owns a <canvas> + one VideoStream.
+ *
+ * Re-skinned for phase-11 §4: 16/9 tile, `data-state` =
+ * live | connecting | stale | closed | absent, title pill top-left (display
+ * name via `title`; the stream id stays canonical), status pill top-right.
+ * `absent` (camera configured but not live) renders pure black with a
+ * crossed-camera glyph and opens NO WebSocket — `/ws/video/<unknown>` closes
+ * 1008 and the client would otherwise re-dial forever. STALE keeps the last
+ * frame under a grey scrim (05-ui §10). Nothing on the canvas is animated. */
 import { useEffect, useRef } from "react";
 import { VideoStream } from "../api/ws/video";
 import type { WsFactory } from "../api/ws/reconnecting";
-import { useStore } from "../store";
+import { streamLabel } from "../lib/streams";
+import { useStore, type VideoTileStats } from "../store";
+import { Icon } from "./icons";
+
+export type StreamState = "live" | "connecting" | "stale" | "closed" | "absent";
 
 export interface StreamViewProps {
   streamId: string;
-  label: string;
+  /** Legacy display label; prefer `title`. */
+  label?: string;
+  /** Display name for the title pill (defaults to STREAM_LABELS / the id). */
+  title?: string;
+  /** Configured-but-not-live camera → black tile, no WebSocket. */
+  absent?: boolean;
   useWorker?: boolean;
   showLatencyBadge?: boolean; // default true in cockpit, false on landing
   highlight?: "none" | "blocked"; // flashing border while twin gate blocks
@@ -18,9 +35,27 @@ const workerFlag = (): boolean => {
   return import.meta.env?.VITE_VIDEO_WORKER === "1";
 };
 
+/** Pure state derivation (exported for tests). */
+export function streamState(stats: VideoTileStats | undefined, absent: boolean): StreamState {
+  if (absent) return "absent";
+  if (!stats) return "connecting";
+  if (stats.status === "closed") return "closed";
+  if (stats.status === "connecting" || stats.hasFrame === false) return "connecting";
+  return stats.stale ? "stale" : "live";
+}
+
+const STATUS_TEXT: Record<Exclude<StreamState, "absent">, string> = {
+  live: "LIVE",
+  connecting: "Connecting…",
+  stale: "STALE",
+  closed: "RETRYING",
+};
+
 export function StreamView({
   streamId,
   label,
+  title,
+  absent = false,
   useWorker,
   showLatencyBadge = true,
   highlight = "none",
@@ -31,6 +66,7 @@ export function StreamView({
   const setVideoStats = useStore((s) => s.setVideoStats);
 
   useEffect(() => {
+    if (absent) return; // never dial an absent camera
     const canvas = canvasRef.current;
     if (!canvas) return;
     const stream = new VideoStream({
@@ -44,36 +80,51 @@ export function StreamView({
           fps: st.fps,
           latencyMs: st.latencyMs,
           status: st.status,
+          hasFrame: Number.isFinite(st.staleMs),
         }),
     });
     stream.start();
     return () => stream.stop();
-  }, [streamId, useWorker, wsFactory, setVideoStats]);
+  }, [streamId, useWorker, wsFactory, setVideoStats, absent]);
 
-  const closed = stats?.status === "closed";
-  const connecting = stats?.status === "connecting";
-  const stale = stats?.stale ?? false;
+  const state = streamState(stats, absent);
+  const displayTitle = title ?? label ?? streamLabel(streamId);
 
   return (
     <div
       className={`tile${highlight === "blocked" ? " tile-blocked" : ""}`}
       data-testid={`stream-${streamId}`}
+      data-state={state}
+      data-stream-id={streamId}
     >
-      <canvas ref={canvasRef} />
-      <span className="tile-label">{label}</span>
-      {closed && (
-        <div className="tile-empty" data-testid="stream-closed">
+      {!absent && <canvas ref={canvasRef} />}
+      <span className="tile-pill tile-label" data-testid="stream-title">
+        {displayTitle}
+      </span>
+      {state !== "absent" && (
+        <span className="tile-pill tile-status" data-testid="stream-status">
+          {state === "connecting" ? (
+            <span className="spinner" aria-hidden="true" />
+          ) : (
+            <span className="status-dot" aria-hidden="true" />
+          )}
+          {STATUS_TEXT[state]}
+        </span>
+      )}
+      {state === "absent" && (
+        <div className="tile-center" data-testid="stream-absent">
+          <Icon name="camera-off" size={28} />
+          <span>{streamId} · no signal</span>
+        </div>
+      )}
+      {state === "closed" && (
+        <div className="tile-center" data-testid="stream-closed">
           Stream unavailable — retrying…
         </div>
       )}
-      {connecting && !closed && <div className="tile-empty">connecting…</div>}
-      {stale && !closed && (
-        <div className="tile-stale-overlay" data-testid="stream-stale">
-          <span className="chip chip-grey">STALE</span>
-        </div>
-      )}
-      {showLatencyBadge && stats && !closed && (
-        <span className="tile-badge mono">
+      {state === "stale" && <div className="tile-stale-overlay" data-testid="stream-stale" />}
+      {showLatencyBadge && stats && state !== "closed" && state !== "absent" && (
+        <span className="tile-badge">
           {Math.round(stats.fps)} fps
           {stats.latencyMs != null ? ` · ${Math.round(stats.latencyMs)} ms` : ""}
         </span>

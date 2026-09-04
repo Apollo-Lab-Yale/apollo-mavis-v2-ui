@@ -30,7 +30,7 @@ CI chain: `npm install && npm run lint && npm run gen:check && npm test && npm r
 `#/` landing · `#/teleop` `#/collect` `#/dagger` `#/inference` (session-guarded
 cockpits) · `#/devices` (gamepad + Vive-tracker debug page, no session
 required; can start a fixed `teleop`/`sim`/`mavis_v2` session with arms
-`grip`,`view` — gripper arm active by default). The devices page wraps its
+`grip`, `view` — the Manipulation Arm (`grip`) active by default). The devices page wraps its
 video area in the same click-to-arm `TeleopSurface` as the cockpit, so keyboard
 teleop (incl. the `KeyC` clutch, Tab/Z arm switch) works there too.
 
@@ -85,3 +85,30 @@ and `src/gen/`.
 `npm run build`, then point the runtime's `ui_dist` at `dist/`; the runtime
 mounts it with `StaticFiles(html=True)`. Routing is hash-based (`#/teleop`
 etc.) so deep links never 404 against the static mount.
+
+## Design system (phase-11)
+
+- `src/styles/global.css` is the single stylesheet: primitives → semantic tokens
+  (`--bg --surface-1..3 --border --fg --fg-2 --fg-3 --accent --accent-fill --ok --warn
+--danger …`) → component tokens; legacy names (`--panel --fg-dim --green …`) are aliases.
+  Spacing `--space-1..9`, radii `--radius-1..4/pill`, shadows `--shadow-1..3` + `--edge`,
+  type scale `--text-*`, motion `--dur-*` / `--ease-*` / `--stagger`. `prefers-reduced-motion`
+  keeps opacity/colour and drops translate/scale; `prefers-reduced-transparency` and
+  `prefers-contrast: more` are honoured.
+- Inter is self-hosted (`public/fonts/InterVariable.woff2`, rsms/inter v4.1, OFL licence
+  alongside); preloaded from `index.html`, `font-display: swap`, system stack fallback.
+- Primitives: `Sheet` (native `<dialog>` modal), `Toasts` (four tones, auto-dismiss),
+  `StreamView` (`data-state` live/connecting/stale/closed/absent), `SegmentedControl`
+  (tablist + sliding thumb), `MicTile` (canvas oscillogram + level meter from
+  `telemetry.microphone`), `icons.tsx` (hand-drawn inline SVG), `lib/streams.ts`
+  (display names, slot orders, `MODE_LABELS`), `lib/useDocumentTitle.ts`.
+- Welcome page (`src/pages/Landing.tsx`, phase-11 §4): hero + `SegmentedControl` Hardware | Sim;
+  per-tab observation grid (`ObservationGrid`: Sim 2×2 from `/api/cameras`, Hardware
+  `camera1`/`camera2` black when not live + `MicTile` when `/api/microphones` lists one), status
+  caption (Hardware polls `GET /api/workcell?kind=hardware` every 2 s while visible), arm cards
+  with a "Searching for arms…" placeholder, Start-from option rows + profile list, the read-only
+  `mavis_v2` scene row, and `ModeLauncher` cards with visible disabled reasons. Teleop launches
+  directly; Data Collection / DAgger / Inference open `LaunchSheet` (task, promoted-only policy
+  rows, Advanced → per-arm `FrameSelector`; a 409 detail shows inside the sheet). Pure
+  `validateLaunch` / `buildSpec` / `launcherReason` live in `src/lib/launch.ts`; the first-mount
+  hero reveal is gated by `lib/useRevealOnce.ts` (sessionStorage).

@@ -1,10 +1,18 @@
-/** Protocol fixtures built from the vendored schemas' shapes. */
+/** Protocol fixtures built from the vendored schemas' shapes — MAVIS v2 ids
+ * throughout (phase-11 §4): arms `view` (Perception Arm: wrist camera + mic,
+ * no gripper) + `grip` (Manipulation Arm: xArm Gripper G2 + wrist camera), the
+ * four sim preview cameras, the single `mavis_v2` scene in
+ * both the sim and twin listings, a hardware workcell with `camera1`/`camera2`
+ * and `hardware_ready`, and the RØDE microphone. */
 import keymapJson from "../../schemas/keymap.json";
 import type {
   ArmStatusInfo,
   ArmTelemetry,
   CameraInfo,
   KeymapEntry,
+  MicrophoneInfo,
+  MicrophoneTelemetry,
+  PolicyInfo,
   ProfileInfo,
   SceneInfo,
   TelemetryMsg,
@@ -15,9 +23,24 @@ import type {
 
 export const KEYMAP: KeymapEntry[] = keymapJson as KeymapEntry[];
 
+/** Runtime order of the mavis_v2 preview cameras (`GET /api/cameras`). */
+export const SIM_CAMERA_IDS = ["cam_front", "cam_top", "view_wrist_cam", "grip_wrist_cam"] as const;
+export const HARDWARE_CAMERA_IDS = ["camera1", "camera2"] as const;
+
+export const JOINT_LIMITS: [number, number][] = [
+  [-6.28319, 6.28319],
+  [-2.059, 2.0944],
+  [-6.28319, 6.28319],
+  [-0.19198, 3.927],
+  [-6.28319, 6.28319],
+  [-1.69297, 3.14159],
+  [-6.28319, 6.28319],
+  [0, 0.65],
+];
+
 export function makeArm(over: Partial<ArmTelemetry> = {}): ArmTelemetry {
   return {
-    arm_id: "arm0",
+    arm_id: "grip",
     connected: true,
     q: [0, -0.5, 0, 0.7, 0, 1.2, 0],
     rail_pos_m: 0.2,
@@ -35,9 +58,9 @@ export function makeTelemetry(over: Partial<TelemetryMsg> = {}): TelemetryMsg {
     seq: 1,
     ts: 100.0,
     epoch: "epoch-1",
-    active_arm: "arm0",
+    active_arm: "grip",
     controller_connected: true,
-    arms: [makeArm()],
+    arms: [makeArm(), makeArm({ arm_id: "view", gripper_open_frac: 1, rail_pos_m: 0.6 })],
     collision: { blocked: false, severity: "ok", pairs: [], min_clearance_m: 1.0 },
     clearances: [],
     episode: null,
@@ -99,48 +122,112 @@ export function makeCalibration(
   };
 }
 
-export function makeArmStatus(over: Partial<ArmStatusInfo> = {}): ArmStatusInfo {
+/** Microphone telemetry block (phase-11): a live 48 kHz frame with a ±40 %
+ * envelope; callers override `seq` per frame. */
+export function makeMicrophone(over: Partial<MicrophoneTelemetry> = {}): MicrophoneTelemetry {
+  const env = Array.from({ length: 64 }, (_, i) =>
+    Math.round(50 * Math.sin((i / 64) * Math.PI * 4)),
+  );
   return {
-    arm_id: "arm0",
-    ip: "192.168.1.201",
-    connected: true,
-    has_rail: true,
-    gripper: "xarm",
-    gripper_force_capable: false,
-    error_code: 0,
-    joint_limits: [
-      [-6.28, 6.28],
-      [-2.06, 2.09],
-      [-6.28, 6.28],
-      [-0.19, 3.93],
-      [-6.28, 6.28],
-      [-1.69, 3.14],
-      [-6.28, 6.28],
-      [0, 0.65],
-    ],
+    mic_id: "mic_view",
+    status: "live",
+    detail: "",
+    seq: 1,
+    age_s: 0.01,
+    rate_hz: 25,
+    sample_rate: 48000,
+    rms_dbfs: -24.0,
+    peak_dbfs: -12.0,
+    clipping: false,
+    env_min: env.map((v) => -Math.abs(v)),
+    env_max: env.map((v) => Math.abs(v)),
+    overruns: 0,
     ...over,
   };
 }
 
+/** `GET /api/microphones` row (phase-11): the RØDE on the Perception Arm (`view`), live. */
+export function makeMicrophoneInfo(over: Partial<MicrophoneInfo> = {}): MicrophoneInfo {
+  return {
+    mic_id: "mic_view",
+    label: "RØDE NT-USB Mini",
+    kind: "pulse",
+    source: "alsa_input.usb-R__DE_Microphones_R__DE_NT-USB_Mini_750BFEE8-00.mono-fallback",
+    sample_rate: 48000,
+    channels: 1,
+    live: true,
+    status: "live",
+    detail: "",
+    ...over,
+  };
+}
+
+/** One `WorkcellStatus.arms` row — the sim Manipulation Arm (`grip`, xArm
+ * Gripper G2) by default (pre-session: `connected: false`, `ip: null`, probe
+ * `unknown`). */
+export function makeArmStatus(over: Partial<ArmStatusInfo> = {}): ArmStatusInfo {
+  return {
+    arm_id: "grip",
+    ip: null,
+    connected: false,
+    reachable: "unknown",
+    has_rail: true,
+    gripper: "xarm_g2",
+    gripper_force_capable: false,
+    error_code: 0,
+    joint_limits: JOINT_LIMITS,
+    ...over,
+  };
+}
+
+/** Sim workcell arms in the runtime's order (view first, then grip). */
+export function makeSimArms(): ArmStatusInfo[] {
+  return [makeArmStatus({ arm_id: "view", gripper: "none" }), makeArmStatus({ arm_id: "grip" })];
+}
+
+/** Hardware workcell arms from `configs/mavis_v2.yaml` (placeholder IPs →
+ * the probe reports `unreachable`). `reachable` overrides both arms. */
+export function makeHardwareArms(
+  reachable: NonNullable<ArmStatusInfo["reachable"]> = "unreachable",
+): ArmStatusInfo[] {
+  return [
+    makeArmStatus({ arm_id: "grip", ip: "192.168.1.201", reachable }),
+    makeArmStatus({ arm_id: "view", ip: "192.168.2.219", gripper: "none", reachable }),
+  ];
+}
+
 export function makeCamera(over: Partial<CameraInfo> = {}): CameraInfo {
   return {
-    camera_id: "cam0",
+    camera_id: "grip_wrist_cam",
     kind: "sim",
-    label: "cam0",
+    label: "grip_wrist_cam",
     resolution: [640, 480],
-    fps: 30,
+    fps: 15,
     live: true,
     ...over,
   };
 }
 
+/** The four live sim preview cameras (`GET /api/cameras` on the sim runtime). */
+export function makeSimCameras(): CameraInfo[] {
+  return SIM_CAMERA_IDS.map((id) => makeCamera({ camera_id: id, label: id }));
+}
+
+/** camera1 / camera2 as the hardware config lists them (v4l2, not opened). */
+export function makeHardwareCameras(live = false): CameraInfo[] {
+  return HARDWARE_CAMERA_IDS.map((id) =>
+    makeCamera({ camera_id: id, label: id, kind: "v4l2", fps: 30, live }),
+  );
+}
+
+/** `mavis_v2` as `GET /api/scenes` lists it (same row under kind sim and twin). */
 export function makeScene(over: Partial<SceneInfo> = {}): SceneInfo {
   return {
-    scene_id: "tabletop",
-    label: "Tabletop",
-    num_arms: 1,
-    rail_flags: [true],
-    cameras: ["cam0"],
+    scene_id: "mavis_v2",
+    label: "APOLLO MAVIS V2 Digital Twin",
+    num_arms: 2,
+    rail_flags: [true, true],
+    cameras: [...SIM_CAMERA_IDS],
     kind: "sim",
     ...over,
   };
@@ -150,7 +237,7 @@ export function makeProfile(over: Partial<ProfileInfo> = {}): ProfileInfo {
   return {
     profile_id: "p1",
     name: "home",
-    arms: ["arm0"],
+    arms: ["grip", "view"],
     notes: "",
     created_at: "2026-01-01T00:00:00Z",
     is_initial_condition: false,
@@ -158,13 +245,41 @@ export function makeProfile(over: Partial<ProfileInfo> = {}): ProfileInfo {
   };
 }
 
+export function makePolicy(over: Partial<PolicyInfo> = {}): PolicyInfo {
+  return {
+    policy_id: "ckpt-9",
+    path: "/ckpts/9",
+    action_space: "delta_ee",
+    action_frame: "arm_base:grip",
+    policy_version: 9,
+    promoted: true,
+    ...over,
+  };
+}
+
+/** `GET /api/workcell` on the sim-only runtime (no hardware block configured). */
 export function makeWorkcell(over: Partial<WorkcellStatus> = {}): WorkcellStatus {
   return {
     kind: "sim",
     available_kinds: ["sim"],
-    arms: [makeArmStatus()],
-    cameras: [makeCamera()],
+    arms: makeSimArms(),
+    cameras: makeSimCameras(),
     policies_available: false,
+    hardware_ready: false,
+    ...over,
+  };
+}
+
+/** `GET /api/workcell?kind=hardware` with the hardware block configured but no
+ * arm reachable: probe `unreachable`, cameras not opened, `hardware_ready: false`. */
+export function makeHardwareWorkcell(over: Partial<WorkcellStatus> = {}): WorkcellStatus {
+  return {
+    kind: "hardware",
+    available_kinds: ["hardware", "sim"],
+    arms: makeHardwareArms(),
+    cameras: makeHardwareCameras(),
+    policies_available: false,
+    hardware_ready: false,
     ...over,
   };
 }

@@ -6,7 +6,9 @@ import { endSession, getKeymap, getProfiles, getWorkcell } from "../api/rest";
 import type { ProfileInfo } from "../gen";
 import { buildBindings } from "../input/bindings";
 import { useGamepad } from "../input/useGamepad";
+import { MODE_LABELS, orderStreams, pageTitle, streamLabel } from "../lib/streams";
 import type { Mode } from "../lib/types";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { selectActiveArm, useStore } from "../store";
 import { ArmIndicator } from "../components/ArmIndicator";
 import { ClearanceReadout, CollisionBanner } from "../components/CollisionBanner";
@@ -21,6 +23,7 @@ import { StreamGrid } from "../components/StreamGrid";
 import { TeleopSurface } from "../components/TeleopSurface";
 
 export function Cockpit({ mode }: { mode: Mode }) {
+  useDocumentTitle(pageTitle(MODE_LABELS[mode]));
   const navigate = useNavigate();
   const session = useStore((s) => s.session);
   const workcell = useStore((s) => s.workcell);
@@ -81,8 +84,10 @@ export function Cockpit({ mode }: { mode: Mode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const streams = session?.streams ?? [];
-  const labels = Object.fromEntries(streams.map((s) => [s, s]));
+  // Grid order: wrist cameras → environment cameras → "Digital Twin" (sim) → twin
+  // (phase-11 §4); ids stay canonical, only the displayed titles change.
+  const streams = orderStreams(session?.streams ?? []);
+  const labels = Object.fromEntries(streams.map((s) => [s, streamLabel(s)]));
   const episode = telemetry?.episode ?? null;
   const recording = episode?.state === "recording";
   const armInfo = workcell?.arms.find((a) => a.arm_id === activeArm?.arm_id) ?? null;
@@ -112,7 +117,7 @@ export function Cockpit({ mode }: { mode: Mode }) {
       </div>
       <div className={`side-panel${telemetryStale ? " dim" : ""}`}>
         <div className="panel kv">
-          <strong>{mode}</strong>
+          <strong data-testid="cockpit-title">{MODE_LABELS[mode]}</strong>
           <button
             onClick={() => {
               void endSession().finally(() => {

@@ -1,5 +1,8 @@
-/** Active-arm indicator + per-arm chips (05-ui §8.2). */
+/** Active-arm indicator + per-arm chips (05-ui §8.2). Arms are listed
+ * Manipulation Arm first (`orderArms`); each row shows the display name from
+ * `ARM_LABELS` with the runtime id in a dim mono chip beside it. */
 import type { ArmTelemetry } from "../gen";
+import { armLabel, orderArms } from "../lib/streams";
 
 export interface ArmIndicatorProps {
   arms: ArmTelemetry[];
@@ -12,7 +15,7 @@ export function ArmIndicator({ arms, activeArm }: ArmIndicatorProps) {
       <div className="dim">
         Active arm <kbd>Tab</kbd> to switch
       </div>
-      {arms.map((a) => {
+      {orderArms(arms, (a) => a.arm_id).map((a) => {
         const active = a.arm_id === activeArm;
         return (
           <div className="kv" key={a.arm_id} data-testid={`arm-chip-${a.arm_id}`}>
@@ -20,6 +23,9 @@ export function ArmIndicator({ arms, activeArm }: ArmIndicatorProps) {
               <span
                 className={`chip ${!a.connected ? "chip-red" : active ? "chip-green" : "chip-grey"}`}
               >
+                {armLabel(a.arm_id)}
+              </span>{" "}
+              <span className="chip chip-id" data-testid={`arm-id-${a.arm_id}`}>
                 {a.arm_id}
               </span>{" "}
               {!a.connected ? "DISCONNECTED — motion held" : active ? "active" : "holding"}
@@ -34,7 +40,7 @@ export function ArmIndicator({ arms, activeArm }: ArmIndicatorProps) {
             </span>
             <span className="mono dim">
               {a.rail_pos_m != null && `rail ${a.rail_pos_m.toFixed(3)} m · `}
-              grip {(a.gripper_open_frac * 100).toFixed(0)}%
+              gripper {(a.gripper_open_frac * 100).toFixed(0)}%
             </span>
           </div>
         );

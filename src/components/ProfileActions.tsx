@@ -1,8 +1,10 @@
 /** Teleop side-panel profile ops — ride the control WS as ActionMsg (05-ui §8.3). */
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { ProfileInfo } from "../gen";
 import type { ActionName } from "../lib/types";
+import { useDelayedUnmount } from "../lib/useDelayedUnmount";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { Sheet, SHEET_EXIT_MS } from "./Sheet";
 
 export interface ProfileActionsProps {
   profiles: ProfileInfo[]; // for the overwrite-confirm dialog text
@@ -14,7 +16,20 @@ export function ProfileActions({ profiles, onAction }: ProfileActionsProps) {
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [confirmingInitial, setConfirmingInitial] = useState(false);
+  // Both dialogs stay mounted for the 160 ms Sheet exit after closing.
+  const savingMounted = useDelayedUnmount(saving, SHEET_EXIT_MS);
+  const confirmMounted = useDelayedUnmount(confirmingInitial, SHEET_EXIT_MS);
+  const formId = useId();
   const initial = profiles.find((p) => p.is_initial_condition) ?? null;
+  const canSave = name.trim() !== "";
+
+  const save = () => {
+    if (!canSave) return;
+    onAction("save_profile", { name: name.trim(), notes });
+    setSaving(false);
+    setName("");
+    setNotes("");
+  };
 
   return (
     <div className="panel" data-testid="profile-actions">
@@ -28,47 +43,72 @@ export function ProfileActions({ profiles, onAction }: ProfileActionsProps) {
         </button>
       </div>
 
-      {saving && (
-        <div className="modal-backdrop" data-testid="save-profile-dialog">
-          <div className="modal" role="dialog" aria-modal="true">
-            <label>
-              Name{" "}
+      {savingMounted && (
+        <Sheet
+          title="Save profile"
+          open={saving}
+          subtitle="Snapshot of every arm's current joint state"
+          width={420}
+          hostTestId="save-profile-dialog"
+          onRequestClose={() => setSaving(false)}
+          footerStart={
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setSaving(false)}
+              data-testid="save-profile-cancel"
+            >
+              Cancel
+            </button>
+          }
+          footer={
+            <button
+              type="submit"
+              form={formId}
+              className="btn-primary"
+              disabled={!canSave}
+              data-testid="save-profile-confirm"
+            >
+              Save
+            </button>
+          }
+        >
+          <form
+            id={formId}
+            className="field"
+            style={{ gap: 12 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              save();
+            }}
+          >
+            <label className="field">
+              <span className="field-label">Name</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. grasp-ready"
                 data-testid="profile-name"
+                data-autofocus
               />
             </label>
-            <label>
-              Notes{" "}
+            <label className="field">
+              <span className="field-label">Notes</span>
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                placeholder="optional"
                 data-testid="profile-notes"
               />
             </label>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setSaving(false)}>Cancel</button>
-              <button
-                className="btn-primary"
-                disabled={name.trim() === ""}
-                data-testid="save-profile-confirm"
-                onClick={() => {
-                  onAction("save_profile", { name: name.trim(), notes });
-                  setSaving(false);
-                  setName("");
-                  setNotes("");
-                }}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+          </form>
+        </Sheet>
       )}
 
-      {confirmingInitial && (
+      {confirmMounted && (
         <ConfirmDialog
+          open={confirmingInitial}
+          title="Overwrite initial condition"
           text={`Overwrite '${initial?.name ?? "initial condition"}' as the workcell initial condition?`}
           confirmLabel="Overwrite"
           onConfirm={() => {

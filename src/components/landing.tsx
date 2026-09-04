@@ -1,63 +1,66 @@
-/** Landing-page pieces: kind toggle, camera grid, arm cards, pickers (05-ui §8.1, §9). */
-import type { ArmStatusInfo, CameraInfo, ProfileInfo, SceneInfo } from "../gen";
+/** Welcome-page pieces (phase-11 §4): per-tab observation grid, arm status
+ * cards (with the "Searching for arms…" placeholder), Start-from option rows +
+ * profile list, the read-only scene row, the FrameSelector, and the pure
+ * status-caption helpers. Naming lives in ../lib/streams. */
+import type { ReactNode } from "react";
+import type {
+  ArmStatusInfo,
+  CameraInfo,
+  MicrophoneInfo,
+  ProfileInfo,
+  SceneInfo,
+  WorkcellStatus,
+} from "../gen";
+import {
+  armLabel,
+  armTitle,
+  HARDWARE_CAMERA_SLOTS,
+  micSubtitle,
+  orderArms,
+  SCENE_DISPLAY_NAME,
+  SCENE_ID,
+  SIM_CAMERA_SLOTS,
+  streamLabel,
+} from "../lib/streams";
 import type { FrameRef, Kind } from "../lib/types";
+import { Icon, type IconName } from "./icons";
+import { MicTile } from "./MicTile";
 import { StreamView } from "./StreamView";
 
-// -- WorkcellKindToggle ---------------------------------------------------------
-export interface WorkcellKindToggleProps {
-  kind: Kind;
-  available: Kind[];
-  onChange(k: Kind): void;
-}
-
-export function WorkcellKindToggle({ kind, available, onChange }: WorkcellKindToggleProps) {
-  return (
-    <div className="panel" data-testid="kind-toggle">
-      <span className="dim">Workcell&nbsp;</span>
-      {(["hardware", "sim"] as const).map((k) => {
-        const supported = available.includes(k);
-        return (
-          <button
-            key={k}
-            className={k === kind ? "btn-primary" : ""}
-            disabled={!supported}
-            title={supported ? undefined : `runtime config does not support ${k}`}
-            onClick={() => onChange(k)}
-            data-testid={`kind-${k}`}
-          >
-            {k}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// -- CameraPreviewGrid — always renders 4 slots ---------------------------------
-export interface CameraPreviewGridProps {
+// -- ObservationGrid -----------------------------------------------------------
+// Sim: 2×2 wrist + environment cameras. Hardware: camera1, camera2 + the MicTile
+// (when `/api/microphones` lists one). A slot whose camera is not `live` in
+// `/api/cameras` (or is missing) renders the black `absent` tile — no WebSocket.
+export interface ObservationGridProps {
+  tab: Kind;
   cameras: CameraInfo[];
+  /** Shown as the third Hardware tile; ignored on the Sim tab. */
+  microphone: MicrophoneInfo | null;
 }
 
-export function CameraPreviewGrid({ cameras }: CameraPreviewGridProps) {
-  const slots: (CameraInfo | null)[] = Array.from({ length: 4 }, (_, i) => cameras[i] ?? null);
+export function ObservationGrid({ tab, cameras, microphone }: ObservationGridProps) {
+  const slots: readonly string[] = tab === "sim" ? SIM_CAMERA_SLOTS : HARDWARE_CAMERA_SLOTS;
+  const mic = tab === "hardware" ? microphone : null;
+  const cells = slots.length + (mic ? 1 : 0);
   return (
-    <div className="stream-grid" data-testid="camera-preview-grid">
-      {slots.map((cam, i) =>
-        cam && cam.live ? (
+    <div
+      className={`obs-grid${cells === 3 ? " obs-grid-3" : ""}`}
+      data-testid="camera-preview-grid"
+      data-tab={tab}
+    >
+      {slots.map((id) => {
+        const cam = cameras.find((c) => c.camera_id === id);
+        return (
           <StreamView
-            key={cam.camera_id}
-            streamId={cam.camera_id}
-            label={cam.label}
+            key={id}
+            streamId={id}
+            title={streamLabel(id)}
+            absent={!cam?.live}
             showLatencyBadge={false}
           />
-        ) : (
-          <div className="tile" key={`empty-${i}`}>
-            <div className="tile-empty" data-testid={`camera-slot-empty-${i}`}>
-              {cam ? `${cam.label} (offline)` : "No camera"}
-            </div>
-          </div>
-        ),
-      )}
+        );
+      })}
+      {mic && <MicTile info={mic} micId={mic.mic_id} subtitle={micSubtitle(mic)} />}
     </div>
   );
 }
@@ -75,190 +78,378 @@ export function FrameSelector({ armId, value, cameras, onChange }: FrameSelector
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      aria-label={`recording frame for ${armId}`}
+      aria-label={`recording frame for ${armTitle(armId)}`}
       data-testid={`frame-selector-${armId}`}
     >
-      <option value={`arm_base:${armId}`}>arm_base ({armId})</option>
+      <option value={`arm_base:${armId}`}>arm_base · {armTitle(armId)}</option>
       <option value="world">world</option>
       {cameras.map((c) => (
         <option key={c.camera_id} value={`camera:${c.camera_id}`}>
-          camera: {c.label}
+          camera: {streamLabel(c.camera_id)}
         </option>
       ))}
     </select>
   );
 }
 
-// -- ArmStatusCard ---------------------------------------------------------------
+// -- Arm status ------------------------------------------------------------------
+export type Reachable = NonNullable<ArmStatusInfo["reachable"]>;
+
+export const REACHABLE_TEXT: Readonly<Record<Reachable, string>> = {
+  open: "Reachable",
+  refused: "Control box starting",
+  unreachable: "Unreachable",
+  unknown: "Probing…",
+};
+const REACHABLE_PILL: Readonly<Record<Reachable, string>> = {
+  open: "pill pill-ok",
+  refused: "pill pill-warn",
+  unreachable: "pill pill-danger",
+  unknown: "pill",
+};
+
+/** "Real arms detected": a session holds the arm, or the :502 probe answered. */
+export const armDetected = (a: ArmStatusInfo): boolean => a.connected || a.reachable === "open";
+
 export interface ArmStatusCardProps {
   arm: ArmStatusInfo;
-  included: boolean;
-  onIncludeChange(v: boolean): void;
-  frame: FrameRef;
-  onFrameChange(f: FrameRef): void;
-  cameras: CameraInfo[];
+  kind: Kind;
 }
 
-export function ArmStatusCard({
-  arm,
-  included,
-  onIncludeChange,
-  frame,
-  onFrameChange,
-  cameras,
-}: ArmStatusCardProps) {
+export function ArmStatusCard({ arm, kind }: ArmStatusCardProps) {
+  const reach: Reachable = arm.reachable ?? "unknown";
+  let pill: ReactNode;
+  if (arm.connected) {
+    pill = (
+      <span className="pill pill-ok" data-testid={`arm-state-${arm.arm_id}`}>
+        <span className="status-dot" aria-hidden="true" />
+        Connected
+      </span>
+    );
+  } else if (kind === "sim") {
+    pill = (
+      <span className="pill pill-accent" data-testid={`arm-state-${arm.arm_id}`}>
+        <span className="status-dot" aria-hidden="true" />
+        Simulated
+      </span>
+    );
+  } else {
+    pill = (
+      <span className={REACHABLE_PILL[reach]} data-testid={`arm-state-${arm.arm_id}`}>
+        {reach === "unknown" ? (
+          <span className="spinner" aria-hidden="true" />
+        ) : (
+          <span className="status-dot" aria-hidden="true" />
+        )}
+        {REACHABLE_TEXT[reach]}
+      </span>
+    );
+  }
   return (
-    <div className="panel" data-testid={`arm-card-${arm.arm_id}`}>
-      <div className="kv">
-        <strong>{arm.arm_id}</strong>
-        <span className={`chip ${arm.connected ? "chip-green" : "chip-red"}`}>
-          {arm.connected ? "connected" : "offline"}
+    <div
+      className="card arm-card"
+      data-testid={`arm-card-${arm.arm_id}`}
+      data-reachable={kind === "hardware" ? reach : undefined}
+    >
+      <div className="arm-card-head">
+        <span className="arm-card-title">
+          <span className="text-title-3">{armLabel(arm.arm_id)}</span>
+          <span className="chip chip-id" data-testid={`arm-id-${arm.arm_id}`}>
+            {arm.arm_id}
+          </span>
         </span>
+        {pill}
       </div>
-      <div className="kv dim mono">
-        <span>{arm.ip ?? "no ip"}</span>
+      <div className="arm-card-meta text-mono">
+        <span>{arm.ip ?? (kind === "sim" ? "simulated" : "no ip")}</span>
         <span>{arm.has_rail ? "rail 0–0.65 m" : "no rail"}</span>
-      </div>
-      <div className="kv dim">
         <span>
-          gripper: {arm.gripper}
-          {arm.gripper_force_capable && <span className="chip chip-grey"> force</span>}
+          gripper {arm.gripper}
+          {arm.gripper_force_capable ? " · force" : ""}
         </span>
-        {arm.error_code !== 0 && <span className="chip chip-amber">err {arm.error_code}</span>}
+        {arm.error_code !== 0 && <span className="pill pill-warn">err {arm.error_code}</span>}
       </div>
-      <label className="kv">
-        <span>Include in session</span>
-        <input
-          type="checkbox"
-          checked={included}
-          onChange={(e) => onIncludeChange(e.target.checked)}
-          data-testid={`include-${arm.arm_id}`}
-        />
-      </label>
-      {included && (
-        <label className="kv">
-          <span>Recording frame</span>
-          <FrameSelector
-            armId={arm.arm_id}
-            value={frame}
-            cameras={cameras}
-            onChange={onFrameChange}
-          />
-        </label>
-      )}
     </div>
   );
 }
 
-// -- ScenePicker -------------------------------------------------------------------
-export interface ScenePickerProps {
-  kind: "sim" | "twin";
-  scenes: SceneInfo[];
-  requiredArms: number;
-  value: string | null;
-  onChange(id: string): void;
+export interface ArmCardsProps {
+  kind: Kind;
+  arms: ArmStatusInfo[];
+  /** Hardware only: the runtime config has a hardware workcell block. */
+  configured: boolean;
 }
 
-export function ScenePicker({ kind, scenes, requiredArms, value, onChange }: ScenePickerProps) {
+/** One card per arm once arms are detected — Manipulation Arm first
+ * (`orderArms`) — otherwise a single placeholder: "Searching for arms…" (the
+ * 2 s probe keeps polling) or the configuration hint. */
+export function ArmCards({ kind, arms: unordered, configured }: ArmCardsProps) {
+  const arms = orderArms(unordered, (a) => a.arm_id);
+  const detected = kind === "sim" ? arms.length > 0 : arms.some(armDetected);
+  if (!detected) {
+    const searching = kind === "sim" || configured;
+    return (
+      <div className="arm-cards" data-testid="arm-cards">
+        <div
+          className="card arm-card arm-card-placeholder"
+          data-testid="arm-card-placeholder"
+          role="status"
+          aria-live="polite"
+        >
+          {searching ? (
+            <span className="spinner" aria-hidden="true" />
+          ) : (
+            <Icon name="info" size={18} />
+          )}
+          <span className="text-body-strong">
+            {searching ? "Searching for arms…" : "Hardware workcell not configured"}
+          </span>
+          {searching && arms.length > 0 && (
+            <span className="text-caption fg-3 tabular">
+              {arms
+                .map(
+                  (a) =>
+                    `${armTitle(a.arm_id)}${a.ip ? ` ${a.ip}` : ""} · ${REACHABLE_TEXT[a.reachable ?? "unknown"].toLowerCase()}`,
+                )
+                .join("  ·  ")}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="panel" data-testid={`scene-picker-${kind}`}>
-      <div className="dim">{kind === "twin" ? "Digital-twin scene (required)" : "Sim scene"}</div>
-      {scenes.length === 0 && <div className="dim">No scenes available</div>}
-      {scenes.map((s) => {
-        const mismatch = requiredArms > 0 && s.num_arms !== requiredArms;
-        return (
-          <label className="kv" key={s.scene_id}>
-            <span>
-              <input
-                type="radio"
-                name={`scene-${kind}`}
-                checked={value === s.scene_id}
-                disabled={mismatch}
-                onChange={() => onChange(s.scene_id)}
-                data-testid={`scene-${s.scene_id}`}
-              />{" "}
-              {s.label}
-            </span>
-            <span className="dim mono">
-              {s.num_arms} arm{s.num_arms === 1 ? "" : "s"} · rails [
-              {s.rail_flags.map((f) => (f ? "R" : "-")).join("")}]
-              {mismatch && " — arm count mismatch"}
-            </span>
-          </label>
-        );
-      })}
+    <div className="arm-cards" data-testid="arm-cards">
+      {arms.map((a) => (
+        <ArmStatusCard key={a.arm_id} arm={a} kind={kind} />
+      ))}
     </div>
   );
 }
 
-// -- ProfilePicker + StartFromChoice --------------------------------------------
-export interface ProfilePickerProps {
-  profiles: ProfileInfo[];
-  selectedArms: string[];
-  startFrom: "keep_current" | "profile";
-  onStartFromChange(v: "keep_current" | "profile"): void;
-  value: string | null;
-  onChange(id: string | null): void;
+// -- Status captions (pure) --------------------------------------------------------
+/** "APOLLO MAVIS V2 Digital Twin · 2 arms on rails" */
+export function simCaption(scene: SceneInfo | null): string {
+  const n = scene?.num_arms ?? 2;
+  const rails = scene ? scene.rail_flags.length > 0 && scene.rail_flags.every(Boolean) : true;
+  return `${SCENE_DISPLAY_NAME} · ${n} arm${n === 1 ? "" : "s"}${rails ? " on rails" : ""}`;
 }
 
-export function ProfilePicker({
+/** "No arms detected · camera1, camera2 · mic: RØDE NT-USB Mini (live)" — with
+ * arms (Manipulation Arm first): "Manipulation Arm reachable, Perception Arm
+ * unreachable · …"; live cameras get "(live)". */
+export function hardwareCaption(
+  status: WorkcellStatus | null,
+  cameras: CameraInfo[],
+  mic: MicrophoneInfo | null,
+  configured: boolean,
+): string {
+  const arms = orderArms(status?.arms ?? [], (a) => a.arm_id);
+  let armsPart: string;
+  if (!configured) armsPart = "Hardware workcell not configured";
+  else if (!arms.some(armDetected)) armsPart = "No arms detected";
+  else
+    armsPart = arms
+      .map(
+        (a) =>
+          `${armLabel(a.arm_id)} ${(a.connected ? "connected" : REACHABLE_TEXT[a.reachable ?? "unknown"]).toLowerCase()}`,
+      )
+      .join(", ");
+  const camPart = HARDWARE_CAMERA_SLOTS.map((id) =>
+    cameras.find((c) => c.camera_id === id)?.live ? `${id} (live)` : id,
+  ).join(", ");
+  const micPart = mic ? `mic: ${mic.label} (${mic.status})` : "mic: none";
+  return `${armsPart} · ${camPart} · ${micPart}`;
+}
+
+// -- SceneSummary (read-only; other registry scenes are filtered client-side) -------
+export interface SceneSummaryProps {
+  kind: "sim" | "twin";
+  /** The mavis_v2 row from `/api/scenes`, or null when the registry lacks it. */
+  scene: SceneInfo | null;
+}
+
+export function SceneSummary({ kind, scene }: SceneSummaryProps) {
+  const rails =
+    scene && scene.rail_flags.length > 0 && scene.rail_flags.every(Boolean)
+      ? "rails"
+      : scene
+        ? `rails [${scene.rail_flags.map((f) => (f ? "R" : "-")).join("")}]`
+        : null;
+  return (
+    <div
+      className="scene-row"
+      data-testid={`scene-picker-${kind}`}
+      data-scene-id={scene ? SCENE_ID : undefined}
+    >
+      <Icon name="lock" size={18} className="scene-row-icon" />
+      <span className="scene-row-text">
+        <span className="fg-3">Scene</span>
+        <span className="scene-row-sep" aria-hidden="true">
+          ·
+        </span>
+        <strong data-testid={`scene-${SCENE_ID}`}>{SCENE_DISPLAY_NAME}</strong>
+        {scene ? (
+          <>
+            <span className="scene-row-sep" aria-hidden="true">
+              ·
+            </span>
+            <span className="fg-2">
+              {scene.num_arms} arm{scene.num_arms === 1 ? "" : "s"} · {rails} ·{" "}
+              {scene.cameras.length} camera{scene.cameras.length === 1 ? "" : "s"}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="scene-row-sep" aria-hidden="true">
+              ·
+            </span>
+            <span className="pill pill-warn" data-testid="scene-unavailable">
+              <Icon name="warning" size={12} />
+              unavailable
+            </span>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+// -- Start from: two option rows + the profile list -------------------------------------
+export type StartFromChoice = "keep_current" | "profile";
+
+export interface StartFromProps {
+  profiles: ProfileInfo[];
+  /** Arm ids of the current tab's workcell — profiles covering other arms are disabled. */
+  arms: string[];
+  startFrom: StartFromChoice;
+  onStartFromChange(v: StartFromChoice): void;
+  profileId: string | null;
+  onProfileChange(id: string | null): void;
+}
+
+interface OptionRowProps {
+  selected: boolean;
+  icon: IconName;
+  title: string;
+  help: string;
+  name: string;
+  testId: string;
+  onSelect(): void;
+}
+
+function OptionRow({ selected, icon, title, help, name, testId, onSelect }: OptionRowProps) {
+  return (
+    <label className="option-row" data-selected={selected ? "true" : "false"}>
+      <input
+        type="radio"
+        name={name}
+        className="visually-hidden"
+        checked={selected}
+        onChange={onSelect}
+        data-testid={testId}
+      />
+      <Icon name={icon} size={22} className="option-icon" />
+      <span className="option-text">
+        <span className="option-title">{title}</span>
+        <span className="option-help">{help}</span>
+      </span>
+      <span className="option-radio" aria-hidden="true" />
+    </label>
+  );
+}
+
+export function StartFrom({
   profiles,
-  selectedArms,
+  arms,
   startFrom,
   onStartFromChange,
-  value,
-  onChange,
-}: ProfilePickerProps) {
+  profileId,
+  onProfileChange,
+}: StartFromProps) {
   return (
-    <div className="panel" data-testid="profile-picker">
-      <div className="dim">Start from</div>
-      <label className="kv">
-        <span>Keep current state</span>
-        <input
-          type="radio"
+    <div className="option-rows" data-testid="profile-picker">
+      <div role="radiogroup" aria-label="Start from" className="option-rows">
+        <OptionRow
+          selected={startFrom === "keep_current"}
+          icon="target"
+          title="Keep current state"
+          help="Arms stay exactly where they are"
           name="start-from"
-          checked={startFrom === "keep_current"}
-          onChange={() => onStartFromChange("keep_current")}
-          data-testid="start-keep-current"
+          testId="start-keep-current"
+          onSelect={() => onStartFromChange("keep_current")}
         />
-      </label>
-      <label className="kv">
-        <span>Load selected profile</span>
-        <input
-          type="radio"
+        <OptionRow
+          selected={startFrom === "profile"}
+          icon="bookmark"
+          title="Load a profile"
+          help="Twin-planned safe motion to a saved pose"
           name="start-from"
-          checked={startFrom === "profile"}
-          onChange={() => onStartFromChange("profile")}
-          data-testid="start-profile"
+          testId="start-profile"
+          onSelect={() => onStartFromChange("profile")}
         />
-      </label>
-      {startFrom === "profile" &&
-        profiles.map((p) => {
-          const uncovered = p.arms.some((a) => !selectedArms.includes(a));
-          return (
-            <label className="kv" key={p.profile_id}>
-              <span>
+      </div>
+      {startFrom === "profile" && (
+        <div
+          className="profile-list pane-enter"
+          role="radiogroup"
+          aria-label="Profile"
+          data-testid="profile-list"
+        >
+          {profiles.length === 0 && (
+            <div className="profile-empty" data-testid="profile-empty">
+              No saved profiles — save one from Teleop
+            </div>
+          )}
+          {profiles.map((p) => {
+            const missing = p.arms.filter((a) => !arms.includes(a));
+            const disabled = missing.length > 0;
+            const selected = profileId === p.profile_id;
+            return (
+              <label
+                key={p.profile_id}
+                className={`profile-row${selected ? " is-selected" : ""}`}
+                aria-disabled={disabled ? "true" : undefined}
+                data-testid={`profile-row-${p.profile_id}`}
+              >
                 <input
                   type="radio"
                   name="profile"
-                  checked={value === p.profile_id}
-                  disabled={uncovered}
-                  onChange={() => onChange(p.profile_id)}
+                  className="visually-hidden"
+                  checked={selected}
+                  disabled={disabled}
+                  onChange={() => onProfileChange(p.profile_id)}
                   data-testid={`profile-${p.profile_id}`}
-                />{" "}
-                {p.name}
-                {p.is_initial_condition && (
-                  <span className="chip chip-green" data-testid={`initial-badge-${p.profile_id}`}>
-                    initial condition
+                />
+                <span className="profile-main">
+                  <span className="text-body-strong">{p.name}</span>
+                  <span className="profile-arms">
+                    {orderArms(p.arms, (a) => a).map((a) => (
+                      <span key={a} className="chip chip-grey" title={a}>
+                        {armLabel(a)}
+                      </span>
+                    ))}
+                  </span>
+                  {p.is_initial_condition && (
+                    <span className="pill pill-ok" data-testid={`initial-badge-${p.profile_id}`}>
+                      <Icon name="bookmark" size={12} />
+                      Initial condition
+                    </span>
+                  )}
+                </span>
+                {(disabled || p.notes) && (
+                  <span className="profile-notes text-callout">
+                    {disabled
+                      ? `covers ${missing.map(armLabel).join(", ")} — not in this workcell`
+                      : p.notes}
                   </span>
                 )}
-              </span>
-              <span className="dim mono">
-                [{p.arms.join(", ")}] {p.notes}
-              </span>
-            </label>
-          );
-        })}
+                <Icon name="check" size={18} className="profile-check" />
+              </label>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

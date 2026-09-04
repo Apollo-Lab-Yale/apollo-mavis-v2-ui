@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ArmTelemetry } from "../gen";
+import { armLabel } from "../lib/streams";
 
 export const JOG_THROTTLE_MS = 50; // ~20 Hz
 
@@ -108,7 +109,9 @@ export function JointPanel({ arm, limits, disabled, onJog, onGoto }: JointPanelP
       data-testid="joint-panel"
       title={disabled ? "recording — panel locked" : undefined}
     >
-      <div className="dim">Joint control — {arm.arm_id}</div>
+      <div className="dim">
+        Joint control — {armLabel(arm.arm_id)} <span className="chip chip-id">{arm.arm_id}</span>
+      </div>
       {Array.from({ length: nRows }, (_, i) => {
         const [lo, hi] = limitFor(i);
         const isRail = i === 7;

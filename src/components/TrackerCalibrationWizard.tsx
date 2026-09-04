@@ -6,7 +6,7 @@
  * of its own, so a page reload or a second tab lands on the same step.
  * Commands go through `POST /api/tracker/calibration`; a 409 `detail` from the
  * runtime's state machine becomes an error toast. */
-import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ApiError, postTrackerCalibration } from "../api/rest";
 import type {
   TrackerCalibrationCommand,
@@ -15,6 +15,7 @@ import type {
   YawGesturePoint,
 } from "../gen";
 import { selectTracker, useStore } from "../store";
+import { Sheet } from "./Sheet";
 
 export type WizardKind = TrackerCalibrationCommand["kind"];
 type Op = TrackerCalibrationCommand["op"];
@@ -105,7 +106,7 @@ export function viewFor(
 
 /** Operator frame (CLAUDE.md "Hardware facts", 13-tracker §6): the operator
  * stands at the +Y edge facing −Y; left = +X (rail zero / obstacle end),
- * right = −X (where the arms rest). The runtime's fit encodes the same map. */
+ * right = −X (the Manipulation Arm's end of the rails). The runtime's fit encodes the same map. */
 const YAW_INSTRUCTIONS: Record<YawLabel, string> = {
   start:
     "Hold the controller at a comfortable start position in front of you, hold still, then pull the trigger or click Capture",
@@ -129,6 +130,8 @@ function Footer({ children }: { children: ReactNode }) {
 export interface TrackerCalibrationWizardProps {
   kind: WizardKind;
   onClose(): void;
+  /** Default true; `false` runs the Sheet exit while the owner keeps it mounted. */
+  open?: boolean;
   /** Base-station Done step → "Start yaw alignment" switches the wizard kind. */
   onSwitchKind?(kind: WizardKind): void;
 }
@@ -137,10 +140,10 @@ export function TrackerCalibrationWizard({
   kind,
   onClose,
   onSwitchKind,
+  open = true,
 }: TrackerCalibrationWizardProps) {
   const tracker = useStore(selectTracker);
   const addToast = useStore((s) => s.addToast);
-  const titleId = useId();
   const [busy, setBusy] = useState(false);
   const [confirmAbort, setConfirmAbort] = useState(false);
 
@@ -180,6 +183,9 @@ export function TrackerCalibrationWizard({
     onClose();
   }, [send, onClose]);
 
+  // Escape is owned here (not by Sheet: `closeOnEscape={false}`) because it has
+  // to dismiss the abort prompt first; preventDefault also suppresses the
+  // native <dialog> `cancel`.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" && e.code !== "Escape") return;
@@ -232,28 +238,17 @@ export function TrackerCalibrationWizard({
   }
 
   return (
-    <div
-      className="modal-backdrop"
-      data-testid="calibration-wizard"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) requestClose();
-      }}
-    >
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        data-testid="calibration-wizard-dialog"
-        data-view={view}
-        style={{ minWidth: 560, maxWidth: "90vw" }}
-      >
-        <div className="kv">
-          <strong id={titleId}>{title}</strong>
-          <button onClick={requestClose} aria-label="Close" data-testid="wizard-close">
-            ✕
-          </button>
-        </div>
+    <Sheet
+      title={title}
+      open={open}
+      width={620}
+      hostTestId="calibration-wizard"
+      testId="calibration-wizard-dialog"
+      closeButtonTestId="wizard-close"
+      panelProps={{ "data-view": view }}
+      closeOnEscape={false}
+      onRequestClose={requestClose}
+      headerExtra={
         <ol className="wizard-steps" data-testid="wizard-steps">
           {steps.map((label, i) => (
             <li
@@ -267,31 +262,32 @@ export function TrackerCalibrationWizard({
             </li>
           ))}
         </ol>
-        {confirmAbort && (
-          <div
-            className="kv"
-            style={{ alignItems: "center", color: "var(--amber)" }}
-            data-testid="wizard-abort-confirm"
-          >
-            <strong>Abort calibration? The run in progress is discarded.</strong>
-            <span style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setConfirmAbort(false)} data-testid="wizard-abort-cancel">
-                Continue
-              </button>
-              <button
-                className="btn-danger"
-                disabled={busy}
-                onClick={() => void abortAndClose()}
-                data-testid="wizard-abort-ok"
-              >
-                Abort
-              </button>
-            </span>
-          </div>
-        )}
-        {body}
-      </div>
-    </div>
+      }
+    >
+      {confirmAbort && (
+        <div
+          className="kv"
+          style={{ alignItems: "center", color: "var(--warn)" }}
+          data-testid="wizard-abort-confirm"
+        >
+          <strong>Abort calibration? The run in progress is discarded.</strong>
+          <span style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setConfirmAbort(false)} data-testid="wizard-abort-cancel">
+              Continue
+            </button>
+            <button
+              className="btn-danger"
+              disabled={busy}
+              onClick={() => void abortAndClose()}
+              data-testid="wizard-abort-ok"
+            >
+              Abort
+            </button>
+          </span>
+        </div>
+      )}
+      {body}
+    </Sheet>
   );
 }
 
@@ -339,6 +335,7 @@ function Failure({
         <button
           className="btn-primary"
           autoFocus
+          data-autofocus
           disabled={busy}
           onClick={onRetry}
           data-testid="wizard-retry"
@@ -396,6 +393,7 @@ function BaseIntro({
         <button
           className="btn-primary"
           autoFocus
+          data-autofocus
           disabled={busy || other !== null}
           onClick={onStart}
           data-testid="wizard-start"
@@ -602,6 +600,7 @@ function BaseValidate({
         <button
           className="btn-primary"
           autoFocus
+          data-autofocus
           disabled={!canInstall}
           title={v && !v.passed ? "validation failed — capture more spots" : undefined}
           onClick={() => void send("install")}
@@ -653,6 +652,7 @@ function BaseDone({
           <button
             className="btn-primary"
             autoFocus
+            data-autofocus
             onClick={onStartYaw}
             data-testid="wizard-start-yaw"
           >
@@ -714,6 +714,7 @@ function YawIntro({
         <button
           className="btn-primary"
           autoFocus
+          data-autofocus
           disabled={busy || other !== null}
           onClick={onStart}
           data-testid="wizard-start"
@@ -783,6 +784,7 @@ function YawPoints({
         <button
           className="btn-primary"
           autoFocus
+          data-autofocus
           disabled={busy || !next}
           onClick={() => void send("capture")}
           data-testid="wizard-capture"
@@ -856,6 +858,7 @@ function YawFit({
         <button
           className="btn-primary"
           autoFocus
+          data-autofocus
           disabled={!canApply}
           title={checks.length > 0 ? "fix the failed checks (Redo) before applying" : undefined}
           onClick={() => void send("apply")}
@@ -902,7 +905,13 @@ function YawDone({
         <button disabled={busy} onClick={onRedo} data-testid="wizard-redo">
           Redo
         </button>
-        <button className="btn-primary" autoFocus onClick={onClose} data-testid="wizard-close-btn">
+        <button
+          className="btn-primary"
+          autoFocus
+          data-autofocus
+          onClick={onClose}
+          data-testid="wizard-close-btn"
+        >
           Close
         </button>
       </Footer>

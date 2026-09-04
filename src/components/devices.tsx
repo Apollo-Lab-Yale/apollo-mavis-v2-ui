@@ -9,6 +9,7 @@ import type {
 } from "../gen";
 import { gamepadGlyph, keycapLabel, type Bindings } from "../input/bindings";
 import { GAMEPAD_LABELS } from "../input/gamepad";
+import { armTitle, MODE_LABELS, SCENE_DISPLAY_NAME, TAB_LABELS } from "../lib/streams";
 import type { GamepadState } from "../store";
 import { ControllerView } from "./ControllerView";
 import {
@@ -195,7 +196,7 @@ export function TrackerPanel({ tracker, bindings = null }: TrackerPanelProps) {
             data-testid="tracker-clutch"
           >
             {tracker?.clutch
-              ? `CLUTCH${tracker.engaged_arm ? ` · ${tracker.engaged_arm}` : ""}`
+              ? `CLUTCH${tracker.engaged_arm ? ` · ${armTitle(tracker.engaged_arm)}` : ""}`
               : "released"}
           </span>{" "}
           {tracker && (
@@ -583,17 +584,19 @@ export function SessionControls({ session, scene, busy, onStart, onStop }: Sessi
             disabled={busy}
             data-testid="session-start"
           >
-            Start teleop · sim · mavis_v2
+            Start {MODE_LABELS.teleop} · {TAB_LABELS.sim}
           </button>
         )}
       </div>
       {session ? (
         <div className="mono dim" style={{ fontSize: 12 }} data-testid="session-summary">
-          {session.mode} · {scene ?? "scene ?"} · arms {session.arms.join(", ")} · {session.state}
+          {MODE_LABELS[session.mode]} · {scene ?? "scene ?"} · arms{" "}
+          {session.arms.map(armTitle).join(", ")} · {session.state}
         </div>
       ) : (
         <div className="dim" style={{ fontSize: 12 }}>
-          No session — device panels still work; streams need a session.
+          No session — device panels still work; streams need a session. Scene: {SCENE_DISPLAY_NAME}
+          .
         </div>
       )}
     </div>

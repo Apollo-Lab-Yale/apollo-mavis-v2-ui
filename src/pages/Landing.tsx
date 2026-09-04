@@ -1,131 +1,157 @@
-/** Landing page (05-ui §8.1): discovery, session assembly, mode launch. */
-import { useCallback, useEffect, useMemo, useState } from "react";
+/** Welcome page (05-ui §8.1, phase-11 §4): hero "APOLLO MAVIS V2", the
+ * Hardware | Sim tabs (each with its observation grid, status caption and arm
+ * cards), Start-from, the single read-only scene, and the four ModeLauncher
+ * cards. Teleop launches directly; Data Collection / DAgger / Inference collect
+ * task / policy in a LaunchSheet (held mounted for its 160 ms exit after
+ * closing). The Hardware tab is always openable: while it
+ * is visible `GET /api/workcell?kind=hardware` is polled every 2 s and the four
+ * modes are gated on `hardware_ready`. Pure launch logic lives in ../lib/launch
+ * (re-exported here for the tests). */
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { getTelemetry } from "../api/clients";
 import {
   createSession,
   getCameras,
   getKeymap,
+  getMicrophones,
   getPolicies,
   getProfiles,
   getScenes,
   getWorkcell,
 } from "../api/rest";
-import type { CameraInfo, PolicyInfo, ProfileInfo, SceneInfo, SessionSpec } from "../gen";
+import type {
+  CameraInfo,
+  MicrophoneInfo,
+  PolicyInfo,
+  ProfileInfo,
+  SceneInfo,
+  SessionInfo,
+  WorkcellStatus,
+} from "../gen";
 import { buildBindings } from "../input/bindings";
+import { buildSpec, launcherReason, type LandingSelection } from "../lib/launch";
+import {
+  APP_EYEBROW,
+  APP_SUBTITLE,
+  APP_TITLE,
+  HARDWARE_CAMERA_SLOTS,
+  MIC_ID,
+  orderArms,
+  pageTitle,
+  SCENE_ID,
+  SIM_CAMERA_SLOTS,
+  TAB_LABELS,
+} from "../lib/streams";
 import type { FrameRef, Kind, Mode } from "../lib/types";
 import { MODES } from "../lib/types";
+import { useLingeringValue } from "../lib/useDelayedUnmount";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { useRevealOnce } from "../lib/useRevealOnce";
 import { useStore } from "../store";
 import {
-  ArmStatusCard,
-  CameraPreviewGrid,
-  ProfilePicker,
-  ScenePicker,
-  WorkcellKindToggle,
+  ArmCards,
+  hardwareCaption,
+  ObservationGrid,
+  SceneSummary,
+  simCaption,
+  StartFrom,
+  type StartFromChoice,
 } from "../components/landing";
-import { Toasts } from "../components/ConnectionBanner";
+import { LaunchSheet, type SheetMode } from "../components/LaunchSheet";
+import { ModeLauncher } from "../components/ModeLauncher";
+import { SegmentedControl, type SegmentedOrigin } from "../components/SegmentedControl";
+import { SHEET_EXIT_MS } from "../components/Sheet";
+import { Toasts } from "../components/Toasts";
 
-export interface LandingSelection {
-  kind: Kind;
-  arms: string[]; // included arm ids
-  frames: Record<string, FrameRef>;
-  simScene: string | null;
-  twinScene: string | null;
-  startFrom: "keep_current" | "profile";
-  profileId: string | null;
-  task: string;
-  policyId: string | null;
-  keymapOk: boolean;
-  policiesAvailable: boolean;
+export { buildSpec, launcherReason, REASON, validateLaunch } from "../lib/launch";
+export type { LandingSelection } from "../lib/launch";
+
+/** Hardware status poll period while the Hardware tab is visible. */
+export const HARDWARE_POLL_MS = 2000;
+/** Outgoing tab pane fades for this long (incoming enters over `--dur-fast`). */
+export const PANE_LEAVE_MS = 120;
+
+export interface LandingProps {
+  /** Test hook — defaults to HARDWARE_POLL_MS. */
+  hardwarePollMs?: number;
 }
 
-/** Validation matrix (05-ui §8.1) — returns the blocking reason or null. */
-export function validateLaunch(mode: Mode, sel: LandingSelection): string | null {
-  if (!sel.keymapOk) return "Keymap unavailable — is the runtime up?";
-  if (sel.arms.length === 0) return "Select at least one arm";
-  for (const a of sel.arms) if (!sel.frames[a]) return `No recording frame for ${a}`;
-  if (sel.kind === "sim" && !sel.simScene) return "Pick a sim scene";
-  if (sel.kind === "hardware" && !sel.twinScene)
-    return "Hardware sessions require a digital-twin scene";
-  if (sel.startFrom === "profile" && !sel.profileId) return "Select a profile to load";
-  if ((mode === "collect" || mode === "dagger") && sel.task.trim() === "")
-    return "Task is required for collect/dagger";
-  if ((mode === "dagger" || mode === "inference") && !sel.policiesAvailable)
-    return "No policies available";
-  if (mode === "inference" && !sel.policyId) return "No promoted deploy checkpoint";
-  return null;
-}
+const TAB_OPTIONS = [
+  {
+    value: "hardware",
+    label: TAB_LABELS.hardware,
+    testId: "kind-hardware",
+    panelId: "pane-hardware",
+  },
+  { value: "sim", label: TAB_LABELS.sim, testId: "kind-sim", panelId: "pane-sim" },
+] as const satisfies readonly { value: Kind; label: string; testId: string; panelId: string }[];
 
-export function buildSpec(mode: Mode, sel: LandingSelection): SessionSpec {
-  return {
-    mode,
-    kind: sel.kind,
-    arms: sel.arms,
-    frames: Object.fromEntries(sel.arms.map((a) => [a, sel.frames[a] ?? `arm_base:${a}`])),
-    ...(sel.kind === "sim" ? { sim_scene: sel.simScene ?? undefined } : {}),
-    ...(sel.kind === "hardware" ? { digital_twin_scene: sel.twinScene ?? undefined } : {}),
-    start_from: sel.startFrom === "profile" ? `profile:${sel.profileId}` : "keep_current",
-    ...(mode === "collect" || mode === "dagger" ? { task: sel.task.trim() } : {}),
-    ...((mode === "dagger" || mode === "inference") && sel.policyId
-      ? { policy: sel.policyId }
-      : {}),
-  };
-}
-
-export function Landing() {
+export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}) {
+  useDocumentTitle(pageTitle());
   const navigate = useNavigate();
   const workcell = useStore((s) => s.workcell);
   const setWorkcell = useStore((s) => s.setWorkcell);
   const setKeymap = useStore((s) => s.setKeymap);
   const setSession = useStore((s) => s.setSession);
   const addToast = useStore((s) => s.addToast);
+  const reveal = useRevealOnce();
 
-  const [kind, setKind] = useState<Kind>("sim");
-  const [included, setIncluded] = useState<Record<string, boolean>>({});
-  const [frames, setFrames] = useState<Record<string, FrameRef>>({});
+  const [tab, setTab] = useState<Kind>("sim");
+  const [tabOrigin, setTabOrigin] = useState<SegmentedOrigin>("pointer");
+  const [leaving, setLeaving] = useState<Kind | null>(null);
+  const [simStatus, setSimStatus] = useState<WorkcellStatus | null>(null);
+  const [hardware, setHardware] = useState<WorkcellStatus | null>(null);
   const [cameras, setCameras] = useState<CameraInfo[]>([]);
-  const [scenes, setScenes] = useState<SceneInfo[]>([]);
+  const [microphones, setMicrophones] = useState<MicrophoneInfo[]>([]);
+  const [simScenes, setSimScenes] = useState<SceneInfo[]>([]);
+  const [twinScenes, setTwinScenes] = useState<SceneInfo[]>([]);
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [policies, setPolicies] = useState<PolicyInfo[]>([]);
-  const [sceneId, setSceneId] = useState<string | null>(null);
-  const [startFrom, setStartFrom] = useState<"keep_current" | "profile">("keep_current");
+  const [startFrom, setStartFrom] = useState<StartFromChoice>("keep_current");
   const [profileId, setProfileId] = useState<string | null>(null);
-  const [task, setTask] = useState("");
-  const [policyId, setPolicyId] = useState<string | null>(null);
   const [keymapOk, setKeymapOk] = useState(false);
-  const [keymapTried, setKeymapTried] = useState(false);
   const [launching, setLaunching] = useState<Mode | null>(null);
+  const [sheet, setSheet] = useState<SheetMode | null>(null);
+  // The sheet's mode lingers for the exit transition once `sheet` is cleared.
+  const sheetShown = useLingeringValue(sheet, SHEET_EXIT_MS);
 
   const loadKeymap = useCallback(() => {
     getKeymap()
       .then((entries) => {
         setKeymap(entries, buildBindings(entries));
         setKeymapOk(true);
-        setKeymapTried(true);
       })
-      .catch(() => {
-        setKeymapOk(false);
-        setKeymapTried(true);
-      });
+      .catch(() => setKeymapOk(false));
   }, [setKeymap]);
 
+  // Discovery on mount. The legacy GET /api/workcell feeds the store (the
+  // Cockpit reads joint limits from it) and picks the default tab.
   useEffect(() => {
     getWorkcell()
       .then((w) => {
         setWorkcell(w);
-        setKind(w.kind);
-        const inc: Record<string, boolean> = {};
-        const fr: Record<string, FrameRef> = {};
-        for (const a of w.arms) {
-          inc[a.arm_id] = true;
-          fr[a.arm_id] = `arm_base:${a.arm_id}`; // default
+        setTab(w.kind);
+        if (w.kind === "sim") setSimStatus(w);
+        else if (w.available_kinds.includes("sim")) {
+          getWorkcell("sim")
+            .then(setSimStatus)
+            .catch(() => setSimStatus(null));
         }
-        setIncluded(inc);
-        setFrames(fr);
       })
-      .catch((e) => addToast(`workcell: ${e}`, "error"));
+      .catch((e) => addToast(`workcell: ${e instanceof Error ? e.message : String(e)}`, "error"));
     getCameras()
       .then(setCameras)
       .catch(() => setCameras([]));
+    getMicrophones()
+      .then(setMicrophones)
+      .catch(() => setMicrophones([]));
+    getScenes("sim")
+      .then(setSimScenes)
+      .catch(() => setSimScenes([]));
+    getScenes("twin")
+      .then(setTwinScenes)
+      .catch(() => setTwinScenes([]));
     getProfiles()
       .then(setProfiles)
       .catch(() => setProfiles([]));
@@ -135,12 +161,44 @@ export function Landing() {
     loadKeymap();
   }, [setWorkcell, addToast, loadKeymap]);
 
+  // Hardware tab: poll the probe-backed status (and camera liveness) every 2 s
+  // while the tab is visible; paused while the document is hidden.
   useEffect(() => {
-    setSceneId(null);
-    getScenes(kind === "hardware" ? "twin" : "sim")
-      .then(setScenes)
-      .catch(() => setScenes([]));
-  }, [kind]);
+    if (tab !== "hardware") return;
+    let alive = true;
+    const tick = () => {
+      if (document.hidden) return;
+      getWorkcell("hardware")
+        .then((w) => {
+          if (alive) setHardware(w.kind === "hardware" ? w : null);
+        })
+        .catch(() => {
+          if (alive) setHardware(null);
+        });
+      getCameras()
+        .then((c) => {
+          if (alive) setCameras(c);
+        })
+        .catch(() => undefined);
+    };
+    tick();
+    const id = window.setInterval(tick, hardwarePollMs);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [tab, hardwarePollMs]);
+
+  // The microphone's live levels ride /ws/telemetry — connect while a mic tile is shown.
+  const mic = useMemo(
+    () => microphones.find((m) => m.mic_id === MIC_ID) ?? microphones[0] ?? null,
+    [microphones],
+  );
+  useEffect(() => {
+    if (tab === "hardware" && mic) getTelemetry();
+  }, [tab, mic]);
 
   // Preselect the designated initial-condition profile when switching to "profile".
   useEffect(() => {
@@ -150,156 +208,199 @@ export function Landing() {
     }
   }, [startFrom, profiles, profileId]);
 
-  const arms = useMemo(() => workcell?.arms ?? [], [workcell]);
-  const selectedArms = arms.map((a) => a.arm_id).filter((id) => included[id]);
-
-  const promotedPolicies = useMemo(() => policies.filter((p) => p.promoted), [policies]);
+  // Tab switch: pointer → 120 ms crossfade (outgoing pane kept briefly);
+  // keyboard → instant, no leaving pane.
+  const changeTab = useCallback(
+    (next: Kind, origin: SegmentedOrigin) => {
+      if (next === tab) return;
+      setTabOrigin(origin);
+      setLeaving(origin === "pointer" ? tab : null);
+      setTab(next);
+    },
+    [tab],
+  );
   useEffect(() => {
-    if (policyId === null && policies.length > 0) {
-      const promoted = promotedPolicies[promotedPolicies.length - 1];
-      const latest = policies[policies.length - 1];
-      setPolicyId((promoted ?? latest)?.policy_id ?? null);
-    }
-  }, [policies, promotedPolicies, policyId]);
+    if (leaving === null) return;
+    const id = window.setTimeout(() => setLeaving(null), PANE_LEAVE_MS);
+    return () => window.clearTimeout(id);
+  }, [leaving]);
+
+  // -- Derived selection ------------------------------------------------------------
+  const availableKinds = hardware?.available_kinds ?? workcell?.available_kinds ?? [];
+  const hardwareConfigured = availableKinds.includes("hardware");
+  const hardwareReady = hardware?.hardware_ready ?? workcell?.hardware_ready ?? false;
+  const simArms = useMemo(() => simStatus?.arms ?? [], [simStatus]);
+  const hardwareArms = useMemo(() => hardware?.arms ?? [], [hardware]);
+  const tabArms = tab === "sim" ? simArms : hardwareArms;
+  // `SessionSpec.arms` is ordered Manipulation Arm (`grip`) first on both tabs:
+  // the runtime activates arms[0], so teleop always starts on the Manipulation Arm.
+  const armIds = useMemo(
+    () =>
+      orderArms(
+        tabArms.map((a) => a.arm_id),
+        (a) => a,
+      ),
+    [tabArms],
+  );
+  const frames = useMemo<Record<string, FrameRef>>(
+    () => Object.fromEntries(armIds.map((a) => [a, `arm_base:${a}`])),
+    [armIds],
+  );
+  const simScene = simScenes.find((s) => s.scene_id === SCENE_ID) ?? null;
+  const twinScene = twinScenes.find((s) => s.scene_id === SCENE_ID) ?? null;
+  const tabSlots: readonly string[] = tab === "sim" ? SIM_CAMERA_SLOTS : HARDWARE_CAMERA_SLOTS;
+  const tabCameras = cameras.filter((c) => tabSlots.includes(c.camera_id));
+  const promoted = useMemo(() => policies.filter((p) => p.promoted), [policies]);
 
   const sel: LandingSelection = {
-    kind,
-    arms: selectedArms,
+    tab,
+    kind: tab,
+    arms: armIds,
     frames,
-    simScene: kind === "sim" ? sceneId : null,
-    twinScene: kind === "hardware" ? sceneId : null,
+    simScene: tab === "sim" && simScene ? SCENE_ID : null,
+    twinScene: tab === "hardware" ? SCENE_ID : null, // the digital twin is implicitly mavis_v2
     startFrom,
     profileId,
-    task,
-    policyId,
+    task: "",
+    policyId: null,
     keymapOk,
-    policiesAvailable: workcell?.policies_available ?? false,
+    policiesAvailable: workcell?.policies_available ?? hardware?.policies_available ?? false,
+    hardwareReady,
+    hardwareConfigured,
   };
+  const reasons = Object.fromEntries(
+    MODES.map((m) => [m, launcherReason(m, sel, promoted)]),
+  ) as Record<Mode, string | null>;
 
-  const launch = async (mode: Mode) => {
-    setLaunching(mode);
+  const onLaunched = (info: SessionInfo) => {
+    setSession(info);
+    setSheet(null);
+    navigate(`/${info.mode}`);
+  };
+  const launchTeleop = async () => {
+    setLaunching("teleop");
     try {
-      const info = await createSession(buildSpec(mode, sel));
-      setSession(info);
-      navigate(`/${mode}`);
+      onLaunched(await createSession(buildSpec("teleop", sel)));
     } catch (e) {
       addToast(`session: ${e instanceof Error ? e.message : String(e)}`, "error");
     } finally {
       setLaunching(null);
     }
   };
+  const onLaunch = (mode: Mode) => {
+    if (mode === "teleop") void launchTeleop();
+    else setSheet(mode);
+  };
+
+  const stagger = (i: number): CSSProperties | undefined =>
+    reveal ? ({ "--i": i } as CSSProperties) : undefined;
+
+  const pane = (k: Kind, state: "enter" | "leave") => (
+    <section
+      key={k}
+      id={`pane-${k}`}
+      role="tabpanel"
+      className={`tab-pane ${state === "leave" ? "pane-leave" : "pane-enter"}`}
+      data-tab={k}
+      data-instant={state === "enter" && tabOrigin === "keyboard" ? "" : undefined}
+      aria-hidden={state === "leave" ? "true" : undefined}
+      data-testid={`pane-${k}`}
+    >
+      <ObservationGrid tab={k} cameras={cameras} microphone={k === "hardware" ? mic : null} />
+      <div className="status-caption" data-testid={`status-${k}`} aria-live="polite">
+        {k === "sim"
+          ? simCaption(simScene)
+          : hardwareCaption(hardware, cameras, mic, hardwareConfigured)}
+      </div>
+      <ArmCards
+        kind={k}
+        arms={k === "sim" ? simArms : hardwareArms}
+        configured={k === "sim" ? true : hardwareConfigured}
+      />
+    </section>
+  );
+
+  const profileName = profiles.find((p) => p.profile_id === profileId)?.name ?? null;
 
   return (
-    <div className="landing">
-      <div className="kv">
-        <h1 style={{ margin: 0 }}>apollo-mavis-v2</h1>
-        <Link to="/devices" data-testid="nav-devices" className="nav-link">
-          Devices (gamepad / tracker) ▸
-        </Link>
+    <div className="landing welcome" data-testid="landing">
+      <header className="hero">
+        <div className={`hero-text${reveal ? " enter-hero" : ""}`} style={stagger(0)}>
+          <div className="text-label fg-3 hero-eyebrow">{APP_EYEBROW}</div>
+          <h1 className="text-display hero-title" data-testid="hero-title">
+            {APP_TITLE}
+          </h1>
+          <p className="hero-subtitle" data-testid="hero-subtitle">
+            {APP_SUBTITLE}
+          </p>
+        </div>
+        <div className={`hero-actions${reveal ? " enter-fade" : ""}`} style={stagger(1)}>
+          <SegmentedControl
+            options={TAB_OPTIONS}
+            value={tab}
+            onChange={changeTab}
+            aria-label="Workcell"
+            testId="kind-toggle"
+          />
+          <Link to="/devices" className="btn-ghost btn-sm" data-testid="nav-devices">
+            Devices
+          </Link>
+        </div>
+      </header>
+
+      <div className="pane-stack">
+        {leaving !== null && leaving !== tab && pane(leaving, "leave")}
+        {pane(tab, "enter")}
       </div>
-      {workcell && (
-        <WorkcellKindToggle
-          kind={kind}
-          available={workcell.available_kinds as Kind[]}
-          onChange={setKind}
+
+      <section className="section" aria-labelledby="start-from-title">
+        <h2 id="start-from-title" className="text-label fg-3 section-title">
+          Start from
+        </h2>
+        <StartFrom
+          profiles={profiles}
+          arms={armIds}
+          startFrom={startFrom}
+          onStartFromChange={setStartFrom}
+          profileId={profileId}
+          onProfileChange={setProfileId}
+        />
+      </section>
+
+      <section className="section" aria-label="Scene">
+        <SceneSummary
+          kind={tab === "hardware" ? "twin" : "sim"}
+          scene={tab === "hardware" ? (twinScene ?? simScene) : simScene}
+        />
+      </section>
+
+      <section className="section" aria-labelledby="modes-title">
+        <h2 id="modes-title" className="text-label fg-3 section-title">
+          Modes
+        </h2>
+        <ModeLauncher
+          reasons={reasons}
+          launching={launching}
+          launchingLabel={startFrom === "profile" ? "Planning safe path…" : "Starting…"}
+          onLaunch={onLaunch}
+          onRetryKeymap={loadKeymap}
+          reveal={reveal}
+        />
+      </section>
+
+      {sheetShown !== null && (
+        <LaunchSheet
+          key={sheetShown}
+          mode={sheetShown}
+          open={sheet !== null}
+          sel={sel}
+          policies={policies}
+          cameras={tabCameras}
+          profileName={profileName}
+          onLaunched={onLaunched}
+          onClose={() => setSheet(null)}
         />
       )}
-      <CameraPreviewGrid cameras={cameras} />
-      <div className="cards-row">
-        {arms.map((a) => (
-          <ArmStatusCard
-            key={a.arm_id}
-            arm={a}
-            cameras={cameras}
-            included={included[a.arm_id] ?? false}
-            onIncludeChange={(v) => setIncluded((m) => ({ ...m, [a.arm_id]: v }))}
-            frame={frames[a.arm_id] ?? `arm_base:${a.arm_id}`}
-            onFrameChange={(f) => setFrames((m) => ({ ...m, [a.arm_id]: f }))}
-          />
-        ))}
-      </div>
-      <ScenePicker
-        kind={kind === "hardware" ? "twin" : "sim"}
-        scenes={scenes}
-        requiredArms={selectedArms.length}
-        value={sceneId}
-        onChange={setSceneId}
-      />
-      <ProfilePicker
-        profiles={profiles}
-        selectedArms={selectedArms}
-        startFrom={startFrom}
-        onStartFromChange={(v) => setStartFrom(v)}
-        value={profileId}
-        onChange={setProfileId}
-      />
-      <div className="panel">
-        <label className="kv">
-          <span>Task (collect/dagger)</span>
-          <input
-            value={task}
-            onChange={(e) => setTask(e.target.value)}
-            placeholder="e.g. stack the red cube"
-            data-testid="task-input"
-            style={{ flex: 1 }}
-          />
-        </label>
-        <label className="kv">
-          <span>Policy (dagger/inference)</span>
-          <select
-            value={policyId ?? ""}
-            onChange={(e) => setPolicyId(e.target.value || null)}
-            data-testid="policy-select"
-          >
-            <option value="">— latest —</option>
-            {policies.map((p) => (
-              <option key={p.policy_id} value={p.policy_id}>
-                {p.policy_id} (v{p.policy_version}){p.promoted ? " ★promoted" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="dim" style={{ fontSize: 12 }}>
-          Inference uses promoted checkpoints only ({promotedPolicies.length} available).
-        </div>
-      </div>
-      {keymapTried && !keymapOk && (
-        <div className="banner banner-amber" data-testid="keymap-failed">
-          Keymap unavailable — is the runtime up?{" "}
-          <button onClick={loadKeymap} data-testid="keymap-retry">
-            Retry
-          </button>
-        </div>
-      )}
-      {launching && startFrom === "profile" && (
-        <div className="banner banner-amber" data-testid="profile-planning">
-          Loading profile — planning safe path…
-        </div>
-      )}
-      <div style={{ display: "flex", gap: 10 }}>
-        {MODES.map((m) => {
-          const reason = validateLaunch(m, sel);
-          const policySel =
-            m === "inference"
-              ? promotedPolicies.some((p) => p.policy_id === policyId)
-                ? null
-                : "Inference requires a promoted checkpoint"
-              : null;
-          const blocked = reason ?? policySel;
-          return (
-            <button
-              key={m}
-              className="btn-primary"
-              disabled={blocked !== null || launching !== null}
-              title={blocked ?? undefined}
-              onClick={() => void launch(m)}
-              data-testid={`launch-${m}`}
-            >
-              {m}
-            </button>
-          );
-        })}
-      </div>
       <Toasts />
     </div>
   );
