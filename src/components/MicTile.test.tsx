@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { canvas2d } from "../../tests/setup";
 import { makeMicrophone, makeMicrophoneInfo, makeTelemetry } from "../../tests/mocks/fixtures";
 import { useStore } from "../store";
-import { dbNorm, EnvelopeBuffer, envToScope, fmtDbfs, MicTile } from "./MicTile";
+import { dbNorm, EnvelopeBuffer, envToScope, fmtDbfs, MicTile, shouldResetBuffer } from "./MicTile";
 
 const push = (over: Parameters<typeof makeMicrophone>[0]) =>
   act(() => useStore.getState().setTelemetry(makeTelemetry({ microphone: makeMicrophone(over) })));
@@ -106,5 +106,13 @@ describe("MicTile", () => {
     const wrapped = Array.from({ length: 4 }, (_, i) => buf.max[buf.index(i)] ?? 0);
     expect(wrapped[0]).toBeCloseTo(maxes[1] ?? 0);
     expect(wrapped[2]).toBeCloseTo(dbNorm(-20));
+    // rate_hz jitter (23.5..25.6 Hz → 71..77 frames per 3 s) must NOT reset the
+    // history; a bin-count change or a >25 % window change does.
+    const cur = new EnvelopeBuffer(75 * 64);
+    expect(shouldResetBuffer(null, 75 * 64, false)).toBe(true);
+    expect(shouldResetBuffer(cur, 71 * 64, false)).toBe(false);
+    expect(shouldResetBuffer(cur, 77 * 64, false)).toBe(false);
+    expect(shouldResetBuffer(cur, 75 * 64, true)).toBe(true);
+    expect(shouldResetBuffer(cur, 150 * 64, false)).toBe(true);
   });
 });

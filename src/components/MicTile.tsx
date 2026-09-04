@@ -61,6 +61,17 @@ export const envToScope = (v: number, peakDbfs: number | null | undefined): numb
   return Math.sign(v) * dbNorm(db);
 };
 
+/** Re-create the scope buffer only on the first frame, a bin-count change, or a
+ * > 25 % change of the window length: `rate_hz` jitters ±2 Hz frame to frame,
+ * and resizing on every rounding flip wiped the 3 s history (the scope then
+ * showed a stub at the right edge instead of a waveform). */
+export const shouldResetBuffer = (
+  current: EnvelopeBuffer | null,
+  capBins: number,
+  binsChanged: boolean,
+): boolean =>
+  current == null || binsChanged || Math.abs(capBins - current.capacity) > 0.25 * current.capacity;
+
 /** Ring buffer of per-bin min/max scope values (−1..1), oldest → newest. */
 export class EnvelopeBuffer {
   readonly min: Float32Array;
@@ -218,6 +229,7 @@ export function MicTile({
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bufRef = useRef<EnvelopeBuffer | null>(null);
+  const binsRef = useRef(0);
   const levelRef = useRef<Level>({
     rms: null,
     peak: null,
@@ -302,10 +314,13 @@ export function MicTile({
     const cap = Math.max(1, Math.round(windowS * rate));
     const bins = Math.max(1, Math.min(block.env_min?.length ?? 0, block.env_max?.length ?? 0));
     const capBins = cap * bins;
-    if (!bufRef.current || bufRef.current.capacity !== capBins) {
-      bufRef.current = new EnvelopeBuffer(capBins);
+    let buf = bufRef.current;
+    if (buf == null || shouldResetBuffer(buf, capBins, binsRef.current !== bins)) {
+      buf = new EnvelopeBuffer(capBins);
+      bufRef.current = buf;
+      binsRef.current = bins;
     }
-    bufRef.current.push(block.env_min ?? [], block.env_max ?? [], block.peak_dbfs ?? null);
+    buf.push(block.env_min ?? [], block.env_max ?? [], block.peak_dbfs ?? null);
 
     const now = performance.now();
     const lv = levelRef.current;
