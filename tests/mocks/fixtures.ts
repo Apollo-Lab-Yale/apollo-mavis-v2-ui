@@ -7,6 +7,7 @@
  * camera rows plus the read-only `hardware_monitor` telemetry block. */
 import keymapJson from "../../schemas/keymap.json";
 import type {
+  ArmMaintenanceResult,
   ArmMonitorTelemetry,
   ArmStatusInfo,
   ArmTelemetry,
@@ -57,6 +58,9 @@ export function makeArm(over: Partial<ArmTelemetry> = {}): ArmTelemetry {
     ee_pose: { position: [0.3, 0, 0.4], orientation: [1, 0, 0, 0] },
     gripper_open_frac: 0.8,
     error_code: 0,
+    warn_code: 0,
+    fault_detail: "",
+    recovering: false,
     goto: null,
     ...over,
   };
@@ -242,7 +246,8 @@ export function makeOverlayCameras(live = false): CameraInfo[] {
 /** One `hardware_monitor.arms` row (phase-09a): the Manipulation Arm at the
  * factory-zero posture (joint 1 at π), controller state 4 / mode 0, linear
  * track present but neither homed nor enabled (raw 0 mm → `rail_pos_m` null),
- * no controller error. */
+ * no controller error. Phase-09b read-back: sensitivity 3, the provisional
+ * 0.95 kg payload at (0, 0, 60) mm, matching the config, no op running. */
 export function makeArmMonitor(over: Partial<ArmMonitorTelemetry> = {}): ArmMonitorTelemetry {
   return {
     arm_id: "grip",
@@ -263,6 +268,32 @@ export function makeArmMonitor(over: Partial<ArmMonitorTelemetry> = {}): ArmMoni
     warn_code: 0,
     state: 4,
     mode: 0,
+    collision_sensitivity: 3,
+    tcp_load_kg: 0.95,
+    tcp_load_cog_mm: [0, 0, 60],
+    backstops_match: true,
+    maintenance_busy: false,
+    ...over,
+  };
+}
+
+/** `POST /api/hardware/arms/{arm_id}/maintenance` answer (phase-09b): a
+ * successful monitor-path `clear_errors` on the Perception Arm — the SDK
+ * write set is exactly `clean_error` + `clean_warn` — with the C19 sample
+ * before and a clean one after. */
+export function makeMaintenanceResult(
+  over: Partial<ArmMaintenanceResult> = {},
+): ArmMaintenanceResult {
+  return {
+    arm_id: "view",
+    op: "clear_errors",
+    path: "monitor",
+    ok: true,
+    detail: "",
+    sdk_codes: { clean_error: 0, clean_warn: 0 },
+    warnings: [],
+    before: makeArmMonitor({ arm_id: "view", error_code: 19, tcp_load_kg: 0.55 }),
+    after: makeArmMonitor({ arm_id: "view", tcp_load_kg: 0.55 }),
     ...over,
   };
 }
@@ -305,6 +336,8 @@ export function makeHardwareMonitor(
         gripper_raw: null,
         error_code: 19,
         detail: "controller error 19: End Effector Communication Error",
+        tcp_load_kg: 0.55,
+        tcp_load_cog_mm: [0, 0, 90],
       }),
     ],
     overlays: [

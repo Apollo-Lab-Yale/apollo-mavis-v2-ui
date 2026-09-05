@@ -1,6 +1,9 @@
 /** Active-arm indicator + per-arm chips (05-ui §8.2). Arms are listed
  * Manipulation Arm first (`orderArms`); each row shows the display name from
- * `ARM_LABELS` with the runtime id in a dim mono chip beside it. */
+ * `ARM_LABELS` with the runtime id in a dim mono chip beside it. A controller
+ * error is the same red `C<code>` chip as the Welcome arm card (phase-09b),
+ * titled with the runtime's `fault_detail` (SDK title) — recovery is the
+ * operator's click on the Cockpit `FaultBanner`, never automatic. */
 import type { ArmTelemetry } from "../gen";
 import { armLabel, orderArms } from "../lib/streams";
 
@@ -31,10 +34,11 @@ export function ArmIndicator({ arms, activeArm }: ArmIndicatorProps) {
               {!a.connected ? "DISCONNECTED — motion held" : active ? "active" : "holding"}
               {a.error_code !== 0 && (
                 <span
-                  className="chip chip-amber"
-                  title="runtime auto-recovers: clean_error → motion_enable → set_mode → set_state → re-seed"
+                  className="chip chip-red"
+                  data-testid={`arm-error-${a.arm_id}`}
+                  title={a.fault_detail || `controller error ${a.error_code}`}
                 >
-                  err {a.error_code}
+                  C{a.error_code}
                 </span>
               )}
             </span>

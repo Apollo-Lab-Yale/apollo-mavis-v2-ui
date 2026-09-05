@@ -593,6 +593,23 @@ textarea[aria-invalid="true"] {
   background: var(--warn);
   color: #1a1a1a;
 }
+/* Fault banner (phase-09b): one row per faulted arm, its button at the right. */
+.banner-fault {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.banner-fault-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.banner-fault-row .spinner {
+  width: 12px;
+  height: 12px;
+}
 .chip {
   display: inline-block;
   padding: 2px 8px;
@@ -1649,6 +1666,30 @@ summary.summary::-webkit-details-marker {
 }
 .arm-card-placeholder .spinner {
   color: var(--fg-3);
+}
+/* Safety read-back (phase-09b): amber + glyph when the controller differs from config. */
+.arm-card-safety {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+.arm-card-safety.is-mismatch {
+  color: var(--warn);
+}
+/* Maintenance buttons (phase-09b): .btn system, reason as adjacent text, no motion of its own. */
+.arm-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.arm-card-actions .btn-reason {
+  margin-top: 0;
+}
+.arm-card-actions .spinner {
+  width: 12px;
+  height: 12px;
 }
 
 /* Sections */

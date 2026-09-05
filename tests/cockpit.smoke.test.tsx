@@ -3,7 +3,9 @@
  * Real timers + mock-socket end to end: arm capture, hold KeyW, assert the
  * server receives the transition + heartbeats; push a blocked collision
  * fixture → red banner + tile flash; kill the control server → CONTROL LINK
- * DOWN + auto-disarm.
+ * DOWN + auto-disarm; (phase-09b) a controller fault raises the FaultBanner,
+ * whose recover button exists only while `hardware_monitor.paused` says a
+ * hardware session owns the boxes.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WebSocket as MockWebSocket } from "mock-socket";
@@ -13,7 +15,13 @@ import { resetClients } from "../src/api/clients";
 import { buildBindings } from "../src/input/bindings";
 import { Cockpit } from "../src/pages/Cockpit";
 import { useStore } from "../src/store";
-import { KEYMAP, makeTelemetry, makeWorkcell } from "./mocks/fixtures";
+import {
+  KEYMAP,
+  makeArm,
+  makeHardwareMonitor,
+  makeTelemetry,
+  makeWorkcell,
+} from "./mocks/fixtures";
 import { MockControlServer, MockTelemetryServer, MockVideoServer } from "./mocks/mockWs";
 
 const base = `ws://${location.host}`;
@@ -154,6 +162,90 @@ describe("Cockpit integration smoke", () => {
     } finally {
       sim.stop();
     }
+  }, 15000);
+
+  it("controller fault (phase-09b): FaultBanner with the recover button only while the monitor is paused (hardware session)", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    // Sim session (monitor not paused): the fault shows, no button.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 2,
+          arms: [
+            makeArm({
+              arm_id: "grip",
+              error_code: 24,
+              fault_detail: "controller error 24: Speed Exceeds Limit",
+            }),
+            makeArm({ arm_id: "view" }),
+          ],
+          session: { state: "fault" },
+          hardware_monitor: makeHardwareMonitor({ paused: false }),
+        }),
+      ),
+    );
+    const banner = await screen.findByTestId("fault-banner");
+    expect(banner.className).toContain("banner-red");
+    expect(screen.getByTestId("fault-row-grip").textContent).toContain(
+      "Manipulation Arm C24 Speed Exceeds Limit",
+    );
+    expect(screen.queryByTestId("fault-recover-grip")).toBeNull();
+    // The ArmIndicator chip is the red C24 (no "err 24").
+    expect(screen.getByTestId("arm-error-grip").textContent).toBe("C24");
+    expect(screen.getByTestId("arm-error-grip").className).toBe("chip chip-red");
+    // Hardware session (monitor paused): the button appears.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 3,
+          arms: [
+            makeArm({
+              arm_id: "grip",
+              error_code: 24,
+              fault_detail: "controller error 24: Speed Exceeds Limit",
+            }),
+            makeArm({ arm_id: "view" }),
+          ],
+          session: { state: "fault" },
+          hardware_monitor: makeHardwareMonitor({ paused: true }),
+        }),
+      ),
+    );
+    await screen.findByTestId("fault-recover-grip");
+    // Recovering → amber, button busy; running + no fault → banner gone.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 4,
+          arms: [
+            makeArm({
+              arm_id: "grip",
+              error_code: 24,
+              fault_detail: "controller error 24: Speed Exceeds Limit",
+              recovering: true,
+            }),
+            makeArm({ arm_id: "view" }),
+          ],
+          session: { state: "recovering" },
+          hardware_monitor: makeHardwareMonitor({ paused: true }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("fault-banner").className).toContain("banner-amber"),
+    );
+    expect(screen.getByTestId("fault-recover-grip")).toBeDisabled();
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 5,
+          session: { state: "running" },
+          hardware_monitor: makeHardwareMonitor({ paused: true }),
+        }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByTestId("fault-banner")).toBeNull());
   }, 15000);
 
   it("observer role shows the read-only banner and blocks arming", async () => {

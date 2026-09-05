@@ -9,12 +9,13 @@ import { useGamepad } from "../input/useGamepad";
 import { MODE_LABELS, orderStreams, pageTitle, streamLabel } from "../lib/streams";
 import type { Mode } from "../lib/types";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
-import { selectActiveArm, useStore } from "../store";
+import { selectActiveArm, selectHardwareSession, useStore } from "../store";
 import { ArmIndicator } from "../components/ArmIndicator";
 import { ClearanceReadout, CollisionBanner } from "../components/CollisionBanner";
 import { ConnectionBanner, Toasts } from "../components/ConnectionBanner";
 import { DaggerPanel } from "../components/DaggerPanel";
 import { EpisodeControls } from "../components/EpisodeControls";
+import { FaultBanner } from "../components/FaultBanner";
 import { InferencePanel } from "../components/InferencePanel";
 import { JointPanel } from "../components/JointPanel";
 import { KeymapOverlay } from "../components/KeymapOverlay";
@@ -37,6 +38,9 @@ export function Cockpit({ mode }: { mode: Mode }) {
   const role = useStore((s) => s.conn.role);
   const controlDown = useStore((s) => s.conn.control !== "open");
   const activeArm = useStore(selectActiveArm);
+  // Hardware sessions get the "Clear errors & resume" button; sim faults (if
+  // any) are display-only (phase-09b).
+  const hardwareSession = useStore(selectHardwareSession);
   const [overlayOpen, setOverlayOpen] = useState(true);
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
 
@@ -97,6 +101,14 @@ export function Cockpit({ mode }: { mode: Mode }) {
       <div className="cockpit-main">
         <ConnectionBanner />
         {telemetry && <CollisionBanner report={telemetry.collision} stale={telemetryStale} />}
+        {telemetry && (
+          <FaultBanner
+            arms={telemetry.arms}
+            sessionState={telemetry.session?.state ?? session?.state ?? null}
+            hardware={hardwareSession}
+            stale={telemetryStale}
+          />
+        )}
         <TeleopSurface
           enabled={role !== "observer"}
           mode={mode}

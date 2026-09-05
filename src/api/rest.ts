@@ -1,5 +1,7 @@
 /** Typed fetch client — relative URLs, JSON, ApiError on non-2xx (05-ui §4). */
 import type {
+  ArmMaintenanceRequest,
+  ArmMaintenanceResult,
   CameraInfo,
   KeymapEntry,
   MicrophoneInfo,
@@ -87,3 +89,20 @@ export const postTrackerCalibration = (
   cmd: TrackerCalibrationCommand,
 ): Promise<TrackerCalibrationStatus> =>
   request("/api/tracker/calibration", { method: "POST", body: JSON.stringify(cmd) });
+
+// Arm maintenance (phase-09b, 04-runtime §13.1): session-less controller
+// hygiene from the Welcome Hardware tab (`clear_errors`, `apply_backstops` —
+// neither produces motion) and the in-session recovery from the Cockpit fault
+// banner (`recover`). The runtime picks the path (read-only monitor vs the
+// session's driver) and answers 200 with `ok` either way; 404 = unknown arm,
+// 409 = wrong path for the current state (session owns the boxes while an
+// `apply_backstops` arrives, monitor off / paused, `recover` without a
+// session, …) — the `detail` surfaces through ApiError for the toast.
+export const postArmMaintenance = (
+  armId: string,
+  op: ArmMaintenanceRequest["op"],
+): Promise<ArmMaintenanceResult> =>
+  request(`/api/hardware/arms/${encodeURIComponent(armId)}/maintenance`, {
+    method: "POST",
+    body: JSON.stringify({ op } satisfies ArmMaintenanceRequest),
+  });

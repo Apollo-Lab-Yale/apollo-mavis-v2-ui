@@ -4,6 +4,7 @@
  */
 import { create } from "zustand";
 import type {
+  ArmMonitorTelemetry,
   ArmTelemetry,
   CollisionReport,
   KeymapEntry,
@@ -173,3 +174,17 @@ export const selectControlLinkDown = (s: AppState): boolean => s.conn.control !=
 export const selectTracker = (s: AppState) => s.telemetry?.tracker ?? null;
 /** Phase-09a read-only hardware monitor block (null on a runtime without it). */
 export const selectHardwareMonitor = (s: AppState) => s.telemetry?.hardware_monitor ?? null;
+/** A hardware session owns the control boxes (phase-09b): the monitor's
+ * `paused` flag IS the runtime's `_hardware_session_active` predicate (the
+ * runtime reports it even with the monitor switched off / the hardware
+ * package missing), and it is the only wire signal that tells a hardware
+ * session from a sim one (`SessionInfo` carries no kind; both kinds may
+ * stream `"twin"`). False on a runtime without the block — the Cockpit then
+ * offers no recovery button. */
+export const selectHardwareSession = (s: AppState): boolean =>
+  s.telemetry?.hardware_monitor?.paused === true;
+/** The read-only monitor's row for one arm (null while the block or the arm is absent). */
+export const selectMonitorArm =
+  (armId: string) =>
+  (s: AppState): ArmMonitorTelemetry | null =>
+    s.telemetry?.hardware_monitor?.arms?.find((a) => a.arm_id === armId) ?? null;

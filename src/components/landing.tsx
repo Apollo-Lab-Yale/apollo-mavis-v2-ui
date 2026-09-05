@@ -1,8 +1,12 @@
 /** Welcome-page pieces (phase-11 §4): per-tab observation grid, arm status
- * cards (with the "Searching for arms…" placeholder), Start-from option rows +
- * profile list, the read-only scene row, the FrameSelector, and the pure
- * status-caption helpers. Naming lives in ../lib/streams. */
-import type { ReactNode } from "react";
+ * cards (with the "Searching for arms…" placeholder; on the Hardware tab also
+ * the phase-09b safety read-back line + Clear errors / Apply safety settings
+ * buttons), Start-from option rows + profile list, the read-only scene row,
+ * the FrameSelector, and the pure status-caption helpers. Naming lives in
+ * ../lib/streams, the maintenance copy/enablement in ../lib/maintenance. */
+import { useState, type ReactNode } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { postArmMaintenance } from "../api/rest";
 import type {
   ArmMonitorTelemetry,
   ArmStatusInfo,
@@ -26,8 +30,16 @@ import {
   SIM_CAMERA_SLOTS,
   streamLabel,
 } from "../lib/streams";
+import {
+  maintenanceErrorText,
+  maintenanceToast,
+  maintenanceView,
+  TITLE_DIFFERS,
+  type MaintenanceOp,
+  type MaintenanceView,
+} from "../lib/maintenance";
 import type { FrameRef, Kind } from "../lib/types";
-import { useStore } from "../store";
+import { selectHardwareSession, selectMonitorArm, useStore, type AppState } from "../store";
 import { Icon, type IconName } from "./icons";
 import { MicTile } from "./MicTile";
 import { StreamView } from "./StreamView";
@@ -155,8 +167,20 @@ export interface ArmStatusCardProps {
   kind: Kind;
 }
 
+/** Hardware cards only (phase-09b): the read-only monitor's row for this arm
+ * + the "a hardware session owns the boxes" flag, reduced to primitives by
+ * `maintenanceView` so `useShallow` re-renders the card only when the strip
+ * changes (the monitor block is a fresh object on every telemetry tick). */
+const selectMaintenance =
+  (arm: ArmStatusInfo, kind: Kind) =>
+  (s: AppState): MaintenanceView | null =>
+    kind === "hardware"
+      ? maintenanceView(selectMonitorArm(arm.arm_id)(s), arm, selectHardwareSession(s))
+      : null;
+
 export function ArmStatusCard({ arm, kind }: ArmStatusCardProps) {
   const reach: Reachable = arm.reachable ?? "unknown";
+  const maintenance = useStore(useShallow(selectMaintenance(arm, kind)));
   let pill: ReactNode;
   if (arm.connected) {
     pill = (
@@ -206,6 +230,17 @@ export function ArmStatusCard({ arm, kind }: ArmStatusCardProps) {
           gripper {arm.gripper}
           {arm.gripper_force_capable ? " · force" : ""}
         </span>
+        {maintenance?.meta && (
+          <span
+            className={`arm-card-safety${maintenance.mismatch ? " is-mismatch" : ""}`}
+            data-testid={`arm-safety-${arm.arm_id}`}
+            data-mismatch={maintenance.mismatch ? "true" : "false"}
+            title={maintenance.mismatch ? TITLE_DIFFERS : undefined}
+          >
+            {maintenance.mismatch && <Icon name="warning" size={12} />}
+            {maintenance.meta}
+          </span>
+        )}
         {arm.error_code !== 0 && (
           <span
             className="chip chip-red"
@@ -216,6 +251,81 @@ export function ArmStatusCard({ arm, kind }: ArmStatusCardProps) {
           </span>
         )}
       </div>
+      {maintenance && <ArmMaintenanceActions armId={arm.arm_id} view={maintenance} />}
+    </div>
+  );
+}
+
+// -- Arm maintenance buttons (Hardware tab, phase-09b) ---------------------------------
+// Two session-less controller-hygiene ops, neither of which produces motion,
+// hence no confirm dialog: **Clear errors** (`clean_error` + `clean_warn`,
+// never `motion_enable`) while the controller reports an error or warning,
+// and **Apply safety settings** (`apply_backstops`: payload, collision
+// sensitivity, self-collision model, rebound off) while the read-back differs
+// from the arm's config. Both are disabled with the visible reason "Use the
+// Cockpit" while a hardware session owns the boxes (the runtime answers 409 /
+// routes to the session driver). One POST at a time per card; ONLY the pressed
+// button shows a spinner and `aria-busy` until the result toast. An op started
+// by another client (`maintenance_busy` with nothing pending here) disables
+// both buttons and shows one shared "maintenance running…" indicator instead
+// of marking both buttons busy (only one op can run on an arm).
+interface ArmMaintenanceActionsProps {
+  armId: string;
+  view: MaintenanceView;
+}
+
+const OP_LABEL: Readonly<Record<Exclude<MaintenanceOp, "recover">, string>> = {
+  clear_errors: "Clear errors",
+  apply_backstops: "Apply safety settings",
+};
+
+function ArmMaintenanceActions({ armId, view }: ArmMaintenanceActionsProps) {
+  const addToast = useStore((s) => s.addToast);
+  const [pending, setPending] = useState<MaintenanceOp | null>(null);
+  const run = async (op: MaintenanceOp) => {
+    if (pending !== null) return;
+    setPending(op);
+    try {
+      const { text, tone } = maintenanceToast(await postArmMaintenance(armId, op));
+      addToast(text, tone);
+    } catch (e) {
+      addToast(maintenanceErrorText(armId, e), "error");
+    } finally {
+      setPending(null);
+    }
+  };
+  const serverBusy = view.busy && pending === null; // another client's op is running
+  const button = (op: Exclude<MaintenanceOp, "recover">, enabled: boolean, testId: string) => {
+    const busy = pending === op;
+    return (
+      <button
+        type="button"
+        className="btn-secondary btn-sm"
+        disabled={!enabled || pending !== null}
+        aria-busy={busy ? "true" : undefined}
+        data-testid={testId}
+        title={view.reason ?? undefined}
+        onClick={() => void run(op)}
+      >
+        {busy && <span className="spinner" aria-hidden="true" />}
+        {OP_LABEL[op]}
+      </button>
+    );
+  };
+  return (
+    <div className="arm-card-actions" data-testid={`arm-actions-${armId}`}>
+      {button("clear_errors", view.clearEnabled, `arm-clear-errors-${armId}`)}
+      {button("apply_backstops", view.applyEnabled, `arm-apply-backstops-${armId}`)}
+      {serverBusy && (
+        <span className="btn-reason" data-testid={`arm-actions-busy-${armId}`} role="status">
+          <span className="spinner" aria-hidden="true" /> maintenance running…
+        </span>
+      )}
+      {view.reason && (
+        <span className="btn-reason" data-testid={`arm-actions-reason-${armId}`}>
+          {view.reason}
+        </span>
+      )}
     </div>
   );
 }
