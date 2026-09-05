@@ -51,7 +51,7 @@ import { useRevealOnce } from "../lib/useRevealOnce";
 import { useStore } from "../store";
 import {
   ArmCards,
-  hardwareCaption,
+  HardwareCaption,
   ObservationGrid,
   SceneSummary,
   simCaption,
@@ -191,14 +191,16 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     };
   }, [tab, hardwarePollMs]);
 
-  // The microphone's live levels ride /ws/telemetry — connect while a mic tile is shown.
+  // The microphone's live levels and the read-only hardware monitor (twin
+  // overlay notes, the caption's twin segment) ride /ws/telemetry — connect
+  // while the Hardware tab is shown.
   const mic = useMemo(
     () => microphones.find((m) => m.mic_id === MIC_ID) ?? microphones[0] ?? null,
     [microphones],
   );
   useEffect(() => {
-    if (tab === "hardware" && mic) getTelemetry();
-  }, [tab, mic]);
+    if (tab === "hardware") getTelemetry();
+  }, [tab]);
 
   // Preselect the designated initial-condition profile when switching to "profile".
   useEffect(() => {
@@ -308,9 +310,16 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     >
       <ObservationGrid tab={k} cameras={cameras} microphone={k === "hardware" ? mic : null} />
       <div className="status-caption" data-testid={`status-${k}`} aria-live="polite">
-        {k === "sim"
-          ? simCaption(simScene)
-          : hardwareCaption(hardware, cameras, mic, hardwareConfigured)}
+        {k === "sim" ? (
+          simCaption(simScene)
+        ) : (
+          <HardwareCaption
+            status={hardware}
+            cameras={cameras}
+            mic={mic}
+            configured={hardwareConfigured}
+          />
+        )}
       </div>
       <ArmCards
         kind={k}

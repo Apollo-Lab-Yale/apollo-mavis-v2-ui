@@ -29,6 +29,32 @@ describe("StreamView", () => {
       <StreamView streamId="camX" label="cam X" wsFactory={mockWsFactory} useWorker={false} />,
     );
 
+  it("note: one bottom-edge line when given (also on an absent tile); nothing otherwise", () => {
+    const { rerender } = render(
+      <StreamView
+        streamId="grip_wrist_align"
+        title="Manipulation · twin overlay"
+        absent
+        showLatencyBadge={false}
+        note="rail not homed · twin assumes 0.65 m"
+      />,
+    );
+    const note = screen.getByTestId("stream-note");
+    expect(note.textContent).toBe("rail not homed · twin assumes 0.65 m");
+    expect(note.className).toBe("tile-badge tile-note");
+    expect(screen.getByTestId("stream-grip_wrist_align").dataset["state"]).toBe("absent");
+    expect(screen.getByTestId("stream-grip_wrist_align").querySelector("canvas")).toBeNull();
+    rerender(
+      <StreamView
+        streamId="grip_wrist_align"
+        title="Manipulation · twin overlay"
+        absent
+        showLatencyBadge={false}
+      />,
+    );
+    expect(screen.queryByTestId("stream-note")).toBeNull();
+  });
+
   it("draws each delivered frame (two frames → two drawImage calls)", async () => {
     mount();
     await tick(50); // mock-socket connection delay

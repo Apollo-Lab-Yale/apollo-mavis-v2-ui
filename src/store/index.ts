@@ -171,3 +171,5 @@ export const selectDagger = (s: AppState) => s.telemetry?.dagger ?? null;
 export const selectInference = (s: AppState) => s.telemetry?.inference ?? null;
 export const selectControlLinkDown = (s: AppState): boolean => s.conn.control !== "open";
 export const selectTracker = (s: AppState) => s.telemetry?.tracker ?? null;
+/** Phase-09a read-only hardware monitor block (null on a runtime without it). */
+export const selectHardwareMonitor = (s: AppState) => s.telemetry?.hardware_monitor ?? null;

@@ -64,6 +64,8 @@ export const STREAM_LABELS: Readonly<Record<string, string>> = {
   cam_top: "Environment · top",
   grip_wrist: "Manipulation · wrist cam",
   view_wrist: "Perception · wrist cam",
+  grip_wrist_align: "Manipulation · twin overlay",
+  view_wrist_align: "Perception · twin overlay",
   sim: "Digital Twin",
   twin: "Safety twin",
 };
@@ -78,11 +80,30 @@ export const SIM_CAMERA_SLOTS = [
   "cam_front",
   "cam_top",
 ] as const;
-/** Hardware tab camera slots (+ the MicTile as the third cell): the real wrist
- * cameras (RealSense D435i colour over UVC). Ids differ from the digital twin's
+/** Hardware tab real cameras: the two wrist cameras (RealSense D435i colour
+ * over UVC). Ids differ from the digital twin's
  * `grip_wrist_cam` / `view_wrist_cam` because both sets coexist in the runtime's
  * VideoHub (Welcome page previews; twin renders during a hardware session). */
 export const HARDWARE_CAMERA_SLOTS = ["grip_wrist", "view_wrist"] as const;
+/** Twin-overlay streams (phase-09a): the real wrist-camera frame with the
+ * digital twin, posed from the read-only arm monitor, tinted pale yellow on
+ * top. Ids are `<camera_id>_align` (reserved suffix, 04-runtime §13.4); they are
+ * `kind: "twin"` rows of `/api/cameras` and are never recording frames. */
+export const HARDWARE_OVERLAY_SLOTS = ["grip_wrist_align", "view_wrist_align"] as const;
+/** Hardware tab observation grid, in DOM order: each real camera followed by
+ * its overlay (the MicTile is the fifth cell). `HARDWARE_CAMERA_SLOTS` keeps
+ * the two real cameras for everything else (captions, recording frames). */
+export const HARDWARE_GRID_SLOTS = [
+  "grip_wrist",
+  "grip_wrist_align",
+  "view_wrist",
+  "view_wrist_align",
+] as const;
+export const OVERLAY_SUFFIX = "_align";
+/** `grip_wrist_align` → `grip_wrist`; null for any other id. */
+export const overlayBase = (id: string): string | null =>
+  id.endsWith(OVERLAY_SUFFIX) ? id.slice(0, -OVERLAY_SUFFIX.length) : null;
+export const isOverlayStream = (id: string): boolean => overlayBase(id) !== null;
 
 export const MODE_LABELS: Readonly<Record<Mode, string>> = {
   teleop: "Teleop",
@@ -109,10 +130,17 @@ const streamRank = (id: string): number => {
 };
 
 /** Cockpit grid order: wrist cameras → environment cameras → "sim" (Digital
- * Twin) → "twin". Stable within a rank (runtime order preserved). */
+ * Twin) → "twin". Stable within a rank (runtime order preserved); a twin
+ * overlay (`<cam>_align`) sits right after its camera whenever that camera is
+ * listed, otherwise it is ordered like any other stream. */
 export function orderStreams(ids: readonly string[]): string[] {
   return ids
-    .map((id, i) => ({ id, i, r: streamRank(id) }))
-    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((id, i) => {
+      const base = overlayBase(id);
+      const anchor = base === null ? -1 : ids.indexOf(base);
+      if (base === null || anchor === -1) return { id, r: streamRank(id), i, sub: 0 };
+      return { id, r: streamRank(base), i: anchor, sub: 1 };
+    })
+    .sort((a, b) => a.r - b.r || a.i - b.i || a.sub - b.sub)
     .map((x) => x.id);
 }

@@ -38,7 +38,7 @@ export type JointLimits = [number, number][];
 export type Reachable = "open" | "refused" | "unreachable" | "unknown";
 export type CameraId = string;
 export type Fps = number;
-export type Kind = "v4l2" | "realsense" | "sim";
+export type Kind = "v4l2" | "realsense" | "sim" | "twin";
 export type Label = string;
 export type Live = boolean;
 /**
@@ -188,11 +188,42 @@ export type Frames1 = number;
 export type Index = number | null;
 export type State2 = "idle" | "recording" | "saving";
 export type Epoch2 = string;
+export type AgeS = number | null;
+export type ArmId3 = string;
+export type Detail2 = string;
+export type ErrorCode2 = number;
+export type GripperOpenFrac2 = number | null;
+export type GripperRaw = number | null;
+export type Mode3 = number | null;
+export type Q2 = number[];
+export type RailEnabled = boolean | null;
+export type RailHomed = boolean | null;
+export type RailPosM2 = number | null;
+export type RailPresent = boolean | null;
+export type RailRawMm = number | null;
+export type Seq1 = number;
+export type State3 = number | null;
+export type Status1 = "off" | "connecting" | "running" | "stale" | "paused" | "error";
+export type TcpPose = number[];
+export type WarnCode1 = number;
+export type Arms5 = ArmMonitorTelemetry[];
+export type Enabled = boolean;
+export type ArmId4 = string;
+export type CameraId1 = string;
+export type Detail3 = string;
+export type Fps1 = number;
+export type Joint1OffsetRad = number;
+export type MaskFraction = number;
+export type RailFallbackM = number | null;
+export type Status2 = "off" | "waiting" | "live" | "stale" | "error";
+export type StreamId = string;
+export type Overlays = TwinOverlayTelemetry[];
+export type Paused = boolean;
 export type EngagedArm1 = string | null;
 export type PolicyVersion2 = string | null;
-export type AgeS = number | null;
+export type AgeS1 = number | null;
 export type Clipping = boolean;
-export type Detail2 = string;
+export type Detail4 = string;
 export type EnvMax = number[];
 export type EnvMin = number[];
 export type MicId1 = string;
@@ -201,21 +232,21 @@ export type PeakDbfs = number | null;
 export type RateHz = number;
 export type RmsDbfs = number | null;
 export type SampleRate1 = number;
-export type Seq1 = number;
-export type Status1 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
 export type Seq2 = number;
+export type Status3 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
+export type Seq3 = number;
 export type PlanStatus = string | null;
 export type StartFromProgress = number | null;
-export type State3 = string;
+export type State4 = string;
 export type TrainerAlive = boolean | null;
 export type T5 = "telemetry";
-export type AgeS1 = number | null;
+export type AgeS2 = number | null;
 export type Backend = "libsurvive" | "fake" | "none";
 export type AppliedYawDeg = number | null;
 export type BackupPath = string | null;
 export type BaseStationInstalledAt = number | null;
 export type ControllerStill = boolean | null;
-export type Detail3 = string;
+export type Detail5 = string;
 export type ElapsedS = number | null;
 export type FitChecks = string[];
 export type FitResidualDeg = number | null;
@@ -267,20 +298,20 @@ export type TrackpadX = number;
 export type TrackpadY = number;
 export type Trigger = number;
 export type TriggerPressed = boolean;
-export type Detail4 = string;
+export type Detail6 = string;
 export type DeviceAction = string | null;
 export type DeviceHeld = string[];
 export type EngagedArm2 = string | null;
 export type ObjectName = string;
 export type RateHz1 = number;
-export type Seq3 = number;
+export type Seq4 = number;
 export type FilterBeta = number;
 export type FilterEnabled = boolean;
 export type FilterMinCutoffHz = number;
 export type FollowRotation = boolean;
 export type PosScale = number;
 export type YawDeg = number;
-export type Status2 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
+export type Status4 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
 export type Ts3 = number;
 export type Kind7 = "base_station" | "yaw";
 export type Op = "start" | "capture" | "validate" | "install" | "apply" | "abort";
@@ -291,7 +322,7 @@ export type FilterMinCutoffHz1 = number | null;
 export type FollowRotation1 = boolean | null;
 export type PosScale1 = number | null;
 export type YawDeg1 = number | null;
-export type Arms5 = ArmStatusInfo[];
+export type Arms6 = ArmStatusInfo[];
 export type AvailableKinds = ("hardware" | "sim")[];
 export type Cameras1 = CameraInfo[];
 export type HardwareReady = boolean;
@@ -543,9 +574,10 @@ export interface TelemetryMsg {
   dagger: DaggerStatus | null;
   episode: EpisodeStatus | null;
   epoch: Epoch2;
+  hardware_monitor?: HardwareMonitorTelemetry | null;
   inference: InferenceStatus | null;
   microphone?: MicrophoneTelemetry | null;
-  seq: Seq2;
+  seq: Seq3;
   session?: SessionTelemetry | null;
   t?: T5;
   tracker?: TrackerTelemetry | null;
@@ -627,6 +659,78 @@ export interface EpisodeStatus {
   state: State2;
 }
 /**
+ * ``TelemetryMsg.hardware_monitor`` block (phase-09a; 04-runtime §13.3), additive.
+ *
+ * Every field defaults so a runtime without the hardware package still emits
+ * a valid (``enabled: false``) block. ``paused`` is true while a hardware
+ * session owns the control boxes: the monitor releases its connections
+ * instead of sharing a box between two SDK clients.
+ */
+export interface HardwareMonitorTelemetry {
+  arms?: Arms5;
+  enabled?: Enabled;
+  overlays?: Overlays;
+  paused?: Paused;
+}
+/**
+ * One arm as seen by the read-only state monitor.
+ *
+ * Every field but ``arm_id`` defaults so an arm the monitor never reached
+ * still validates. ``q`` is the controller's 7 joint angles in radians,
+ * controller order - an IDENTITY mapping onto the twin's ``<arm>_joint1..7``
+ * (verified 2026-09-04: no pi offset). ``tcp_pose`` is the controller flange
+ * pose (``tcp_offset`` zero) in the arm base frame, ``[x, y, z]`` m followed
+ * by ``[roll, pitch, yaw]`` rad (mm/deg converted by the hardware package).
+ * ``rail_pos_m`` is filled only while the track reports homed (``on_zero ==
+ * 1``) AND enabled - the raw register is meaningless otherwise - whereas
+ * ``rail_raw_mm`` is always reported when the registers are readable.
+ * ``gripper_open_frac`` is 0 closed .. 1 open (``None`` for gripper
+ * ``"none"``); ``gripper_raw`` is the SDK reading for diagnosis.
+ * ``error_code``/``warn_code`` are the controller's codes (e.g. 19 = End
+ * Module Communication Error); ``state`` 4 = stopped / not enabled.
+ */
+export interface ArmMonitorTelemetry {
+  age_s?: AgeS;
+  arm_id: ArmId3;
+  detail?: Detail2;
+  error_code?: ErrorCode2;
+  gripper_open_frac?: GripperOpenFrac2;
+  gripper_raw?: GripperRaw;
+  mode?: Mode3;
+  q?: Q2;
+  rail_enabled?: RailEnabled;
+  rail_homed?: RailHomed;
+  rail_pos_m?: RailPosM2;
+  rail_present?: RailPresent;
+  rail_raw_mm?: RailRawMm;
+  seq?: Seq1;
+  state?: State3;
+  status?: Status1;
+  tcp_pose?: TcpPose;
+  warn_code?: WarnCode1;
+}
+/**
+ * One digital-twin overlay stream (``<camera_id>_align``; 04-runtime §13.4).
+ *
+ * ``rail_fallback_m`` is set while the track is not homed and the twin
+ * assumes a configured rail position instead (``detail`` spells it out for
+ * the tile caption); ``joint1_offset_rad`` echoes the diagnostic knob (0 =
+ * the verified identity convention); ``mask_fraction`` is robot pixels /
+ * image pixels of the last composited frame (0 = the twin sees no robot from
+ * this camera).
+ */
+export interface TwinOverlayTelemetry {
+  arm_id: ArmId4;
+  camera_id: CameraId1;
+  detail?: Detail3;
+  fps?: Fps1;
+  joint1_offset_rad?: Joint1OffsetRad;
+  mask_fraction?: MaskFraction;
+  rail_fallback_m?: RailFallbackM;
+  status?: Status2;
+  stream_id: StreamId;
+}
+/**
  * Inference block; same gate machinery, takeover = SAFETY ESCAPE.
  */
 export interface InferenceStatus {
@@ -649,9 +753,9 @@ export interface InferenceStatus {
  * ``MicrophoneInfo`` (§12).
  */
 export interface MicrophoneTelemetry {
-  age_s?: AgeS;
+  age_s?: AgeS1;
   clipping?: Clipping;
-  detail?: Detail2;
+  detail?: Detail4;
   env_max?: EnvMax;
   env_min?: EnvMin;
   mic_id?: MicId1;
@@ -660,8 +764,8 @@ export interface MicrophoneTelemetry {
   rate_hz?: RateHz;
   rms_dbfs?: RmsDbfs;
   sample_rate?: SampleRate1;
-  seq?: Seq1;
-  status?: Status1;
+  seq?: Seq2;
+  status?: Status3;
 }
 /**
  * Additive session-lifecycle block (04-runtime §13.3).
@@ -669,7 +773,7 @@ export interface MicrophoneTelemetry {
 export interface SessionTelemetry {
   plan_status?: PlanStatus;
   start_from_progress?: StartFromProgress;
-  state: State3;
+  state: State4;
   trainer_alive?: TrainerAlive;
 }
 /**
@@ -688,14 +792,14 @@ export interface SessionTelemetry {
  * so the Devices-page wizard follows progress without polling.
  */
 export interface TrackerTelemetry {
-  age_s?: AgeS1;
+  age_s?: AgeS2;
   anchor_tcp?: PoseMsg | null;
   backend: Backend;
   calibration?: TrackerCalibrationStatus | null;
   charging?: Charging;
   clutch?: Clutch;
   controller?: ControllerTelemetry | null;
-  detail?: Detail4;
+  detail?: Detail6;
   device_action?: DeviceAction;
   device_held?: DeviceHeld;
   engaged_arm?: EngagedArm2;
@@ -704,9 +808,9 @@ export interface TrackerTelemetry {
   pose_raw?: PoseMsg | null;
   pose_world?: PoseMsg | null;
   rate_hz?: RateHz1;
-  seq?: Seq3;
+  seq?: Seq4;
   settings: TrackerSettingsMsg;
-  status: Status2;
+  status: Status4;
   target_tcp?: PoseMsg | null;
 }
 /**
@@ -721,7 +825,7 @@ export interface TrackerCalibrationStatus {
   backup_path?: BackupPath;
   base_station_installed_at?: BaseStationInstalledAt;
   controller_still?: ControllerStill;
-  detail?: Detail3;
+  detail?: Detail5;
   elapsed_s?: ElapsedS;
   fit_checks?: FitChecks;
   fit_residual_deg?: FitResidualDeg;
@@ -833,7 +937,7 @@ export interface TrackerSettingsArgs {
  * GET /api/workcell response.
  */
 export interface WorkcellStatus {
-  arms: Arms5;
+  arms: Arms6;
   available_kinds: AvailableKinds;
   cameras: Cameras1;
   hardware_ready?: HardwareReady;

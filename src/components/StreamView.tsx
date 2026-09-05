@@ -6,7 +6,9 @@
  * `absent` (camera configured but not live) renders pure black with a
  * crossed-camera glyph and opens NO WebSocket — `/ws/video/<unknown>` closes
  * 1008 and the client would otherwise re-dial forever. STALE keeps the last
- * frame under a grey scrim (05-ui §10). Nothing on the canvas is animated. */
+ * frame under a grey scrim (05-ui §10). An optional `note` (phase-09a: the twin
+ * overlay's `detail`) is one line of small text along the bottom edge; it is
+ * static text, never animated. Nothing on the canvas is animated. */
 import { useEffect, useRef } from "react";
 import { VideoStream } from "../api/ws/video";
 import type { WsFactory } from "../api/ws/reconnecting";
@@ -27,6 +29,10 @@ export interface StreamViewProps {
   useWorker?: boolean;
   showLatencyBadge?: boolean; // default true in cockpit, false on landing
   highlight?: "none" | "blocked"; // flashing border while twin gate blocks
+  /** One line of small text along the bottom edge (`tile-badge tile-note`),
+   * e.g. "rail not homed · twin assumes 0.65 m"; nothing renders when empty.
+   * Meant for tiles without the latency badge (both sit bottom-left). */
+  note?: string;
   wsFactory?: WsFactory; // tests
 }
 
@@ -59,6 +65,7 @@ export function StreamView({
   useWorker,
   showLatencyBadge = true,
   highlight = "none",
+  note,
   wsFactory,
 }: StreamViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -127,6 +134,11 @@ export function StreamView({
         <span className="tile-badge">
           {Math.round(stats.fps)} fps
           {stats.latencyMs != null ? ` · ${Math.round(stats.latencyMs)} ms` : ""}
+        </span>
+      )}
+      {note && (
+        <span className="tile-badge tile-note" data-testid="stream-note" title={note}>
+          {note}
         </span>
       )}
     </div>

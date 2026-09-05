@@ -4,8 +4,10 @@
  * status-caption helpers. Naming lives in ../lib/streams. */
 import type { ReactNode } from "react";
 import type {
+  ArmMonitorTelemetry,
   ArmStatusInfo,
   CameraInfo,
+  HardwareMonitorTelemetry,
   MicrophoneInfo,
   ProfileInfo,
   SceneInfo,
@@ -15,6 +17,8 @@ import {
   armLabel,
   armTitle,
   HARDWARE_CAMERA_SLOTS,
+  HARDWARE_GRID_SLOTS,
+  isOverlayStream,
   micSubtitle,
   orderArms,
   SCENE_DISPLAY_NAME,
@@ -23,39 +27,74 @@ import {
   streamLabel,
 } from "../lib/streams";
 import type { FrameRef, Kind } from "../lib/types";
+import { useStore } from "../store";
 import { Icon, type IconName } from "./icons";
 import { MicTile } from "./MicTile";
 import { StreamView } from "./StreamView";
 
 // -- ObservationGrid -----------------------------------------------------------
-// Sim: 2×2 wrist + environment cameras. Hardware: grip_wrist, view_wrist + the MicTile
-// (when `/api/microphones` lists one). A slot whose camera is not `live` in
-// `/api/cameras` (or is missing) renders the black `absent` tile — no WebSocket.
+// Sim: 2×2 wrist + environment cameras. Hardware (phase-09a): five cells —
+// grip_wrist, grip_wrist_align, view_wrist, view_wrist_align (HARDWARE_GRID_SLOTS)
+// + the MicTile (when `/api/microphones` lists one); `obs-grid-5` lays them out
+// as real cameras | twin overlays | microphone spanning both rows. A slot whose
+// camera is not `live` in `/api/cameras` (or is missing) renders the black
+// `absent` tile — no WebSocket. Overlay tiles show their
+// `telemetry.hardware_monitor.overlays` `detail` as a bottom-edge note.
 export interface ObservationGridProps {
   tab: Kind;
   cameras: CameraInfo[];
-  /** Shown as the third Hardware tile; ignored on the Sim tab. */
+  /** Shown as the fifth Hardware tile; ignored on the Sim tab. */
   microphone: MicrophoneInfo | null;
 }
 
+/** Bottom-edge note of a twin-overlay tile: the stream's `detail` from
+ * `telemetry.hardware_monitor.overlays` (e.g. "monitor stale"), with the
+ * wire's separators shown as middle dots — the runtime joins parts with "; "
+ * and writes " - " inside a part, so "monitor stale: no fresh sample for 1.2 s;
+ * rail not homed - twin assumes 0.65 m" renders as "monitor stale: no fresh
+ * sample for 1.2 s · rail not homed · twin assumes 0.65 m" (":" stays: it binds
+ * a label to its value). "" when the block, the stream or the detail is absent
+ * (→ no note). */
+export function overlayNote(
+  monitor: HardwareMonitorTelemetry | null | undefined,
+  streamId: string,
+): string {
+  const detail = monitor?.overlays?.find((o) => o.stream_id === streamId)?.detail ?? "";
+  return detail.replace(/ - /g, " · ").replace(/; /g, " · ");
+}
+
+/** A twin-overlay slot: a plain StreamView (`live: false` → black `absent`, no
+ * WebSocket) whose note is subscribed here as a string, so only this tile
+ * re-renders on a telemetry tick and only when the detail text changes. */
+function OverlayTile({ id, live }: { id: string; live: boolean }) {
+  const note = useStore((s) => overlayNote(s.telemetry?.hardware_monitor, id));
+  return (
+    <StreamView
+      streamId={id}
+      title={streamLabel(id)}
+      absent={!live}
+      showLatencyBadge={false}
+      note={note || undefined}
+    />
+  );
+}
+
 export function ObservationGrid({ tab, cameras, microphone }: ObservationGridProps) {
-  const slots: readonly string[] = tab === "sim" ? SIM_CAMERA_SLOTS : HARDWARE_CAMERA_SLOTS;
+  const slots: readonly string[] = tab === "sim" ? SIM_CAMERA_SLOTS : HARDWARE_GRID_SLOTS;
   const mic = tab === "hardware" ? microphone : null;
   const cells = slots.length + (mic ? 1 : 0);
   return (
-    <div
-      className={`obs-grid${cells === 3 ? " obs-grid-3" : ""}`}
-      data-testid="camera-preview-grid"
-      data-tab={tab}
-    >
+    <div className={`obs-grid obs-grid-${cells}`} data-testid="camera-preview-grid" data-tab={tab}>
       {slots.map((id) => {
-        const cam = cameras.find((c) => c.camera_id === id);
-        return (
+        const live = cameras.find((c) => c.camera_id === id)?.live ?? false;
+        return isOverlayStream(id) ? (
+          <OverlayTile key={id} id={id} live={live} />
+        ) : (
           <StreamView
             key={id}
             streamId={id}
             title={streamLabel(id)}
-            absent={!cam?.live}
+            absent={!live}
             showLatencyBadge={false}
           />
         );
@@ -167,7 +206,15 @@ export function ArmStatusCard({ arm, kind }: ArmStatusCardProps) {
           gripper {arm.gripper}
           {arm.gripper_force_capable ? " · force" : ""}
         </span>
-        {arm.error_code !== 0 && <span className="pill pill-warn">err {arm.error_code}</span>}
+        {arm.error_code !== 0 && (
+          <span
+            className="chip chip-red"
+            data-testid={`arm-error-${arm.arm_id}`}
+            title={`controller error ${arm.error_code}`}
+          >
+            C{arm.error_code}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -235,14 +282,55 @@ export function simCaption(scene: SceneInfo | null): string {
   return `${SCENE_DISPLAY_NAME} · ${n} arm${n === 1 ? "" : "s"}${rails ? " on rails" : ""}`;
 }
 
+/** One arm of the read-only monitor for the caption: its `status`, or
+ * "error C<code>" when the controller reports an error (`error_code != 0`). */
+export const armMonitorText = (a: ArmMonitorTelemetry): string =>
+  (a.error_code ?? 0) !== 0 ? `error C${a.error_code}` : (a.status ?? "off");
+
+/** "twin: Manipulation Arm running, Perception Arm error C19" — the read-only
+ * hardware monitor's per-arm state (`hardware_monitor.arms`, Manipulation Arm
+ * first; `paused` arms read "paused"). The runtime lists every configured
+ * hardware arm even when the monitor is inert (`enabled: false`, hardware
+ * package missing), each with `status: "off"` → "twin: Manipulation Arm off,
+ * Perception Arm off"; "twin: off" only when the block lists no arm at all
+ * (no hardware workcell configured). */
+export function twinCaption(monitor: HardwareMonitorTelemetry): string {
+  const arms = orderArms(monitor.arms ?? [], (a) => a.arm_id);
+  if (arms.length === 0) return "twin: off";
+  return `twin: ${arms.map((a) => `${armLabel(a.arm_id)} ${armMonitorText(a)}`).join(", ")}`;
+}
+
 /** "No arms detected · grip_wrist, view_wrist · mic: RØDE NT-USB Mini (live)" — with
  * arms (Manipulation Arm first): "Manipulation Arm reachable, Perception Arm
- * unreachable · …"; live cameras get "(live)". */
+ * unreachable · …"; live cameras get "(live)". With a `telemetry.hardware_monitor`
+ * block the twin segment follows the cameras: "… · grip_wrist (live), view_wrist
+ * (live) · twin: Manipulation Arm running, Perception Arm error C19 · mic: …"
+ * (omitted while no telemetry / an older runtime). */
 export function hardwareCaption(
   status: WorkcellStatus | null,
   cameras: CameraInfo[],
   mic: MicrophoneInfo | null,
   configured: boolean,
+  monitor: HardwareMonitorTelemetry | null = null,
+): string {
+  return hardwareCaptionWithTwin(
+    status,
+    cameras,
+    mic,
+    configured,
+    monitor ? twinCaption(monitor) : null,
+  );
+}
+
+/** `hardwareCaption` with the twin segment already rendered (`twin` = the
+ * `twinCaption` string, or null to omit the segment) — what `HardwareCaption`
+ * subscribes to, so a telemetry tick re-renders it only when that text changes. */
+export function hardwareCaptionWithTwin(
+  status: WorkcellStatus | null,
+  cameras: CameraInfo[],
+  mic: MicrophoneInfo | null,
+  configured: boolean,
+  twin: string | null,
 ): string {
   const arms = orderArms(status?.arms ?? [], (a) => a.arm_id);
   let armsPart: string;
@@ -258,9 +346,30 @@ export function hardwareCaption(
   const camPart = HARDWARE_CAMERA_SLOTS.map((id) =>
     cameras.find((c) => c.camera_id === id)?.live ? `${id} (live)` : id,
   ).join(", ");
+  const twinPart = twin ? ` · ${twin}` : "";
   const micPart = mic ? `mic: ${mic.label} (${mic.status})` : "mic: none";
-  return `${armsPart} · ${camPart} · ${micPart}`;
+  return `${armsPart} · ${camPart}${twinPart} · ${micPart}`;
 }
+
+export interface HardwareCaptionProps {
+  status: WorkcellStatus | null;
+  cameras: CameraInfo[];
+  mic: MicrophoneInfo | null;
+  configured: boolean;
+}
+
+/** `hardwareCaption` with the twin segment from the store's telemetry. The
+ * subscription is the derived `twinCaption` STRING (like `OverlayTile`'s note),
+ * not the `hardware_monitor` object — that is a fresh reference on every
+ * telemetry tick — so this text re-renders only when the segment changes. */
+export function HardwareCaption({ status, cameras, mic, configured }: HardwareCaptionProps) {
+  const twin = useStore(selectTwinCaption);
+  return <>{hardwareCaptionWithTwin(status, cameras, mic, configured, twin)}</>;
+}
+
+const selectTwinCaption = (s: {
+  telemetry: { hardware_monitor?: HardwareMonitorTelemetry | null } | null;
+}) => (s.telemetry?.hardware_monitor ? twinCaption(s.telemetry.hardware_monitor) : null);
 
 // -- SceneSummary (read-only; other registry scenes are filtered client-side) -------
 export interface SceneSummaryProps {

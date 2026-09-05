@@ -94,6 +94,11 @@ export class MockVideoServer {
     this.server.on("connection", (socket) => this.sockets.push(socket));
   }
 
+  /** WebSocket connections accepted so far (an `absent` tile must never dial). */
+  get connections(): number {
+    return this.sockets.length;
+  }
+
   pushFrame(ts: number, jpeg: Uint8Array = new Uint8Array([0xff, 0xd8, 0xff, 0xd9])): void {
     const buf = buildFrame(ts, jpeg);
     for (const s of this.sockets) s.send(buf);

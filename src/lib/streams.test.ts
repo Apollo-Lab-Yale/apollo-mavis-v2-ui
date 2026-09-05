@@ -6,11 +6,15 @@ import {
   armLabel,
   armTitle,
   HARDWARE_CAMERA_SLOTS,
+  HARDWARE_GRID_SLOTS,
+  HARDWARE_OVERLAY_SLOTS,
+  isOverlayStream,
   MIC_LABEL,
   micSubtitle,
   orderArms,
   MODE_LABELS,
   orderStreams,
+  overlayBase,
   pageTitle,
   SCENE_DISPLAY_NAME,
   SCENE_ID,
@@ -39,6 +43,20 @@ describe("streams", () => {
     expect(MIC_LABEL).toBe("Perception · microphone");
     expect(SIM_CAMERA_SLOTS).toEqual(["grip_wrist_cam", "view_wrist_cam", "cam_front", "cam_top"]);
     expect(HARDWARE_CAMERA_SLOTS).toEqual(["grip_wrist", "view_wrist"]);
+    // Phase-09a twin overlays: `<camera_id>_align`, each right after its camera.
+    expect(HARDWARE_OVERLAY_SLOTS).toEqual(["grip_wrist_align", "view_wrist_align"]);
+    expect(HARDWARE_GRID_SLOTS).toEqual([
+      "grip_wrist",
+      "grip_wrist_align",
+      "view_wrist",
+      "view_wrist_align",
+    ]);
+    expect(streamLabel("grip_wrist_align")).toBe("Manipulation · twin overlay");
+    expect(streamLabel("view_wrist_align")).toBe("Perception · twin overlay");
+    expect(overlayBase("grip_wrist_align")).toBe("grip_wrist");
+    expect(overlayBase("grip_wrist")).toBeNull();
+    expect(isOverlayStream("view_wrist_align")).toBe(true);
+    expect(isOverlayStream("view_wrist_cam")).toBe(false);
     expect(TAB_LABELS).toEqual({ hardware: "Hardware", sim: "Sim" });
     expect(micSubtitle(makeMicrophoneInfo())).toBe("RØDE NT-USB Mini · 48 kHz mono");
     expect(micSubtitle(makeMicrophoneInfo({ channels: 2, sample_rate: 44100 }))).toBe(
@@ -75,6 +93,24 @@ describe("streams", () => {
     expect(orderStreams(["sim", "view_wrist", "grip_wrist"])).toEqual([
       "view_wrist",
       "grip_wrist",
+      "sim",
+    ]);
+  });
+
+  it("orderStreams: a twin overlay follows its camera; orphan overlays keep their own place", () => {
+    expect(
+      orderStreams(["view_wrist_align", "sim", "view_wrist", "grip_wrist_align", "grip_wrist"]),
+    ).toEqual(["view_wrist", "view_wrist_align", "grip_wrist", "grip_wrist_align", "sim"]);
+    // The overlay inherits its camera's rank (a wrist cam outranks environment cams).
+    expect(orderStreams(["cam_front", "grip_wrist_cam_align", "grip_wrist_cam"])).toEqual([
+      "grip_wrist_cam",
+      "grip_wrist_cam_align",
+      "cam_front",
+    ]);
+    // Camera not listed → the overlay is an ordinary rank-1 stream, stable.
+    expect(orderStreams(["sim", "grip_wrist_align", "cam_top"])).toEqual([
+      "grip_wrist_align",
+      "cam_top",
       "sim",
     ]);
   });

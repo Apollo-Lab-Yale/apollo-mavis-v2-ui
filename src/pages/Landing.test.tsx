@@ -8,12 +8,17 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetClients } from "../api/clients";
 import {
+  HARDWARE_CAMERA_IDS,
+  HARDWARE_OVERLAY_IDS,
   KEYMAP,
+  makeArmStatus,
   makeHardwareArms,
   makeHardwareCameras,
+  makeHardwareMonitor,
   makeHardwareWorkcell,
   makeMicrophone,
   makeMicrophoneInfo,
+  makeOverlayCameras,
   makePolicy,
   makeProfile,
   makeScene,
@@ -132,7 +137,9 @@ let telemetryServer: MockTelemetryServer;
 beforeEach(() => {
   sessionStorage.removeItem(REVEAL_FLAG);
   vi.stubGlobal("WebSocket", MockWebSocket); // StreamView / TelemetryClient use the default factory
-  videoServers = SIM_CAMERA_IDS.map((id) => new MockVideoServer(`${base}/ws/video/${id}`));
+  videoServers = [...SIM_CAMERA_IDS, ...HARDWARE_CAMERA_IDS, ...HARDWARE_OVERLAY_IDS].map(
+    (id) => new MockVideoServer(`${base}/ws/video/${id}`),
+  );
   telemetryServer = new MockTelemetryServer(`${base}/ws/telemetry`);
 });
 
@@ -366,18 +373,37 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-card-view").textContent).not.toContain("View ·");
   });
 
-  it("Hardware tab: black grip_wrist/view_wrist + MicTile, 'No arms detected' caption, placeholder, four modes disabled with the reason", async () => {
+  it("Hardware tab: five cells — black cameras + overlays and the MicTile, 'No arms detected' caption, placeholder, four modes disabled with the reason", async () => {
     await mount();
     await ready();
     await switchTab("hardware");
     const grid = screen.getByTestId("camera-preview-grid");
     expect(grid.dataset["tab"]).toBe("hardware");
-    expect(grid.className).toContain("obs-grid-3");
-    for (const id of ["grip_wrist", "view_wrist"]) {
+    expect(grid.className).toBe("obs-grid obs-grid-5");
+    expect(
+      Array.from(grid.querySelectorAll("[data-stream-id]")).map(
+        (el) => (el as HTMLElement).dataset["streamId"],
+      ),
+    ).toEqual(["grip_wrist", "grip_wrist_align", "view_wrist", "view_wrist_align"]);
+    expect(
+      within(grid)
+        .getAllByTestId("stream-title")
+        .map((t) => t.textContent),
+    ).toEqual([
+      "Manipulation · wrist cam",
+      "Manipulation · twin overlay",
+      "Perception · wrist cam",
+      "Perception · twin overlay",
+    ]);
+    expect(grid.children).toHaveLength(5);
+    expect(grid.lastElementChild).toBe(screen.getByTestId("mic-tile"));
+    // No overlay rows in /api/cameras → absent, no canvas, no socket, no note.
+    for (const id of ["grip_wrist", "view_wrist", "grip_wrist_align", "view_wrist_align"]) {
       const tile = screen.getByTestId(`stream-${id}`);
       expect(tile.dataset["state"]).toBe("absent");
       expect(tile.querySelector("canvas")).toBeNull();
     }
+    expect(screen.queryByTestId("stream-note")).toBeNull();
     const mic = screen.getByTestId("mic-tile");
     expect(mic).toBeInTheDocument();
     expect(screen.getByText("RØDE NT-USB Mini · 48 kHz mono")).toBeInTheDocument();
@@ -441,6 +467,111 @@ describe("Welcome page", () => {
     });
   });
 
+  it("twin overlays (phase-09a): live cameras with absent overlays, then live overlays with the monitor's note, caption twin segment and the C19 chip", async () => {
+    // Cameras live, overlay rows listed but not live (monitor not running yet).
+    await mount({
+      hardware: makeHardwareWorkcell({
+        hardware_ready: true,
+        arms: [
+          makeArmStatus({ arm_id: "grip", ip: "192.168.1.201", reachable: "open" }),
+          makeArmStatus({
+            arm_id: "view",
+            ip: "192.168.2.219",
+            gripper: "none",
+            reachable: "open",
+            error_code: 19,
+          }),
+        ],
+      }),
+      cameras: [...makeSimCameras(), ...makeHardwareCameras(true), ...makeOverlayCameras(false)],
+    });
+    await ready();
+    await switchTab("hardware");
+    await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
+    const grid = screen.getByTestId("camera-preview-grid");
+    expect(grid.className).toBe("obs-grid obs-grid-5");
+    for (const id of HARDWARE_CAMERA_IDS)
+      expect(screen.getByTestId(`stream-${id}`).dataset["state"]).not.toBe("absent");
+    for (const id of HARDWARE_OVERLAY_IDS) {
+      const tile = screen.getByTestId(`stream-${id}`);
+      expect(tile.dataset["state"]).toBe("absent");
+      expect(tile.querySelector("canvas")).toBeNull();
+      expect(within(tile).getByTestId("stream-absent").textContent).toBe(
+        `${id === "grip_wrist_align" ? "Manipulation" : "Perception"} · twin overlay · no signal`,
+      );
+    }
+    // An absent overlay never dials `/ws/video/<id>_align` (the runtime would close 1008),
+    // while the live camera tiles next to them do connect.
+    const serverFor = (id: string) => videoServers.find((v) => v.url.endsWith(`/ws/video/${id}`))!;
+    await waitFor(() => {
+      for (const id of HARDWARE_CAMERA_IDS) expect(serverFor(id).connections).toBeGreaterThan(0);
+    });
+    for (const id of HARDWARE_OVERLAY_IDS) expect(serverFor(id).connections).toBe(0);
+    // The arm card shows the controller error as a red chip (runtime fills error_code).
+    expect(screen.getByTestId("arm-error-view").textContent).toBe("C19");
+    expect(screen.getByTestId("arm-error-view").className).toContain("chip-red");
+    expect(screen.queryByTestId("arm-error-grip")).toBeNull();
+    // No telemetry yet → no twin segment in the caption.
+    expect(screen.getByTestId("status-hardware").textContent).toBe(
+      "Manipulation Arm reachable, Perception Arm reachable · grip_wrist (live), view_wrist (live) · mic: RØDE NT-USB Mini (live)",
+    );
+
+    // Telemetry connects on the Hardware tab; the monitor block feeds the caption
+    // and the overlay notes (wire " - " rendered as a middle dot).
+    await waitFor(() => expect(useStore.getState().conn.telemetry).toBe("open"));
+    act(() => telemetryServer.push(makeTelemetry({ hardware_monitor: makeHardwareMonitor() })));
+    await waitFor(() =>
+      expect(screen.getByTestId("status-hardware").textContent).toBe(
+        "Manipulation Arm reachable, Perception Arm reachable · grip_wrist (live), view_wrist (live) · twin: Manipulation Arm running, Perception Arm error C19 · mic: RØDE NT-USB Mini (live)",
+      ),
+    );
+    const gripOverlay = screen.getByTestId("stream-grip_wrist_align");
+    expect(within(gripOverlay).getByTestId("stream-note").textContent).toBe(
+      "rail not homed · twin assumes 0.65 m",
+    );
+    expect(
+      within(screen.getByTestId("stream-view_wrist_align")).queryByTestId("stream-note"),
+    ).toBeNull();
+
+    // The next 2 s poll lists the overlays live → the tiles dial their streams.
+    installFetch({
+      hardware: makeHardwareWorkcell({ hardware_ready: true, arms: makeHardwareArms("open") }),
+      cameras: [...makeSimCameras(), ...makeHardwareCameras(true), ...makeOverlayCameras(true)],
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("stream-grip_wrist_align").dataset["state"]).not.toBe("absent"),
+    );
+    expect(screen.getByTestId("stream-grip_wrist_align").querySelector("canvas")).not.toBeNull();
+    // ...and now each overlay tile holds exactly one WebSocket.
+    await waitFor(() => {
+      for (const id of HARDWARE_OVERLAY_IDS) expect(serverFor(id).connections).toBe(1);
+    });
+    // The note stays while the stream is live; a monitor stale detail replaces it.
+    act(() =>
+      telemetryServer.push(
+        makeTelemetry({
+          seq: 2,
+          hardware_monitor: makeHardwareMonitor({
+            overlays: makeHardwareMonitor().overlays?.map((o) =>
+              o.stream_id === "view_wrist_align"
+                ? { ...o, status: "stale", detail: "monitor stale" }
+                : o,
+            ),
+          }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId("stream-view_wrist_align")).getByTestId("stream-note")
+          .textContent,
+      ).toBe("monitor stale"),
+    );
+    expect(within(gripOverlay).getByTestId("stream-note").textContent).toBe(
+      "rail not homed · twin assumes 0.65 m",
+    );
+  });
+
   it("no hardware block in the runtime config → 'Hardware workcell not configured'", async () => {
     await mount({
       hardware: makeHardwareWorkcell({ available_kinds: ["sim"], arms: [], cameras: [] }),
@@ -452,9 +583,10 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-card-placeholder").textContent).toContain(
       "Hardware workcell not configured",
     );
-    // No /api/microphones route → no mic tile, 2-cell grid, caption says so.
+    // No /api/microphones route → no mic tile; the four camera/overlay cells fall
+    // back to the 2-col grid (camera | overlay per row); caption says so.
     expect(screen.queryByTestId("mic-tile")).toBeNull();
-    expect(screen.getByTestId("camera-preview-grid").className).not.toContain("obs-grid-3");
+    expect(screen.getByTestId("camera-preview-grid").className).toBe("obs-grid obs-grid-4");
     expect(screen.getByTestId("status-hardware").textContent).toBe(
       "Hardware workcell not configured · grip_wrist, view_wrist · mic: none",
     );
