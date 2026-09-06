@@ -113,6 +113,7 @@ if (typeof ResizeObserver === "undefined") {
 
 afterEach(() => {
   cleanup();
+  localStorage.clear(); // the Welcome tab choice is persisted; never leak it between tests
   resetModalHosts();
   canvasStub.reset();
 });

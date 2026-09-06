@@ -100,6 +100,20 @@ export const HARDWARE_GRID_SLOTS = [
   "view_wrist_align",
 ] as const;
 export const OVERLAY_SUFFIX = "_align";
+/** Stream ids a session page should tile. The runtime deliberately answers
+ * `SessionInfo.streams: []` for a HARDWARE session (04-runtime §5 step 12: the
+ * preview cameras are ADOPTED on the VideoHub under unchanged ids, never
+ * re-added, and the `<id>_align` overlays keep running), so the Cockpit falls
+ * back to `HARDWARE_GRID_SLOTS` — the two wrist cameras and their twin
+ * overlays, exactly the views the live acceptance depends on. A non-empty list
+ * (sim sessions; a future runtime that lists the adopted ids) is used as is. */
+export function sessionStreamIds(
+  session: { streams: readonly string[]; kind?: string | null } | null | undefined,
+): string[] {
+  if (!session) return [];
+  if (session.streams.length > 0) return [...session.streams];
+  return session.kind === "hardware" ? [...HARDWARE_GRID_SLOTS] : [];
+}
 /** `grip_wrist_align` → `grip_wrist`; null for any other id. */
 export const overlayBase = (id: string): string | null =>
   id.endsWith(OVERLAY_SUFFIX) ? id.slice(0, -OVERLAY_SUFFIX.length) : null;

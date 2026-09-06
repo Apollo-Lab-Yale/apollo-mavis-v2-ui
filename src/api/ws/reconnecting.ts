@@ -47,6 +47,31 @@ export class ReconnectingWS {
     return false; // dropped
   }
 
+  /** Drop the current socket and dial again right now (backoff reset). Used by
+   * the stream / telemetry clients when a socket that claims to be OPEN has not
+   * delivered anything for a long time (half-open connection after a proxy /
+   * NAT / laptop-sleep drop: no close event ever arrives, so the normal
+   * onclose -> backoff path never runs). No-op after close(). */
+  reconnectNow(): void {
+    if (this.closed) return;
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) {
+      ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+      try {
+        ws.close();
+      } catch {
+        /* already closed */
+      }
+    }
+    this.backoff = this.base;
+    this.open();
+  }
+
   /** Permanent close — cancels any pending reconnect. */
   close(): void {
     this.closed = true;

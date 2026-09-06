@@ -1,21 +1,37 @@
-/** Shared mode-page layout (05-ui §8.2). Mode pages are thin wrappers. */
+/** Shared mode-page layout (05-ui §8.2). Mode pages are thin wrappers.
+ * Phase-09c (hardware sessions): the bring-up progress list above the stream
+ * grid until the session is running, the `speed <n>%` badge beside the title
+ * (`SessionInfo.speed_scale`) and the frozen-arm hint for every hardware arm
+ * the session did NOT include (D1: posed once in the gate twin from its last
+ * monitor sample, brakes on — the operator must not move it from Studio). */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useShallow } from "zustand/react/shallow";
 import { getControl, getTelemetry } from "../api/clients";
 import { endSession, getKeymap, getProfiles, getWorkcell } from "../api/rest";
 import type { ProfileInfo } from "../gen";
 import { buildBindings } from "../input/bindings";
 import { useGamepad } from "../input/useGamepad";
-import { MODE_LABELS, orderStreams, pageTitle, streamLabel } from "../lib/streams";
+import { speedLabel } from "../lib/launch";
+import { frozenHint } from "../lib/maintenance";
+import {
+  MODE_LABELS,
+  orderStreams,
+  pageTitle,
+  sessionStreamIds,
+  streamLabel,
+} from "../lib/streams";
 import type { Mode } from "../lib/types";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
-import { selectActiveArm, selectHardwareSession, useStore } from "../store";
+import { selectActiveArm, selectFrozenArms, selectHardwareSession, useStore } from "../store";
 import { ArmIndicator } from "../components/ArmIndicator";
+import { BringupProgress } from "../components/BringupProgress";
 import { ClearanceReadout, CollisionBanner } from "../components/CollisionBanner";
 import { ConnectionBanner, Toasts } from "../components/ConnectionBanner";
 import { DaggerPanel } from "../components/DaggerPanel";
 import { EpisodeControls } from "../components/EpisodeControls";
 import { FaultBanner } from "../components/FaultBanner";
+import { Icon } from "../components/icons";
 import { InferencePanel } from "../components/InferencePanel";
 import { JointPanel } from "../components/JointPanel";
 import { KeymapOverlay } from "../components/KeymapOverlay";
@@ -41,6 +57,8 @@ export function Cockpit({ mode }: { mode: Mode }) {
   // Hardware sessions get the "Clear errors & resume" button; sim faults (if
   // any) are display-only (phase-09b).
   const hardwareSession = useStore(selectHardwareSession);
+  // Hardware arms outside `session.arms` (phase-09c D1): frozen in the gate twin.
+  const frozenArms = useStore(useShallow(selectFrozenArms));
   const [overlayOpen, setOverlayOpen] = useState(true);
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
 
@@ -89,8 +107,10 @@ export function Cockpit({ mode }: { mode: Mode }) {
   }, []);
 
   // Grid order: wrist cameras → environment cameras → "Digital Twin" (sim) → twin
-  // (phase-11 §4); ids stay canonical, only the displayed titles change.
-  const streams = orderStreams(session?.streams ?? []);
+  // (phase-11 §4); ids stay canonical, only the displayed titles change. A hardware
+  // session lists no streams on the wire (the previews are adopted, not re-added):
+  // tile the wrist cameras + their `_align` overlays (`sessionStreamIds`).
+  const streams = orderStreams(sessionStreamIds(session));
   const labels = Object.fromEntries(streams.map((s) => [s, streamLabel(s)]));
   const episode = telemetry?.episode ?? null;
   const recording = episode?.state === "recording";
@@ -109,6 +129,7 @@ export function Cockpit({ mode }: { mode: Mode }) {
             stale={telemetryStale}
           />
         )}
+        <BringupProgress />
         <TeleopSurface
           enabled={role !== "observer"}
           mode={mode}
@@ -129,7 +150,18 @@ export function Cockpit({ mode }: { mode: Mode }) {
       </div>
       <div className={`side-panel${telemetryStale ? " dim" : ""}`}>
         <div className="panel kv">
-          <strong data-testid="cockpit-title">{MODE_LABELS[mode]}</strong>
+          <span className="cockpit-heading">
+            <strong data-testid="cockpit-title">{MODE_LABELS[mode]}</strong>
+            {session?.kind === "hardware" && session.speed_scale != null && (
+              <span
+                className="chip chip-grey speed-badge"
+                data-testid="speed-badge"
+                data-scale={session.speed_scale}
+              >
+                speed {speedLabel(session.speed_scale)}
+              </span>
+            )}
+          </span>
           <button
             onClick={() => {
               void endSession().finally(() => {
@@ -143,6 +175,16 @@ export function Cockpit({ mode }: { mode: Mode }) {
           </button>
         </div>
         {telemetry && <ArmIndicator arms={telemetry.arms} activeArm={telemetry.active_arm} />}
+        {frozenArms.length > 0 && (
+          <div className="panel frozen-arms" role="note" data-testid="frozen-arms">
+            {frozenArms.map((id) => (
+              <div key={id} className="frozen-arm" data-testid={`frozen-hint-${id}`}>
+                <Icon name="lock" size={14} />
+                <span>{frozenHint(id)}</span>
+              </div>
+            ))}
+          </div>
+        )}
         {telemetry && <ClearanceReadout clearances={telemetry.clearances} />}
         {(mode === "collect" || mode === "dagger") && episode && (
           <EpisodeControls

@@ -1,5 +1,7 @@
-/** #/devices — gamepad + Vive-tracker debug page (13-tracker §5). No session
- * loader: device panels work pre-session; streams appear once one exists.
+/** #/devices — the **Debug** page: gamepad + Vive-tracker debugging
+ * (13-tracker §5; named "Debug" since phase-09d, the route and the component
+ * keep their `devices` ids). No session loader: device panels work
+ * pre-session; streams appear once one exists.
  *
  * The video area sits inside the same click-to-arm `TeleopSurface` as the
  * cockpit, so keyboard teleop (incl. the `KeyC` clutch) works here too; the
@@ -11,7 +13,7 @@ import { createSession, endSession, getKeymap, getSession } from "../api/rest";
 import type { SessionSpec, TrackerSettingsArgs } from "../gen";
 import { buildBindings } from "../input/bindings";
 import { useGamepad } from "../input/useGamepad";
-import { pageTitle, streamLabel } from "../lib/streams";
+import { pageTitle, sessionStreamIds, streamLabel } from "../lib/streams";
 import { useLingeringValue } from "../lib/useDelayedUnmount";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { selectTracker, useStore } from "../store";
@@ -28,6 +30,11 @@ import { StreamGrid } from "../components/StreamGrid";
 import { TeleopSurface } from "../components/TeleopSurface";
 import { TrackerCalibrationWizard, type WizardKind } from "../components/TrackerCalibrationWizard";
 
+/** User-facing name of this page (phase-09d): document title `APOLLO MAVIS V2
+ * · Debug`, Welcome hero link **Debug**, page heading below. */
+export const DEBUG_PAGE_LABEL = "Debug";
+export const DEBUG_PAGE_HEADING = "Debug — gamepad & tracker";
+
 /** Fixed debug session (13-tracker §1.1/§5): teleop / sim / mavis_v2. The
  * Manipulation Arm (`grip`) is listed first so it is the active arm by default. */
 export const DEVICES_SESSION_SPEC: SessionSpec = {
@@ -39,7 +46,7 @@ export const DEVICES_SESSION_SPEC: SessionSpec = {
 };
 
 export function Devices() {
-  useDocumentTitle(pageTitle("Devices"));
+  useDocumentTitle(pageTitle(DEBUG_PAGE_LABEL));
   const session = useStore((s) => s.session);
   const setSession = useStore((s) => s.setSession);
   const keymap = useStore((s) => s.keymap);
@@ -136,7 +143,7 @@ export function Devices() {
     [control, setDevices],
   );
 
-  const streams = session?.streams ?? [];
+  const streams = sessionStreamIds(session); // hardware session: wrist cams + overlays
   const labels = Object.fromEntries(streams.map((s) => [s, streamLabel(s)]));
   const settingsDisabled = controlDown || role === "observer" || !session;
   const settingsReason = !session
@@ -151,7 +158,7 @@ export function Devices() {
     <div className="devices" data-testid="devices-page">
       <div className="devices-main">
         <div className="kv">
-          <strong>Devices — gamepad &amp; tracker</strong>
+          <strong data-testid="debug-heading">{DEBUG_PAGE_HEADING}</strong>
           <Link to="/" data-testid="nav-home" className="nav-link">
             ◂ Welcome
           </Link>

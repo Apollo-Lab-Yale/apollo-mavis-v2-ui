@@ -3,7 +3,12 @@
  * `overlayNote` (wire " - " → middle dot), the `ArmStatusCard` C19 chip and the
  * five-cell `ObservationGrid` with overlay notes from store telemetry;
  * (phase-09b) the card's safety read-back line and the Clear errors / Apply
- * safety settings buttons — enablement matrix, POST bodies, toast copy. */
+ * safety settings buttons — enablement matrix, POST bodies, toast copy;
+ * (phase-09c) the rail read-back pill, the Home rail button + HomeRailSheet
+ * (dry run → verdict → destructive confirm → real POST → toast); (phase-09d)
+ * the card's session-eligibility line (the Include switch is gone) and the
+ * sheet's pre-positioning flow (planned → 202 job → telemetry progress →
+ * `/maintenance/last` → toast; refused plan; failed job). */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArmMaintenanceResult, ArmMonitorTelemetry } from "../gen";
@@ -14,13 +19,18 @@ import {
   makeHardwareCameras,
   makeHardwareMonitor,
   makeHardwareWorkcell,
+  makeMaintenanceProgress,
   makeMaintenanceResult,
   makeMicrophoneInfo,
   makeOverlayCameras,
+  makePlannedSweepVerdict,
+  makePrePositionPlan,
+  makeRailSweepVerdict,
   makeTelemetry,
   makeTwinOverlay,
 } from "../../tests/mocks/fixtures";
 import { useStore } from "../store";
+import { JOB_FALLBACK } from "./HomeRailSheet";
 import {
   ArmStatusCard,
   armMonitorText,
@@ -423,5 +433,986 @@ describe("ArmStatusCard maintenance (phase-09b)", () => {
       text: "Perception Arm · monitor paused - a hardware session owns the boxes",
       tone: "error",
     });
+  });
+});
+
+// -- phase-09c: rail read-back, Home rail → HomeRailSheet, session eligibility ------------
+describe("ArmStatusCard rail homing + session eligibility (phase-09c)", () => {
+  interface Post {
+    url: string;
+    body: { op: string; dry_run?: boolean };
+    signal: AbortSignal | null | undefined;
+  }
+  let posts: Post[];
+  /** Answer for a POST body (dry run / real op) — a Response or a thrown error. */
+  let answer: (armId: string, body: Post["body"]) => Response | Promise<Response>;
+  const grip = makeArmStatus({ arm_id: "grip", ip: "192.168.1.201", reachable: "open" });
+  const setMonitorArms = (arms: ArmMonitorTelemetry[], paused = false) =>
+    setMonitor(makeHardwareMonitor({ paused, arms }));
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
+  const homed = (over: Partial<ArmMonitorTelemetry> = {}) =>
+    makeArmMonitor({ rail_homed: true, rail_enabled: true, rail_pos_m: 0, ...over });
+  /** The runtime's dry-run answer: `ok = clear && dry_run`, the verdict attached. */
+  const dryRunAnswer = (verdict = makeRailSweepVerdict()) =>
+    json(
+      makeMaintenanceResult({
+        arm_id: "grip",
+        op: "home_rail",
+        ok: verdict.clear,
+        detail: verdict.clear ? "" : "rail sweep blocked at 0.120 m: grip/link6 <-> table",
+        sdk_codes: {},
+        before: makeArmMonitor(),
+        after: null,
+        rail_sweep: verdict,
+      }),
+    );
+  const homedAnswer = () =>
+    json(
+      makeMaintenanceResult({
+        arm_id: "grip",
+        op: "home_rail",
+        detail: "rail homed",
+        sdk_codes: {
+          set_linear_track_back_origin: 0,
+          set_linear_track_enable: 0,
+          set_linear_track_speed: 0,
+        },
+        before: makeArmMonitor(),
+        after: homed(),
+        rail_sweep: makeRailSweepVerdict(),
+      }),
+    );
+
+  beforeEach(() => {
+    posts = [];
+    answer = (_armId, body) => (body.dry_run ? dryRunAnswer() : homedAnswer());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST") {
+          const body = JSON.parse(String(init.body)) as Post["body"];
+          posts.push({ url, body, signal: init.signal });
+          const armId = /\/arms\/([^/]+)\//.exec(url)?.[1] ?? "";
+          return answer(armId, body);
+        }
+        return new Response("{}", { status: 200 });
+      }),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    act(() => useStore.getState().resetForEpochChange());
+    useStore.setState({ toasts: [] });
+  });
+
+  it("rail read-back: config text without telemetry; amber 'rail not homed' pill + Home rail while unhomed; 'rail 0.000 m' once homed; 'no rail'", () => {
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    const rail = () => screen.getByTestId("arm-rail-grip");
+    expect(rail().textContent).toBe("rail 0–0.65 m");
+    expect(rail().dataset["rail"]).toBe("unknown");
+    expect(screen.queryByTestId("arm-home-rail-grip")).toBeNull();
+    // The real cell after power-up: track present, on_zero 0, not enabled.
+    setMonitorArms([makeArmMonitor()]);
+    expect(rail().textContent).toBe("rail not homed");
+    expect(rail().className).toBe("pill pill-warn arm-card-rail");
+    expect(rail().querySelector("svg")).not.toBeNull(); // never colour alone
+    const home = screen.getByTestId("arm-home-rail-grip");
+    expect(home.textContent).toBe("Home rail");
+    expect(home.className).toBe("btn-secondary btn-sm");
+    expect(home).toBeEnabled();
+    expect(screen.queryByTestId("arm-home-rail-reason-grip")).toBeNull();
+    // Homed but not enabled still counts as unhomed (position unknown to the twin).
+    setMonitorArms([makeArmMonitor({ rail_homed: true, rail_enabled: false })]);
+    expect(rail().textContent).toBe("rail not homed");
+    // Homed + enabled: the measured position, three decimals; the button is gone.
+    setMonitorArms([homed({ rail_pos_m: 0.6497 })]);
+    expect(rail().textContent).toBe("rail 0.650 m");
+    expect(rail().dataset["rail"]).toBe("homed");
+    expect(rail().className).toBe("");
+    expect(screen.queryByTestId("arm-home-rail-grip")).toBeNull();
+    // No track on this arm.
+    setMonitorArms([
+      makeArmMonitor({ rail_present: false, rail_homed: false, rail_enabled: false }),
+    ]);
+    expect(rail().textContent).toBe("no rail");
+    expect(screen.queryByTestId("arm-home-rail-grip")).toBeNull();
+  });
+
+  it("Home rail enablement: controller error → disabled + 'Clear errors first'; session → 'Use the Cockpit'; busy → disabled", () => {
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor({ error_code: 19 })]);
+    const home = () => screen.getByTestId("arm-home-rail-grip");
+    expect(home()).toBeDisabled();
+    expect(screen.getByTestId("arm-home-rail-reason-grip").textContent).toBe("Clear errors first");
+    expect(home().getAttribute("title")).toBe("Clear errors first");
+    // A warning alone does not block homing (the runtime checks error_code only).
+    setMonitorArms([makeArmMonitor({ warn_code: 11 })]);
+    expect(home()).toBeEnabled();
+    expect(screen.queryByTestId("arm-home-rail-reason-grip")).toBeNull();
+    // A hardware session owns the boxes: every card op is off, one shared reason.
+    setMonitorArms([makeArmMonitor()], true);
+    expect(home()).toBeDisabled();
+    expect(screen.getByTestId("arm-actions-reason-grip").textContent).toBe("Use the Cockpit");
+    expect(screen.queryByTestId("arm-home-rail-reason-grip")).toBeNull();
+    // Another client's op running: disabled, the shared indicator, no aria-busy here.
+    setMonitorArms([makeArmMonitor({ maintenance_busy: true })]);
+    expect(home()).toBeDisabled();
+    expect(home().getAttribute("aria-busy")).toBeNull();
+    expect(screen.getByTestId("arm-actions-busy-grip")).toBeInTheDocument();
+    // Sim cards never show it.
+    render(<ArmStatusCard arm={makeArmStatus({ arm_id: "view" })} kind="sim" />);
+    expect(screen.queryByTestId("arm-home-rail-view")).toBeNull();
+  });
+
+  it("Home rail → sheet: dry run first (zero writes), verdict rendered, destructive confirm → real POST with the 60 s deadline → toast, sheet closes", async () => {
+    // Hold the dry-run answer to observe the checking state.
+    let release: (() => void) | null = null;
+    answer = () =>
+      new Promise<Response>((r) => {
+        release = () => r(dryRunAnswer());
+      });
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    const host = (await screen.findByTestId("home-rail-sheet")) as HTMLDialogElement;
+    expect(host.open).toBe(true);
+    const panel = screen.getByTestId("home-rail-panel");
+    expect(within(panel).getByRole("heading").textContent).toBe("Home rail");
+    expect(panel.textContent).toContain("Manipulation Arm (grip) · APOLLO MAVIS V2 Digital Twin");
+    // The notice is there from the first frame, before the verdict.
+    expect(screen.getByTestId("home-rail-notice").textContent).toBe(
+      "The carriage drives to the operator's LEFT (+X) end at the track's homing speed (positioning cap 50 mm/s) — the only maintenance action that moves hardware.",
+    );
+    expect(screen.getByTestId("home-rail-checking")).toBeInTheDocument();
+    expect(screen.queryByTestId("home-rail-confirm")).toBeNull();
+    // Exactly one POST so far: the dry run, no deadline.
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toMatchObject({
+      url: "/api/hardware/arms/grip/maintenance",
+      body: { op: "home_rail", dry_run: true },
+    });
+    expect(posts[0]!.signal ?? null).toBeNull();
+    act(() => release?.());
+    // Verdict: clear pill + the facts in reading order.
+    const verdict = await screen.findByTestId("home-rail-verdict");
+    expect(verdict.textContent).toBe("Sweep clear — safe to home");
+    expect(verdict.className).toBe("pill pill-ok home-rail-verdict");
+    expect(verdict.dataset["clear"]).toBe("true");
+    expect(screen.queryByTestId("home-rail-checking")).toBeNull();
+    expect(screen.getByTestId("home-rail-recipe").textContent).toBe(
+      "Full travel 0–0.650 m at the current posture · inflation 25 mm · step 5 mm",
+    );
+    expect(screen.queryByTestId("home-rail-blocked")).toBeNull();
+    expect(screen.getByTestId("home-rail-clearance").textContent).toBe(
+      "min clearance 32 mm at 0.315 m (grip/link2 ↔ table)",
+    );
+    expect(screen.getByTestId("home-rail-other").textContent).toBe(
+      "Perception Arm posed at its last sample (rail 0.000 m)",
+    );
+    expect(screen.getByTestId("home-rail-assumption").textContent).toBe(
+      "view rail unknown - used fallback 0.00 m",
+    );
+    expect(screen.queryByTestId("home-rail-hint")).toBeNull();
+    expect(screen.queryByTestId("home-rail-error")).toBeNull();
+    // Cancel holds the initial focus (destructive confirm is never the default).
+    expect(document.activeElement).toBe(screen.getByTestId("home-rail-cancel"));
+    const confirm = screen.getByTestId("home-rail-confirm");
+    expect(confirm.className).toBe("btn-destructive");
+    expect(confirm.textContent).toBe("Home rail — move carriage");
+    // Hold the real POST to observe the in-flight state.
+    release = null;
+    answer = () =>
+      new Promise<Response>((r) => {
+        release = () => r(homedAnswer());
+      });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[1]).toMatchObject({ body: { op: "home_rail", dry_run: false } });
+    expect(posts[1]!.signal).toBeInstanceOf(AbortSignal); // the 60 s client deadline
+    expect(screen.getByTestId("home-rail-homing").textContent).toContain(
+      "Homing… the carriage is moving to the operator's LEFT end.",
+    );
+    expect(confirm).toBeDisabled();
+    expect(confirm.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByTestId("home-rail-cancel")).toBeDisabled();
+    expect(screen.queryByTestId("home-rail-close")).toBeNull(); // no close path while moving
+    fireEvent.keyDown(host, { key: "Escape" });
+    expect(host.open).toBe(true);
+    // The card marks Home rail busy (not the shared "maintenance running…" line).
+    const cardButton = screen.getByTestId("arm-home-rail-grip");
+    expect(cardButton.getAttribute("aria-busy")).toBe("true");
+    expect(cardButton).toBeDisabled();
+    expect(screen.getByTestId("arm-clear-errors-grip")).toBeDisabled();
+    setMonitorArms([makeArmMonitor({ maintenance_busy: true })]);
+    expect(screen.queryByTestId("arm-actions-busy-grip")).toBeNull();
+    act(() => release?.());
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · rail homed (rail 0.000 m)",
+      tone: "success",
+    });
+    await waitFor(() => expect(host.open).toBe(false));
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+    expect(cardButton.getAttribute("aria-busy")).toBeNull();
+  });
+
+  it("blocked verdict: danger pill, first blocked position + pair, hint, NO confirm button; Cancel closes", async () => {
+    answer = () =>
+      dryRunAnswer(
+        makeRailSweepVerdict({
+          clear: false,
+          first_blocked_m: 0.12,
+          first_blocked_pair: ["grip/link6", "table"],
+          min_clearance_m: -0.004,
+          min_clearance_at_m: 0.2,
+          min_clearance_pair: ["grip/link6", "table"],
+          assumptions: [],
+        }),
+      );
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    const verdict = await screen.findByTestId("home-rail-verdict");
+    expect(verdict.textContent).toBe("Sweep blocked — homing refused");
+    expect(verdict.className).toBe("pill pill-danger home-rail-verdict");
+    expect(screen.getByTestId("home-rail-blocked").textContent).toBe(
+      "first blocked at 0.120 m: grip/link6 ↔ table",
+    );
+    expect(screen.getByTestId("home-rail-clearance").textContent).toBe(
+      "min clearance -4 mm at 0.200 m (grip/link6 ↔ table)",
+    );
+    expect(screen.queryByTestId("home-rail-assumption")).toBeNull();
+    expect(screen.getByTestId("home-rail-hint").textContent).toBe(
+      "Fold the arm to a tighter posture in xArm Studio, then open Home rail again.",
+    );
+    // The runtime detail is shown too; no confirm anywhere.
+    expect(screen.getByTestId("home-rail-error").textContent).toContain(
+      "rail sweep blocked at 0.120 m",
+    );
+    expect(screen.queryByTestId("home-rail-confirm")).toBeNull();
+    fireEvent.click(screen.getByTestId("home-rail-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+    expect(posts).toHaveLength(1); // the dry run only — nothing moved
+    expect(useStore.getState().toasts).toHaveLength(0); // dry runs are never toasted
+  });
+
+  it("refused dry run (409 / ok:false without a verdict) → error inside the sheet, no confirm; a failed real op keeps the sheet open with the detail", async () => {
+    answer = () => json({ detail: "monitor not connected" }, 409);
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    const err = await screen.findByTestId("home-rail-error");
+    expect(err.textContent).toContain("monitor not connected");
+    expect(err.getAttribute("role")).toBe("alert");
+    expect(screen.queryByTestId("home-rail-verdict")).toBeNull();
+    expect(screen.queryByTestId("home-rail-confirm")).toBeNull();
+    expect(screen.getByTestId("home-rail-cancel").textContent).toBe("Close");
+    fireEvent.click(screen.getByTestId("home-rail-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+    // ok:false without rail_sweep = refused before the sweep.
+    answer = () =>
+      json(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "home_rail",
+          ok: false,
+          detail: "maintenance busy",
+          before: null,
+          after: null,
+        }),
+      );
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    expect((await screen.findByTestId("home-rail-error")).textContent).toContain(
+      "maintenance busy",
+    );
+    fireEvent.click(screen.getByTestId("home-rail-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+    // Clear verdict, then the real op fails (registers never showed on_zero): error toast
+    // + the detail in the sheet, which stays open until closed.
+    answer = (_armId, body) =>
+      body.dry_run
+        ? dryRunAnswer()
+        : json(
+            makeMaintenanceResult({
+              arm_id: "grip",
+              op: "home_rail",
+              ok: false,
+              detail: "track did not report on_zero within 30 s",
+              before: makeArmMonitor(),
+              after: makeArmMonitor(),
+              rail_sweep: makeRailSweepVerdict(),
+            }),
+          );
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    fireEvent.click(await screen.findByTestId("home-rail-confirm"));
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · track did not report on_zero within 30 s",
+      tone: "error",
+    });
+    expect(screen.getByTestId("home-rail-sheet")).toBeInTheDocument();
+    expect(screen.getByTestId("home-rail-error").textContent).toContain(
+      "track did not report on_zero within 30 s",
+    );
+    expect(screen.queryByTestId("home-rail-confirm")).toBeNull();
+    expect(screen.getByTestId("home-rail-cancel")).toBeEnabled();
+  });
+
+  it("session-eligibility line (phase-09d, no Include switch): monitor off / controller error explain the block; the rail case has its pill; hidden during a session and on sim cards", () => {
+    const { rerender } = render(<ArmStatusCard arm={grip} kind="hardware" />);
+    expect(screen.queryByTestId("arm-include-grip")).toBeNull();
+    expect(screen.queryByText("Include in session")).toBeNull();
+    // No monitor row yet: the twin cannot be posed.
+    const line = () => screen.getByTestId("arm-session-reason-grip");
+    expect(line().textContent).toBe(
+      "Not ready for a session — Monitor not connected — no sample to pose the twin",
+    );
+    expect(line().dataset["gate"]).toBe("monitor_off");
+    expect(line().querySelector("svg")).not.toBeNull(); // glyph + words
+    // Unhomed rail: the amber pill + Home rail button say it; no second line.
+    setMonitorArms([makeArmMonitor()]);
+    expect(screen.queryByTestId("arm-session-reason-grip")).toBeNull();
+    expect(screen.getByTestId("arm-home-rail-grip")).toBeInTheDocument();
+    setMonitorArms([homed({ error_code: 24 })]);
+    expect(line().textContent).toBe(
+      "Not ready for a session — Controller error C24 — clear errors first",
+    );
+    expect(line().dataset["gate"]).toBe("error");
+    setMonitorArms([homed({ status: "error" })]);
+    expect(line().dataset["gate"]).toBe("monitor_off");
+    // Eligible → no line.
+    setMonitorArms([homed()]);
+    expect(screen.queryByTestId("arm-session-reason-grip")).toBeNull();
+    // A hardware session owns the boxes → the strip's "Use the Cockpit" is enough.
+    setMonitorArms([homed({ error_code: 24 })], true);
+    expect(screen.queryByTestId("arm-session-reason-grip")).toBeNull();
+    expect(screen.getByTestId("arm-actions-reason-grip").textContent).toBe("Use the Cockpit");
+    // Sim cards never show it.
+    rerender(<ArmStatusCard arm={grip} kind="sim" />);
+    expect(screen.queryByTestId("arm-session-reason-grip")).toBeNull();
+  });
+});
+
+// -- phase-09d: pre-positioning plan → asynchronous RailHomingJob ---------------------------
+describe("HomeRailSheet pre-positioning job (phase-09d)", () => {
+  interface Post {
+    url: string;
+    body: { op: string; dry_run?: boolean };
+  }
+  let posts: Post[];
+  let lastGets: number;
+  /** Answers for `POST …/maintenance` by body. */
+  let answer: (body: Post["body"]) => Response;
+  /** Consecutive answers for `GET …/maintenance/last` (the last one repeats). */
+  let lastAnswers: (() => Response)[];
+  const grip = makeArmStatus({ arm_id: "grip", ip: "192.168.1.201", reachable: "open" });
+  const setMonitorArms = (arms: ArmMonitorTelemetry[], paused = false) =>
+    setMonitor(makeHardwareMonitor({ paused, arms }));
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
+  const homed = (over: Partial<ArmMonitorTelemetry> = {}) =>
+    makeArmMonitor({ rail_homed: true, rail_enabled: true, rail_pos_m: 0, ...over });
+  /** Dry run whose posture blocks the sweep but has a plan (`ok` false WITH the verdict). */
+  const plannedDryRun = (verdict = makePlannedSweepVerdict(), detail = "") =>
+    json(
+      makeMaintenanceResult({
+        arm_id: "grip",
+        op: "home_rail",
+        ok: false,
+        detail,
+        sdk_codes: {},
+        before: makeArmMonitor(),
+        after: null,
+        rail_sweep: verdict,
+      }),
+    );
+  /** The 202: job accepted, nothing written yet. */
+  const accepted = (jobId = "job-7") =>
+    makeMaintenanceResult({
+      arm_id: "grip",
+      op: "home_rail",
+      ok: true,
+      status: "accepted",
+      job_id: jobId,
+      detail: "rail homing job started",
+      sdk_codes: {},
+      before: makeArmMonitor(),
+      after: null,
+      rail_sweep: makePlannedSweepVerdict(),
+    });
+  /** The job's final result as `/maintenance/last` stores it. */
+  const finalDone = (jobId = "job-7") =>
+    makeMaintenanceResult({
+      arm_id: "grip",
+      op: "home_rail",
+      ok: true,
+      status: "done",
+      job_id: jobId,
+      detail: "rail homed after pre-positioning",
+      sdk_codes: {
+        set_linear_track_back_origin: 0,
+        set_linear_track_enable: 0,
+        set_linear_track_speed: 0,
+      },
+      before: makeArmMonitor(),
+      after: homed(),
+      rail_sweep: makePlannedSweepVerdict(),
+    });
+  const phaseRow = (p: string) => screen.getByTestId(`home-rail-phase-${p}`);
+
+  beforeEach(() => {
+    posts = [];
+    lastGets = 0;
+    answer = (body) => (body.dry_run ? plannedDryRun() : json(accepted(), 202));
+    lastAnswers = [() => json(finalDone())];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST") {
+          const body = JSON.parse(String(init.body)) as Post["body"];
+          posts.push({ url, body });
+          return answer(body);
+        }
+        if (url.endsWith("/maintenance/last")) {
+          const i = Math.min(lastGets, lastAnswers.length - 1);
+          lastGets += 1;
+          return lastAnswers[i]!();
+        }
+        return new Response("{}", { status: 200 });
+      }),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    act(() => useStore.getState().resetForEpochChange());
+    useStore.setState({ toasts: [] });
+  });
+
+  it("planned plan: amber verdict + the contract explanation, target posture in degrees, 'move arm, then carriage' confirm → 202 → progress view from telemetry → done → GET last (polled past `accepted`) → toast, closes", async () => {
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    const verdict = await screen.findByTestId("home-rail-verdict");
+    expect(verdict.textContent).toBe("Current posture blocks the sweep — pre-positioning planned");
+    expect(verdict.className).toBe("pill pill-warn home-rail-verdict");
+    expect(verdict.dataset["clear"]).toBe("false");
+    const panel = screen.getByTestId("home-rail-panel");
+    expect(panel.dataset["plan"]).toBe("planned");
+    expect(panel.dataset["phase"]).toBe("verdict");
+    // The sweep facts stay (where the current posture collides) …
+    expect(screen.getByTestId("home-rail-blocked").textContent).toBe(
+      "first blocked at 0.120 m: grip/link6 ↔ table",
+    );
+    // … plus the plan: contract sentence, target posture, validation line.
+    expect(screen.getByTestId("home-rail-plan-text").textContent).toBe(
+      "The arm will first move along a planned path (12 waypoints, ~19 s at 10 %) to a folded posture that clears the whole rail travel, then the rail homes, then the arm holds that posture.",
+    );
+    expect(screen.getByTestId("home-rail-plan-target").textContent).toBe(
+      "Target posture · joints 1–7: 180.0°, 0.0°, 0.0°, 0.0°, 0.0°, 0.0°, 0.0°",
+    );
+    expect(screen.getByTestId("home-rail-plan-check").textContent).toBe(
+      "path checked at 131 rail positions · posture from the scene keyframe",
+    );
+    // No Studio hint (the runtime plans the fold), no error, the destructive confirm.
+    expect(screen.queryByTestId("home-rail-hint")).toBeNull();
+    expect(screen.queryByTestId("home-rail-error")).toBeNull();
+    const confirm = screen.getByTestId("home-rail-confirm");
+    expect(confirm.className).toBe("btn-destructive");
+    expect(confirm.textContent).toBe("Home rail — move arm, then carriage");
+    expect(screen.getByTestId("home-rail-cancel").textContent).toBe("Cancel");
+    expect(document.activeElement).toBe(screen.getByTestId("home-rail-cancel"));
+
+    fireEvent.click(confirm);
+    const job = await screen.findByTestId("home-rail-job");
+    expect(posts).toHaveLength(2);
+    expect(posts[1]).toMatchObject({
+      url: "/api/hardware/arms/grip/maintenance",
+      body: { op: "home_rail", dry_run: false },
+    });
+    expect(panel.dataset["phase"]).toBe("job");
+    expect(job.dataset["jobId"]).toBe("job-7");
+    expect(job.textContent).toContain(
+      "Rail homing job running — the arm moves first, then the carriage. Keep clear of the cell.",
+    );
+    expect(useStore.getState().toasts).toHaveLength(0); // the 202 is not a result
+    // Un-closable while the job runs; the card marks Home rail busy.
+    expect(screen.queryByTestId("home-rail-confirm")).toBeNull();
+    expect(screen.getByTestId("home-rail-cancel")).toBeDisabled();
+    expect(screen.queryByTestId("home-rail-close")).toBeNull();
+    const host = screen.getByTestId("home-rail-sheet") as HTMLDialogElement;
+    fireEvent.keyDown(host, { key: "Escape" });
+    expect(host.open).toBe(true);
+    const cardButton = screen.getByTestId("arm-home-rail-grip");
+    expect(cardButton.getAttribute("aria-busy")).toBe("true");
+    expect(cardButton).toBeDisabled();
+    // Before the first telemetry frame: queued active, the rest pending.
+    for (const p of [
+      "queued",
+      "sweeping",
+      "planning",
+      "connecting",
+      "positioning",
+      "homing",
+      "verifying",
+    ])
+      expect(phaseRow(p).dataset["state"]).toBe(p === "queued" ? "active" : "pending");
+    expect(job.dataset["jobPhase"]).toBe("queued");
+    expect(screen.getByTestId("home-rail-progress").getAttribute("aria-valuenow")).toBe("0");
+    // Telemetry: positioning, waypoint 4/12, 55 %.
+    setMonitorArms([
+      makeArmMonitor({
+        status: "paused",
+        maintenance_busy: true,
+        maintenance: makeMaintenanceProgress({
+          job_id: "job-7",
+          phase: "positioning",
+          detail: "waypoint 4/12",
+          progress: 0.55,
+        }),
+      }),
+    ]);
+    expect(job.dataset["jobPhase"]).toBe("positioning");
+    expect(phaseRow("queued").dataset["state"]).toBe("done");
+    expect(phaseRow("connecting").dataset["state"]).toBe("done");
+    expect(phaseRow("positioning").dataset["state"]).toBe("active");
+    expect(phaseRow("positioning").querySelector(".spinner")).not.toBeNull();
+    expect(phaseRow("homing").dataset["state"]).toBe("pending");
+    expect(screen.getByTestId("home-rail-job-detail").textContent).toBe("waypoint 4/12");
+    expect(screen.getByTestId("home-rail-progress").getAttribute("aria-valuenow")).toBe("55");
+    expect(screen.getByTestId("home-rail-progress").getAttribute("role")).toBe("progressbar");
+    expect(phaseRow("positioning").textContent).toContain(
+      "moving the arm to the folded posture at 10 %",
+    );
+    expect(lastGets).toBe(0); // nothing fetched while running
+    // The terminal `done` frame → the sheet fetches /maintenance/last, which still
+    // answers the stale `accepted` once (the job thread stores its result a beat
+    // later) and is polled until the final result appears.
+    lastAnswers = [() => json(accepted()), () => json(finalDone())];
+    setMonitorArms([
+      homed({
+        maintenance_busy: false,
+        maintenance: makeMaintenanceProgress({
+          job_id: "job-7",
+          phase: "done",
+          detail: "rail homed; posture held",
+          progress: 1,
+        }),
+      }),
+    ]);
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1), { timeout: 4000 });
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · rail homed (rail 0.000 m)",
+      tone: "success",
+    });
+    expect(lastGets).toBeGreaterThanOrEqual(2); // polled past the stale `accepted`
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+    // The rail is homed → the Home rail button is gone; the card's pending op was
+    // released (another client's op now shows the shared indicator again).
+    expect(screen.queryByTestId("arm-home-rail-grip")).toBeNull();
+    expect(screen.getByTestId("arm-rail-grip").textContent).toBe("rail 0.000 m");
+    setMonitorArms([homed({ maintenance_busy: true })]);
+    expect(screen.getByTestId("arm-actions-busy-grip")).toBeInTheDocument();
+    expect(posts).toHaveLength(2); // the dry run + the one real POST
+  }, 10000);
+
+  it("refused plan (needed, not clear): red verdict, the runtime's suggestion, NO confirm; Close", async () => {
+    answer = () =>
+      plannedDryRun(
+        makePlannedSweepVerdict({
+          pre_position: makePrePositionPlan({
+            clear: false,
+            source: "home",
+            detail: "no candidate posture clears the sweep",
+          }),
+        }),
+        "fold the arm toward the factory zero posture in Studio and retry",
+      );
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    const verdict = await screen.findByTestId("home-rail-verdict");
+    expect(verdict.textContent).toBe("Sweep blocked — no safe pre-positioning path");
+    expect(verdict.className).toBe("pill pill-danger home-rail-verdict");
+    expect(screen.getByTestId("home-rail-panel").dataset["plan"]).toBe("refused");
+    expect(screen.getByTestId("home-rail-error").textContent).toContain(
+      "fold the arm toward the factory zero posture in Studio and retry",
+    );
+    expect(screen.queryByTestId("home-rail-plan")).toBeNull();
+    expect(screen.queryByTestId("home-rail-hint")).toBeNull(); // the runtime's suggestion replaces it
+    expect(screen.queryByTestId("home-rail-confirm")).toBeNull();
+    expect(screen.getByTestId("home-rail-cancel").textContent).toBe("Close");
+    fireEvent.click(screen.getByTestId("home-rail-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+    expect(posts).toHaveLength(1);
+    expect(useStore.getState().toasts).toHaveLength(0);
+    // Without a top-level detail the plan's own detail is shown; without either, the generic hint.
+    answer = () =>
+      plannedDryRun(
+        makePlannedSweepVerdict({
+          pre_position: makePrePositionPlan({ clear: false, detail: "planner: no path" }),
+        }),
+      );
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    expect((await screen.findByTestId("home-rail-error")).textContent).toContain(
+      "planner: no path",
+    );
+    fireEvent.click(screen.getByTestId("home-rail-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+    answer = () =>
+      plannedDryRun(
+        makePlannedSweepVerdict({ pre_position: makePrePositionPlan({ clear: false }) }),
+      );
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    expect((await screen.findByTestId("home-rail-error")).textContent).toContain(
+      "fold the arm toward the factory-zero posture in xArm Studio",
+    );
+  });
+
+  it("failed job: telemetry `failed` marks the phase it was in, GET last (ok:false) → error toast, sheet stays open with the detail", async () => {
+    lastAnswers = [
+      () =>
+        json(
+          makeMaintenanceResult({
+            arm_id: "grip",
+            op: "home_rail",
+            ok: false,
+            status: "done",
+            job_id: "job-7",
+            detail: "positioning aborted: gate blocked at waypoint 5 (grip/link4 ↔ obstacle)",
+            sdk_codes: {},
+            before: makeArmMonitor(),
+            after: makeArmMonitor(),
+            rail_sweep: makePlannedSweepVerdict(),
+          }),
+        ),
+    ];
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    fireEvent.click(await screen.findByTestId("home-rail-confirm"));
+    await screen.findByTestId("home-rail-job");
+    setMonitorArms([
+      makeArmMonitor({
+        status: "paused",
+        maintenance_busy: true,
+        maintenance: makeMaintenanceProgress({
+          job_id: "job-7",
+          phase: "positioning",
+          progress: 0.5,
+        }),
+      }),
+    ]);
+    expect(phaseRow("positioning").dataset["state"]).toBe("active");
+    setMonitorArms([
+      makeArmMonitor({
+        maintenance_busy: false,
+        maintenance: makeMaintenanceProgress({
+          job_id: "job-7",
+          phase: "failed",
+          detail: "positioning aborted: gate blocked",
+          progress: 0.5,
+        }),
+      }),
+    ]);
+    // The failed row is the phase the job was in; earlier rows done, later pending.
+    expect(phaseRow("connecting").dataset["state"]).toBe("done");
+    expect(phaseRow("positioning").dataset["state"]).toBe("failed");
+    expect(phaseRow("homing").dataset["state"]).toBe("pending");
+    expect(screen.getByTestId("home-rail-job-detail").textContent).toBe(
+      "positioning aborted: gate blocked",
+    );
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · positioning aborted: gate blocked at waypoint 5 (grip/link4 ↔ obstacle)",
+      tone: "error",
+    });
+    // The sheet stays open with the detail and a Close button; the card is no longer busy.
+    expect(screen.getByTestId("home-rail-sheet")).toBeInTheDocument();
+    expect(screen.getByTestId("home-rail-panel").dataset["phase"]).toBe("failed");
+    expect(screen.getByTestId("home-rail-error").textContent).toContain(
+      "positioning aborted: gate blocked at waypoint 5",
+    );
+    expect(screen.queryByTestId("home-rail-confirm")).toBeNull();
+    expect(screen.getByTestId("home-rail-cancel")).toBeEnabled();
+    expect(screen.getByTestId("home-rail-cancel").textContent).toBe("Close");
+    expect(screen.getByTestId("arm-home-rail-grip").getAttribute("aria-busy")).toBeNull();
+    fireEvent.click(screen.getByTestId("home-rail-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+  });
+
+  it("job vanished from telemetry after being seen → GET last decides (done → toast + close); a 404 there → error with the last detail", async () => {
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    fireEvent.click(await screen.findByTestId("home-rail-confirm"));
+    await screen.findByTestId("home-rail-job");
+    setMonitorArms([
+      makeArmMonitor({
+        maintenance_busy: true,
+        maintenance: makeMaintenanceProgress({ job_id: "job-7", phase: "homing", progress: 0.8 }),
+      }),
+    ]);
+    expect(lastGets).toBe(0);
+    // The runtime dropped the block without a terminal frame (short terminal visibility).
+    setMonitorArms([homed({ maintenance: null })]);
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · rail homed (rail 0.000 m)",
+      tone: "success",
+    });
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+    // Same, but /maintenance/last has nothing → the last detail seen, error tone.
+    // (The rail reads homed now, so the button is gone; an unhomed row brings it back.)
+    useStore.setState({ toasts: [] });
+    lastAnswers = [() => json({ detail: "no result" }, 404)];
+    answer = (body) => (body.dry_run ? plannedDryRun() : json(accepted("job-8"), 202));
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    fireEvent.click(await screen.findByTestId("home-rail-confirm"));
+    await screen.findByTestId("home-rail-job");
+    setMonitorArms([
+      makeArmMonitor({
+        maintenance_busy: true,
+        maintenance: makeMaintenanceProgress({
+          job_id: "job-8",
+          phase: "connecting",
+          detail: "pausing the monitor",
+        }),
+      }),
+    ]);
+    setMonitorArms([makeArmMonitor({ maintenance: null })]);
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · pausing the monitor",
+      tone: "error",
+    });
+    expect(screen.getByTestId("home-rail-error").textContent).toContain("pausing the monitor");
+    expect(screen.getByTestId("home-rail-cancel")).toBeEnabled();
+  });
+
+  it("telemetry never shows the job → after the grace the sheet polls GET last itself; only OUR job_id settles it (foreign / accepted results are ignored)", async () => {
+    const saved = { ...JOB_FALLBACK };
+    JOB_FALLBACK.graceMs = 30;
+    JOB_FALLBACK.pollMs = 20;
+    try {
+      answer = (body) => (body.dry_run ? plannedDryRun() : json(accepted("job-9"), 202));
+      // an older op's result (foreign job_id) and a stale `accepted` must not end the job
+      lastAnswers = [() => json(finalDone("job-1")), () => json(accepted("job-9"))];
+      render(<ArmStatusCard arm={grip} kind="hardware" />);
+      setMonitorArms([makeArmMonitor()]);
+      fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+      fireEvent.click(await screen.findByTestId("home-rail-confirm"));
+      const job = await screen.findByTestId("home-rail-job");
+      expect(job.dataset["jobId"]).toBe("job-9");
+      await waitFor(() => expect(lastGets).toBeGreaterThanOrEqual(2));
+      expect(screen.getByTestId("home-rail-job")).toBeInTheDocument(); // still running
+      expect(screen.queryByTestId("home-rail-job-finishing")).toBeNull();
+      expect(useStore.getState().toasts).toHaveLength(0);
+      expect(screen.getByTestId("home-rail-cancel")).toBeDisabled(); // un-closable while running …
+      // … until /last carries OUR final result (no telemetry frame ever arrived)
+      lastAnswers = [() => json(finalDone("job-9"))];
+      await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+      expect(useStore.getState().toasts[0]).toMatchObject({
+        text: "Manipulation Arm · rail homed (rail 0.000 m)",
+        tone: "success",
+      });
+      await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+      // the card's Home rail button is released too (onHomingChange false)
+      expect(screen.getByTestId("arm-home-rail-grip").getAttribute("aria-busy")).toBeNull();
+    } finally {
+      Object.assign(JOB_FALLBACK, saved);
+    }
+  });
+
+  it("a final result with a foreign job_id after a terminal frame is the lost case, never toasted as ours", async () => {
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    fireEvent.click(await screen.findByTestId("home-rail-confirm"));
+    await screen.findByTestId("home-rail-job");
+    lastAnswers = [() => json(finalDone("job-1"))]; // an older op's result, ok: true
+    setMonitorArms([
+      makeArmMonitor({
+        maintenance_busy: true,
+        maintenance: makeMaintenanceProgress({
+          job_id: "job-7",
+          phase: "homing",
+          detail: "carriage driving",
+        }),
+      }),
+    ]);
+    setMonitorArms([
+      makeArmMonitor({
+        maintenance: makeMaintenanceProgress({ job_id: "job-7", phase: "done", progress: 1 }),
+      }),
+    ]);
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    // the foreign result is never toasted as ours: the lost case (the terminal frame
+    // carried no detail, so the generic text), error tone, sheet open and closable
+    expect(useStore.getState().toasts[0]).toMatchObject({ tone: "error" });
+    expect(useStore.getState().toasts[0]!.text).not.toContain("rail homed");
+    expect(useStore.getState().toasts[0]!.text).toContain("stopped reporting the homing job");
+    expect(screen.getByTestId("home-rail-error").textContent).toContain(
+      "stopped reporting the homing job",
+    );
+    expect(screen.getByTestId("home-rail-cancel")).toBeEnabled();
+  });
+
+  it("09c path unchanged: `needed: false` (or no plan block) → 'move carriage' confirm, synchronous 200 status done → toast, closes; a `refused` real op → error", async () => {
+    const dryRun = (verdict: ReturnType<typeof makeRailSweepVerdict>) =>
+      json(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "home_rail",
+          ok: true,
+          sdk_codes: {},
+          before: makeArmMonitor(),
+          after: null,
+          rail_sweep: verdict,
+        }),
+      );
+    answer = (body) =>
+      body.dry_run
+        ? dryRun(makeRailSweepVerdict()) // pre_position: {needed: false}
+        : json(
+            makeMaintenanceResult({
+              arm_id: "grip",
+              op: "home_rail",
+              status: "done",
+              detail: "rail homed",
+              before: makeArmMonitor(),
+              after: homed(),
+              rail_sweep: makeRailSweepVerdict(),
+            }),
+          );
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    const confirm = await screen.findByTestId("home-rail-confirm");
+    expect(screen.getByTestId("home-rail-panel").dataset["plan"]).toBe("none");
+    expect(screen.queryByTestId("home-rail-plan")).toBeNull();
+    expect(confirm.textContent).toBe("Home rail — move carriage");
+    fireEvent.click(confirm);
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · rail homed (rail 0.000 m)",
+      tone: "success",
+    });
+    await waitFor(() => expect(screen.queryByTestId("home-rail-sheet")).toBeNull());
+    expect(lastGets).toBe(0); // synchronous: nothing to fetch
+    // A pre-09d verdict (no plan block at all) behaves the same.
+    useStore.setState({ toasts: [] });
+    answer = (body) =>
+      body.dry_run
+        ? dryRun(makeRailSweepVerdict({ pre_position: undefined }))
+        : json(
+            makeMaintenanceResult({
+              arm_id: "grip",
+              op: "home_rail",
+              ok: false,
+              status: "refused",
+              detail: "posture moved since the sweep",
+              sdk_codes: {},
+              before: makeArmMonitor(),
+              after: makeArmMonitor(),
+              rail_sweep: makeRailSweepVerdict({ pre_position: undefined }),
+            }),
+          );
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    const confirm2 = await screen.findByTestId("home-rail-confirm");
+    expect(confirm2.textContent).toBe("Home rail — move carriage");
+    fireEvent.click(confirm2);
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · posture moved since the sweep",
+      tone: "error",
+    });
+    expect(screen.getByTestId("home-rail-error").textContent).toContain(
+      "posture moved since the sweep",
+    );
+    expect(screen.queryByTestId("home-rail-job")).toBeNull();
+  });
+});
+
+// -- phase-09d review: a RailHomingJob pauses the monitor WITHOUT a session -------------------
+describe("Welcome page arm cards during a RailHomingJob (monitor paused, no session)", () => {
+  const grip = makeArmStatus({ arm_id: "grip", ip: "192.168.1.201", reachable: "open" });
+  const view = makeArmStatus({ arm_id: "view", ip: "192.168.2.219", reachable: "open" });
+  const HOMING = "Rail homing in progress — wait for it to finish";
+
+  afterEach(() => {
+    act(() => useStore.getState().resetForEpochChange());
+  });
+
+  it("job on the Manipulation Arm: no 'Use the Cockpit' anywhere — the homing arm shows the running indicator, the other arm the homing reason", () => {
+    render(
+      <>
+        <ArmStatusCard arm={grip} kind="hardware" />
+        <ArmStatusCard arm={view} kind="hardware" />
+      </>,
+    );
+    setMonitor(
+      makeHardwareMonitor({
+        paused: true, // the JOB's driver owns the box - not a session
+        arms: [
+          makeArmMonitor({
+            arm_id: "grip",
+            status: "paused",
+            maintenance_busy: true,
+            maintenance: makeMaintenanceProgress({ job_id: "job-7", phase: "positioning" }),
+          }),
+          makeArmMonitor({ arm_id: "view", status: "paused", error_code: 19 }),
+        ],
+      }),
+    );
+    expect(screen.queryByText("Use the Cockpit")).toBeNull();
+    // the homing arm: the shared indicator, no reason line, every button off
+    expect(screen.getByTestId("arm-actions-busy-grip")).toBeInTheDocument();
+    expect(screen.queryByTestId("arm-actions-reason-grip")).toBeNull();
+    expect(screen.getByTestId("arm-home-rail-grip")).toBeDisabled();
+    // the other arm: Clear errors / Home rail off with the homing reason (409 meanwhile)
+    expect(screen.getByTestId("arm-actions-reason-view").textContent).toBe(HOMING);
+    const clear = screen.getByTestId("arm-clear-errors-view");
+    expect(clear).toBeDisabled();
+    expect(clear.getAttribute("title")).toBe(HOMING);
+    expect(screen.getByTestId("arm-home-rail-view")).toBeDisabled();
+    expect(screen.getByTestId("arm-home-rail-view").getAttribute("title")).toBe(HOMING);
+    expect(screen.queryByTestId("arm-actions-busy-view")).toBeNull();
+    expect(screen.queryByTestId("arm-session-reason-view")).toBeNull();
+    // the job ended (terminal phase lingers, busy false) and a real hardware session
+    // took the boxes: the strip reads "Use the Cockpit" again
+    setMonitor(
+      makeHardwareMonitor({
+        paused: true,
+        arms: [
+          makeArmMonitor({
+            arm_id: "grip",
+            status: "paused",
+            rail_homed: true,
+            rail_enabled: true,
+            rail_pos_m: 0,
+            maintenance: makeMaintenanceProgress({ job_id: "job-7", phase: "done", progress: 1 }),
+          }),
+          makeArmMonitor({ arm_id: "view", status: "paused", error_code: 19 }),
+        ],
+      }),
+    );
+    expect(screen.getByTestId("arm-actions-reason-view").textContent).toBe("Use the Cockpit");
+    expect(screen.getByTestId("arm-actions-reason-grip").textContent).toBe("Use the Cockpit");
+    // a synchronous 09c homing (monitor NOT paused, one arm busy) shows the same reason
+    setMonitor(
+      makeHardwareMonitor({
+        paused: false,
+        arms: [
+          makeArmMonitor({ arm_id: "grip", status: "stale", maintenance_busy: true }),
+          makeArmMonitor({ arm_id: "view", error_code: 19 }),
+        ],
+      }),
+    );
+    expect(screen.getByTestId("arm-actions-reason-view").textContent).toBe(HOMING);
+    expect(screen.getByTestId("arm-actions-busy-grip")).toBeInTheDocument();
   });
 });

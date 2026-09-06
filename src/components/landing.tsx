@@ -1,8 +1,11 @@
 /** Welcome-page pieces (phase-11 §4): per-tab observation grid, arm status
  * cards (with the "Searching for arms…" placeholder; on the Hardware tab also
  * the phase-09b safety read-back line + Clear errors / Apply safety settings
- * buttons), Start-from option rows + profile list, the read-only scene row,
- * the FrameSelector, and the pure status-caption helpers. Naming lives in
+ * buttons, and — phase-09c — the rail read-back pill, the **Home rail** button
+ * opening the `HomeRailSheet`, and the session-eligibility line — phase-09d:
+ * every hardware arm joins the session, the "Include in session" switch is
+ * gone), Start-from option rows + profile list, the read-only scene row, the
+ * FrameSelector, and the pure status-caption helpers. Naming lives in
  * ../lib/streams, the maintenance copy/enablement in ../lib/maintenance. */
 import { useState, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -39,9 +42,12 @@ import {
   type MaintenanceView,
 } from "../lib/maintenance";
 import type { FrameRef, Kind } from "../lib/types";
-import { selectHardwareSession, selectMonitorArm, useStore, type AppState } from "../store";
+import { useDelayedUnmount } from "../lib/useDelayedUnmount";
+import { selectMaintenanceBusy, selectMonitorArm, useStore, type AppState } from "../store";
+import { HomeRailSheet } from "./HomeRailSheet";
 import { Icon, type IconName } from "./icons";
 import { MicTile } from "./MicTile";
+import { SHEET_EXIT_MS } from "./Sheet";
 import { StreamView } from "./StreamView";
 
 // -- ObservationGrid -----------------------------------------------------------
@@ -170,13 +176,25 @@ export interface ArmStatusCardProps {
 /** Hardware cards only (phase-09b): the read-only monitor's row for this arm
  * + the "a hardware session owns the boxes" flag, reduced to primitives by
  * `maintenanceView` so `useShallow` re-renders the card only when the strip
- * changes (the monitor block is a fresh object on every telemetry tick). */
+ * changes (the monitor block is a fresh object on every telemetry tick).
+ * Phase-09d: the monitor's `paused` flag is ALSO set while a `RailHomingJob`'s
+ * driver owns a control box (no session, `maintenance_busy` on that arm), so
+ * "session" = a hardware `SessionInfo`, or `paused` with no maintenance op
+ * running anywhere; `paused` + an op running = a homing in progress. */
 const selectMaintenance =
   (arm: ArmStatusInfo, kind: Kind) =>
-  (s: AppState): MaintenanceView | null =>
-    kind === "hardware"
-      ? maintenanceView(selectMonitorArm(arm.arm_id)(s), arm, selectHardwareSession(s))
-      : null;
+  (s: AppState): MaintenanceView | null => {
+    if (kind !== "hardware") return null;
+    const homing = selectMaintenanceBusy(s);
+    const paused = s.telemetry?.hardware_monitor?.paused === true;
+    const sessionActive = s.session?.kind === "hardware" || (paused && !homing);
+    return maintenanceView(
+      selectMonitorArm(arm.arm_id)(s),
+      arm,
+      sessionActive,
+      homing && !sessionActive,
+    );
+  };
 
 export function ArmStatusCard({ arm, kind }: ArmStatusCardProps) {
   const reach: Reachable = arm.reachable ?? "unknown";
@@ -225,7 +243,20 @@ export function ArmStatusCard({ arm, kind }: ArmStatusCardProps) {
       </div>
       <div className="arm-card-meta text-mono">
         <span>{arm.ip ?? (kind === "sim" ? "simulated" : "no ip")}</span>
-        <span>{arm.has_rail ? "rail 0–0.65 m" : "no rail"}</span>
+        {maintenance?.rail === "unhomed" ? (
+          <span
+            className="pill pill-warn arm-card-rail"
+            data-testid={`arm-rail-${arm.arm_id}`}
+            data-rail="unhomed"
+          >
+            <Icon name="warning" size={12} />
+            {maintenance.railLabel}
+          </span>
+        ) : (
+          <span data-testid={`arm-rail-${arm.arm_id}`} data-rail={maintenance?.rail ?? "unknown"}>
+            {maintenance ? maintenance.railLabel : arm.has_rail ? "rail 0–0.65 m" : "no rail"}
+          </span>
+        )}
         <span>
           gripper {arm.gripper}
           {arm.gripper_force_capable ? " · force" : ""}
@@ -252,23 +283,44 @@ export function ArmStatusCard({ arm, kind }: ArmStatusCardProps) {
         )}
       </div>
       {maintenance && <ArmMaintenanceActions armId={arm.arm_id} view={maintenance} />}
+      {maintenance?.sessionReason && (
+        <div
+          className="arm-card-session-reason text-callout"
+          data-testid={`arm-session-reason-${arm.arm_id}`}
+          data-gate={maintenance.gate}
+        >
+          <Icon name="info" size={12} />
+          <span>
+            <span className="fg-3">Not ready for a session — </span>
+            {maintenance.sessionReason}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
-// -- Arm maintenance buttons (Hardware tab, phase-09b) ---------------------------------
-// Two session-less controller-hygiene ops, neither of which produces motion,
-// hence no confirm dialog: **Clear errors** (`clean_error` + `clean_warn`,
-// never `motion_enable`) while the controller reports an error or warning,
-// and **Apply safety settings** (`apply_backstops`: payload, collision
+// -- Arm maintenance buttons (Hardware tab, phase-09b/09c) -----------------------------
+// Session-less controller ops. Two are hygiene without motion, hence no
+// confirm dialog: **Clear errors** (`clean_error` + `clean_warn`, never
+// `motion_enable`) while the controller reports an error or warning, and
+// **Apply safety settings** (`apply_backstops`: payload, collision
 // sensitivity, self-collision model, rebound off) while the read-back differs
-// from the arm's config. Both are disabled with the visible reason "Use the
-// Cockpit" while a hardware session owns the boxes (the runtime answers 409 /
-// routes to the session driver). One POST at a time per card; ONLY the pressed
-// button shows a spinner and `aria-busy` until the result toast. An op started
-// by another client (`maintenance_busy` with nothing pending here) disables
-// both buttons and shows one shared "maintenance running…" indicator instead
-// of marking both buttons busy (only one op can run on an arm).
+// from the arm's config. The third, **Home rail** (phase-09c), is the ONE op
+// that moves hardware: shown while the monitor sees a track that is not
+// (homed AND enabled), enabled with no session / no op running / `error_code
+// == 0`, and it does NOT post directly — it opens the `HomeRailSheet`, which
+// runs the twin sweep (dry run) first and asks for a destructive confirm.
+// All are disabled with the visible reason "Use the Cockpit" while a hardware
+// session owns the boxes (the runtime answers 409 / routes to the session
+// driver), and with "Rail homing in progress — wait for it to finish" while a
+// RailHomingJob / homing runs on the OTHER arm (409 "rail homing in progress";
+// the homing arm's own card shows the shared indicator). One POST at a time per card; ONLY the pressed button shows a
+// spinner and `aria-busy` until the result toast (the sheet's real homing POST
+// marks Home rail busy through `onHomingChange`). An op started by another
+// client (`maintenance_busy` with nothing pending here) disables every button
+// and shows one shared "maintenance running…" indicator instead of marking a
+// button busy (only one op can run on an arm).
 interface ArmMaintenanceActionsProps {
   armId: string;
   view: MaintenanceView;
@@ -277,11 +329,14 @@ interface ArmMaintenanceActionsProps {
 const OP_LABEL: Readonly<Record<Exclude<MaintenanceOp, "recover">, string>> = {
   clear_errors: "Clear errors",
   apply_backstops: "Apply safety settings",
+  home_rail: "Home rail",
 };
 
 function ArmMaintenanceActions({ armId, view }: ArmMaintenanceActionsProps) {
   const addToast = useStore((s) => s.addToast);
   const [pending, setPending] = useState<MaintenanceOp | null>(null);
+  const [homeRail, setHomeRail] = useState(false);
+  const homeRailMounted = useDelayedUnmount(homeRail, SHEET_EXIT_MS);
   const run = async (op: MaintenanceOp) => {
     if (pending !== null) return;
     setPending(op);
@@ -312,10 +367,25 @@ function ArmMaintenanceActions({ armId, view }: ArmMaintenanceActionsProps) {
       </button>
     );
   };
+  const homing = pending === "home_rail";
   return (
     <div className="arm-card-actions" data-testid={`arm-actions-${armId}`}>
       {button("clear_errors", view.clearEnabled, `arm-clear-errors-${armId}`)}
       {button("apply_backstops", view.applyEnabled, `arm-apply-backstops-${armId}`)}
+      {view.homeRailShown && (
+        <button
+          type="button"
+          className="btn-secondary btn-sm"
+          disabled={!view.homeRailEnabled || pending !== null}
+          aria-busy={homing ? "true" : undefined}
+          data-testid={`arm-home-rail-${armId}`}
+          title={view.homeRailReason ?? view.reason ?? undefined}
+          onClick={() => setHomeRail(true)}
+        >
+          {homing && <span className="spinner" aria-hidden="true" />}
+          {OP_LABEL.home_rail}
+        </button>
+      )}
       {serverBusy && (
         <span className="btn-reason" data-testid={`arm-actions-busy-${armId}`} role="status">
           <span className="spinner" aria-hidden="true" /> maintenance running…
@@ -325,6 +395,19 @@ function ArmMaintenanceActions({ armId, view }: ArmMaintenanceActionsProps) {
         <span className="btn-reason" data-testid={`arm-actions-reason-${armId}`}>
           {view.reason}
         </span>
+      )}
+      {view.homeRailReason && (
+        <span className="btn-reason" data-testid={`arm-home-rail-reason-${armId}`}>
+          {view.homeRailReason}
+        </span>
+      )}
+      {homeRailMounted && (
+        <HomeRailSheet
+          armId={armId}
+          open={homeRail}
+          onRequestClose={() => setHomeRail(false)}
+          onHomingChange={(inFlight) => setPending(inFlight ? "home_rail" : null)}
+        />
       )}
     </div>
   );

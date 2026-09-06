@@ -16,6 +16,7 @@ import {
   orderStreams,
   overlayBase,
   pageTitle,
+  sessionStreamIds,
   SCENE_DISPLAY_NAME,
   SCENE_ID,
   SIM_CAMERA_SLOTS,
@@ -95,6 +96,31 @@ describe("streams", () => {
       "grip_wrist",
       "sim",
     ]);
+  });
+
+  it("sessionStreamIds: a hardware session with the wire's empty streams tiles the grid slots", () => {
+    // Runtime `SessionInfo.streams` is [] for hardware sessions (previews adopted, not re-added).
+    expect(sessionStreamIds({ streams: [], kind: "hardware" })).toEqual([...HARDWARE_GRID_SLOTS]);
+    expect(orderStreams(sessionStreamIds({ streams: [], kind: "hardware" }))).toEqual([
+      "grip_wrist",
+      "grip_wrist_align",
+      "view_wrist",
+      "view_wrist_align",
+    ]);
+    // A listed set (sim; a future runtime listing the adopted ids) is used as is.
+    expect(sessionStreamIds({ streams: ["view_wrist", "grip_wrist"], kind: "hardware" })).toEqual([
+      "view_wrist",
+      "grip_wrist",
+    ]);
+    expect(sessionStreamIds({ streams: ["grip_wrist_cam", "sim"], kind: "sim" })).toEqual([
+      "grip_wrist_cam",
+      "sim",
+    ]);
+    // No session / a sim session without streams / an older runtime without `kind`: nothing.
+    expect(sessionStreamIds(null)).toEqual([]);
+    expect(sessionStreamIds(undefined)).toEqual([]);
+    expect(sessionStreamIds({ streams: [], kind: "sim" })).toEqual([]);
+    expect(sessionStreamIds({ streams: [] })).toEqual([]);
   });
 
   it("orderStreams: a twin overlay follows its camera; orphan overlays keep their own place", () => {

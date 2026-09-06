@@ -1,11 +1,19 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { makeTelemetry, makeTracker } from "../../tests/mocks/fixtures";
+import {
+  makeArmMonitor,
+  makeHardwareMonitor,
+  makeMaintenanceProgress,
+  makeTelemetry,
+  makeTracker,
+} from "../../tests/mocks/fixtures";
 import type { SessionInfo } from "../gen";
 import {
   DEVICES_IDLE,
   GAMEPAD_IDLE,
   selectActiveArm,
   selectControlLinkDown,
+  selectMaintenanceBusy,
+  selectMaintenanceProgress,
   selectTracker,
   useStore,
 } from "./index";
@@ -64,5 +72,27 @@ describe("store", () => {
     expect(selectActiveArm(useStore.getState())?.arm_id).toBe("view");
     useStore.getState().setTelemetry(makeTelemetry({ seq: 2, active_arm: null }));
     expect(selectActiveArm(useStore.getState())).toBeNull();
+  });
+
+  it("selectMaintenanceProgress (phase-09d) reads the arm's `maintenance` block; busy follows the job", () => {
+    expect(selectMaintenanceProgress("grip")(useStore.getState())).toBeNull();
+    useStore.getState().setTelemetry(makeTelemetry({ hardware_monitor: makeHardwareMonitor() }));
+    expect(selectMaintenanceProgress("grip")(useStore.getState())).toBeNull(); // no job
+    expect(selectMaintenanceBusy(useStore.getState())).toBe(false);
+    const job = makeMaintenanceProgress({ phase: "positioning", progress: 0.5 });
+    useStore.getState().setTelemetry(
+      makeTelemetry({
+        seq: 2,
+        hardware_monitor: makeHardwareMonitor({
+          arms: [
+            makeArmMonitor({ status: "paused", maintenance_busy: true, maintenance: job }),
+            makeArmMonitor({ arm_id: "view" }),
+          ],
+        }),
+      }),
+    );
+    expect(selectMaintenanceProgress("grip")(useStore.getState())).toEqual(job);
+    expect(selectMaintenanceProgress("view")(useStore.getState())).toBeNull();
+    expect(selectMaintenanceBusy(useStore.getState())).toBe(true);
   });
 });

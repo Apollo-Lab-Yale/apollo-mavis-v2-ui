@@ -8,6 +8,7 @@ import type {
   ArmTelemetry,
   CollisionReport,
   KeymapEntry,
+  MaintenanceProgress,
   SessionInfo,
   TelemetryMsg,
   TrackerSettingsArgs,
@@ -177,12 +178,42 @@ export const selectHardwareMonitor = (s: AppState) => s.telemetry?.hardware_moni
 /** A hardware session owns the control boxes (phase-09b): the monitor's
  * `paused` flag IS the runtime's `_hardware_session_active` predicate (the
  * runtime reports it even with the monitor switched off / the hardware
- * package missing), and it is the only wire signal that tells a hardware
- * session from a sim one (`SessionInfo` carries no kind; both kinds may
- * stream `"twin"`). False on a runtime without the block — the Cockpit then
- * offers no recovery button. */
+ * package missing, and from the first moment of a hardware bring-up), and
+ * until phase-09c it was the only wire signal that tells a hardware session
+ * from a sim one (both kinds may stream `"twin"`). Since phase-09c
+ * `SessionInfo.kind` says so too — either signal counts, so the Cockpit keeps
+ * its recovery button on an older runtime and during bring-up alike. */
 export const selectHardwareSession = (s: AppState): boolean =>
-  s.telemetry?.hardware_monitor?.paused === true;
+  s.telemetry?.hardware_monitor?.paused === true || s.session?.kind === "hardware";
+/** Phase-09c: some hardware arm has a maintenance op running — in practice a
+ * `home_rail` (the other ops finish within a second; a phase-09d
+ * `RailHomingJob` keeps it true for the job's whole life); the runtime answers
+ * `POST /api/session` 409 "rail homing in progress" meanwhile. */
+export const selectMaintenanceBusy = (s: AppState): boolean =>
+  s.telemetry?.hardware_monitor?.arms?.some((a) => a.maintenance_busy === true) ?? false;
+/** Phase-09d: the live progress of an asynchronous maintenance job on one arm
+ * (`ArmMonitorTelemetry.maintenance`, a `RailHomingJob` that first moves the
+ * arm along a planned path); null while no job exists / the block is absent.
+ * Subscribe with `useShallow` — the object is fresh on every telemetry tick. */
+export const selectMaintenanceProgress =
+  (armId: string) =>
+  (s: AppState): MaintenanceProgress | null =>
+    s.telemetry?.hardware_monitor?.arms?.find((a) => a.arm_id === armId)?.maintenance ?? null;
+/** Phase-09c D1: hardware arms the current hardware session did NOT include —
+ * every arm the monitor block lists (it lists all configured hardware arms,
+ * paused or not) minus `session.arms`; `[]` outside a hardware session. The
+ * Cockpit warns that they are frozen in the gate twin at their last sample.
+ * Since phase-09d a hardware session includes EVERY configured arm (the
+ * runtime 409s otherwise), so this is normally empty — D1 survives only for
+ * the maintenance motion of a `RailHomingJob`, which has no session; the hint
+ * stays as a defensive path for an older runtime. */
+export const selectFrozenArms = (s: AppState): string[] => {
+  const session = s.session;
+  if (!session || !selectHardwareSession(s)) return [];
+  return (s.telemetry?.hardware_monitor?.arms ?? [])
+    .map((a) => a.arm_id)
+    .filter((id) => !session.arms.includes(id));
+};
 /** The read-only monitor's row for one arm (null while the block or the arm is absent). */
 export const selectMonitorArm =
   (armId: string) =>

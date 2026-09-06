@@ -5,10 +5,19 @@
  * task / policy in a LaunchSheet (held mounted for its 160 ms exit after
  * closing). The Hardware tab is always openable: while it
  * is visible `GET /api/workcell?kind=hardware` is polled every 2 s and the four
- * modes are gated on `hardware_ready`. Pure launch logic lives in ../lib/launch
- * (re-exported here for the tests). */
+ * modes are gated on `hardware_ready`. Phase-09c: the Hardware tab owns the
+ * **Speed** 10 % / 30 % / 100 % control (default 10 %) →
+ * `SessionSpec.speed_scale`; the launchers add the rail-homed /
+ * homing-in-progress / arm-eligibility reasons from the read-only monitor
+ * (phase-09d: for ANY arm, named — `SessionSpec.arms` is every arm of the
+ * hardware workcell, the "Include in session" switch is gone), the three
+ * non-teleop modes read "teleop only for now", and the bring-up progress list
+ * appears under the launchers while the POST is pending. The hero's quiet
+ * **Debug** link opens `#/devices` (gamepad + tracker). Pure launch logic
+ * lives in ../lib/launch (re-exported here for the tests). */
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useShallow } from "zustand/react/shallow";
 import { getTelemetry } from "../api/clients";
 import {
   createSession,
@@ -30,7 +39,15 @@ import type {
   WorkcellStatus,
 } from "../gen";
 import { buildBindings } from "../input/bindings";
-import { buildSpec, launcherReason, type LandingSelection } from "../lib/launch";
+import {
+  buildSpec,
+  DEFAULT_SPEED_SCALE,
+  launcherReason,
+  SPEED_OPTIONS,
+  type LandingSelection,
+  type SpeedValue,
+} from "../lib/launch";
+import { sessionGate, type SessionGate } from "../lib/maintenance";
 import {
   APP_EYEBROW,
   APP_SUBTITLE,
@@ -48,7 +65,8 @@ import { MODES } from "../lib/types";
 import { useLingeringValue } from "../lib/useDelayedUnmount";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useRevealOnce } from "../lib/useRevealOnce";
-import { useStore } from "../store";
+import { selectMaintenanceBusy, selectMonitorArm, useStore, type AppState } from "../store";
+import { BringupProgress } from "../components/BringupProgress";
 import {
   ArmCards,
   HardwareCaption,
@@ -87,6 +105,30 @@ const TAB_OPTIONS = [
   { value: "sim", label: TAB_LABELS.sim, testId: "kind-sim", panelId: "pane-sim" },
 ] as const satisfies readonly { value: Kind; label: string; testId: string; panelId: string }[];
 
+/** Hardware-tab Speed segments (phase-09c D2), testids `speed-10` / `speed-30` / `speed-100`. */
+const SPEED_TAB_OPTIONS = SPEED_OPTIONS.map((o) => ({
+  value: o.value,
+  label: o.label,
+  testId: `speed-${o.label.replace("%", "")}`,
+}));
+
+const TAB_STORAGE_KEY = "mavis.welcome.tab";
+const readStoredTab = (): Kind | null => {
+  try {
+    const v = localStorage.getItem(TAB_STORAGE_KEY);
+    return v === "hardware" || v === "sim" ? v : null;
+  } catch {
+    return null;
+  }
+};
+const storeTab = (tab: Kind): void => {
+  try {
+    localStorage.setItem(TAB_STORAGE_KEY, tab);
+  } catch {
+    /* storage unavailable: the tab simply is not remembered */
+  }
+};
+
 export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}) {
   useDocumentTitle(pageTitle());
   const navigate = useNavigate();
@@ -97,7 +139,9 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   const addToast = useStore((s) => s.addToast);
   const reveal = useRevealOnce();
 
-  const [tab, setTab] = useState<Kind>("sim");
+  // The chosen tab survives reloads (Chrome discards idle tabs and reloads them
+  // on focus; a runtime restart sends the page back to "#/"): localStorage.
+  const [tab, setTab] = useState<Kind>(() => readStoredTab() ?? "sim");
   const [tabOrigin, setTabOrigin] = useState<SegmentedOrigin>("pointer");
   const [leaving, setLeaving] = useState<Kind | null>(null);
   const [simStatus, setSimStatus] = useState<WorkcellStatus | null>(null);
@@ -111,6 +155,9 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   const [startFrom, setStartFrom] = useState<StartFromChoice>("keep_current");
   const [profileId, setProfileId] = useState<string | null>(null);
   const [keymapOk, setKeymapOk] = useState(false);
+  // Phase-09c Hardware-tab session shape: the Speed segment (phase-09d: the
+  // arm set is not a choice any more — every hardware arm joins the session).
+  const [speed, setSpeed] = useState<SpeedValue>("0.1");
   const [launching, setLaunching] = useState<Mode | null>(null);
   const [sheet, setSheet] = useState<SheetMode | null>(null);
   // The sheet's mode lingers for the exit transition once `sheet` is cleared.
@@ -131,7 +178,7 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     getWorkcell()
       .then((w) => {
         setWorkcell(w);
-        setTab(w.kind);
+        if (readStoredTab() === null) setTab(w.kind);
         if (w.kind === "sim") setSimStatus(w);
         else if (w.available_kinds.includes("sim")) {
           getWorkcell("sim")
@@ -180,6 +227,11 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
           if (alive) setCameras(c);
         })
         .catch(() => undefined);
+      getMicrophones() // the mic tile must come back after a runtime restart, not only on mount
+        .then((m) => {
+          if (alive) setMicrophones(m);
+        })
+        .catch(() => undefined);
     };
     tick();
     const id = window.setInterval(tick, hardwarePollMs);
@@ -218,9 +270,27 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
       setTabOrigin(origin);
       setLeaving(origin === "pointer" ? tab : null);
       setTab(next);
+      storeTab(next);
     },
     [tab],
   );
+
+  // Device lists are re-read whenever the page becomes visible again (both
+  // tabs): a runtime restart or an outage while the tab was in the background
+  // must not leave stale "no signal" tiles or a missing microphone tile behind.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.hidden) return;
+      getCameras()
+        .then(setCameras)
+        .catch(() => undefined);
+      getMicrophones()
+        .then(setMicrophones)
+        .catch(() => undefined);
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, []);
   useEffect(() => {
     if (leaving === null) return;
     const id = window.setTimeout(() => setLeaving(null), PANE_LEAVE_MS);
@@ -248,19 +318,40 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     () => Object.fromEntries(armIds.map((a) => [a, `arm_base:${a}`])),
     [armIds],
   );
+  // Hardware tab (phase-09c/09d): every hardware arm's eligibility gate from
+  // the read-only monitor (a flat id → gate record, so a 25 Hz telemetry tick
+  // re-renders the page only when a gate flips), and the homing-in-flight flag.
+  const hardwareArmIds = useMemo(
+    () =>
+      orderArms(
+        hardwareArms.map((a) => a.arm_id),
+        (a) => a,
+      ),
+    [hardwareArms],
+  );
+  const gates = useStore(
+    useShallow((s: AppState): Record<string, SessionGate> =>
+      Object.fromEntries(
+        hardwareArms.map((a) => [a.arm_id, sessionGate(selectMonitorArm(a.arm_id)(s), a)]),
+      ),
+    ),
+  );
+  const homingInProgress = useStore(selectMaintenanceBusy);
+  const speedScale = SPEED_OPTIONS.find((o) => o.value === speed)?.scale ?? DEFAULT_SPEED_SCALE;
   const simScene = simScenes.find((s) => s.scene_id === SCENE_ID) ?? null;
   const twinScene = twinScenes.find((s) => s.scene_id === SCENE_ID) ?? null;
   const tabSlots: readonly string[] = tab === "sim" ? SIM_CAMERA_SLOTS : HARDWARE_CAMERA_SLOTS;
   const tabCameras = cameras.filter((c) => tabSlots.includes(c.camera_id));
   const promoted = useMemo(() => policies.filter((p) => p.promoted), [policies]);
 
+  const hardwareTab = tab === "hardware";
   const sel: LandingSelection = {
     tab,
     kind: tab,
     arms: armIds,
     frames,
     simScene: tab === "sim" && simScene ? SCENE_ID : null,
-    twinScene: tab === "hardware" ? SCENE_ID : null, // the digital twin is implicitly mavis_v2
+    twinScene: hardwareTab ? SCENE_ID : null, // the digital twin is implicitly mavis_v2
     startFrom,
     profileId,
     task: "",
@@ -269,6 +360,16 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     policiesAvailable: workcell?.policies_available ?? hardware?.policies_available ?? false,
     hardwareReady,
     hardwareConfigured,
+    ...(hardwareTab
+      ? {
+          speedScale,
+          unhomedRailArms: hardwareArmIds.filter((a) => gates[a] === "rail_unhomed"),
+          armsNotReady: hardwareArmIds.filter(
+            (a) => gates[a] === "monitor_off" || gates[a] === "error",
+          ),
+          homingInProgress,
+        }
+      : {}),
   };
   const reasons = Object.fromEntries(
     MODES.map((m) => [m, launcherReason(m, sel, promoted)]),
@@ -326,6 +427,24 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
         arms={k === "sim" ? simArms : hardwareArms}
         configured={k === "sim" ? true : hardwareConfigured}
       />
+      {k === "hardware" && (
+        <div className="session-controls" data-testid="session-controls">
+          <span className="text-label fg-3" id="speed-label">
+            Speed
+          </span>
+          <SegmentedControl
+            options={SPEED_TAB_OPTIONS}
+            value={speed}
+            onChange={(v) => setSpeed(v)}
+            aria-labelledby="speed-label"
+            className="segmented-compact"
+            testId="speed-control"
+          />
+          <span className="text-caption fg-3 session-controls-help">
+            Scales every velocity cap of the session · first runs at 10%
+          </span>
+        </div>
+      )}
     </section>
   );
 
@@ -352,7 +471,7 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
             testId="kind-toggle"
           />
           <Link to="/devices" className="btn-ghost btn-sm" data-testid="nav-devices">
-            Devices
+            Debug
           </Link>
         </div>
       </header>
@@ -395,6 +514,7 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
           onRetryKeymap={loadKeymap}
           reveal={reveal}
         />
+        {hardwareTab && <BringupProgress />}
       </section>
 
       {sheetShown !== null && (

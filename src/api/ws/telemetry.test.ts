@@ -67,4 +67,24 @@ describe("TelemetryClient", () => {
     s1.message(JSON.stringify(makeTelemetry({ seq: 1 }))); // server restarts per-connection seq
     expect(got.map((m) => m.seq)).toEqual([100, 1]);
   });
+
+  it("dials again when an OPEN socket stays silent for STALE_RECONNECT_MS (half-open)", () => {
+    const { sockets, advance } = setup();
+    const s = sockets[0]!;
+    s.open();
+    s.onmessage?.({ data: JSON.stringify(makeTelemetry({ seq: 1 })) } as MessageEvent);
+    advance(9_000);
+    expect(sockets.length).toBe(1); // still within the window
+    advance(2_000);
+    expect(sockets.length).toBe(2); // half-open: closed and re-dialled
+    expect(s.readyState).toBe(3);
+    // a live socket is never healed
+    const s2 = sockets[1]!;
+    s2.open();
+    for (let i = 2; i < 40; i++) {
+      s2.onmessage?.({ data: JSON.stringify(makeTelemetry({ seq: i })) } as MessageEvent);
+      advance(500);
+    }
+    expect(sockets.length).toBe(2);
+  });
 });

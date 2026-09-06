@@ -5,7 +5,9 @@
  * fixture → red banner + tile flash; kill the control server → CONTROL LINK
  * DOWN + auto-disarm; (phase-09b) a controller fault raises the FaultBanner,
  * whose recover button exists only while `hardware_monitor.paused` says a
- * hardware session owns the boxes.
+ * hardware session owns the boxes; (phase-09c) a hardware session shows the
+ * bring-up progress list until running, the `speed <n>%` badge and the
+ * frozen-arm hint for the arm it did not include.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WebSocket as MockWebSocket } from "mock-socket";
@@ -13,12 +15,15 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetClients } from "../src/api/clients";
 import { buildBindings } from "../src/input/bindings";
+import { HARDWARE_GRID_SLOTS } from "../src/lib/streams";
 import { Cockpit } from "../src/pages/Cockpit";
 import { useStore } from "../src/store";
 import {
   KEYMAP,
   makeArm,
+  makeBringupRow,
   makeHardwareMonitor,
+  makeHardwareSession,
   makeTelemetry,
   makeWorkcell,
 } from "./mocks/fixtures";
@@ -258,4 +263,117 @@ describe("Cockpit integration smoke", () => {
     fireEvent.click(screen.getByTestId("teleop-surface"));
     expect(screen.queryByTestId("capturing-chip")).toBeNull();
   }, 15000);
+  it("phase-09c hardware session: bring-up rows until running, speed badge, frozen Perception Arm hint", async () => {
+    // A phase-09c hardware teleop session at 10 %, here with the Manipulation Arm
+    // alone to exercise the D1 frozen-arm hint (phase-09d sessions include every
+    // arm, so this is the defensive path for an older runtime). The wire shape has
+    // `streams: []` (the previews are adopted, not re-added), so the grid must
+    // come from HARDWARE_GRID_SLOTS: both wrist cameras + their `_align` overlays.
+    const hw = makeHardwareSession({ state: "bringup", arms: ["grip"] });
+    expect(hw.streams).toEqual([]);
+    useStore.getState().setSession(hw);
+    const cams = HARDWARE_GRID_SLOTS.map((id) => new MockVideoServer(`${base}/ws/video/${id}`));
+    try {
+      mount();
+      await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+      expect(screen.getByTestId("speed-badge").textContent).toBe("speed 10%");
+      expect(screen.getByTestId("speed-badge").dataset["scale"]).toBe("0.1");
+      // Four tiles, each camera followed by its overlay (DOM order = grid order).
+      expect(
+        Array.from(document.querySelectorAll("[data-testid^='stream-']"))
+          .map((el) => (el as HTMLElement).dataset["testid"])
+          .filter((id) => id !== "stream-title" && id !== "stream-status"),
+      ).toEqual([
+        "stream-grip_wrist",
+        "stream-grip_wrist_align",
+        "stream-view_wrist",
+        "stream-view_wrist_align",
+      ]);
+      // Bring-up in progress: the list above the grid, rows Manipulation Arm first.
+      act(() =>
+        telemetry.push(
+          makeTelemetry({
+            arms: [makeArm({ arm_id: "grip", rail_pos_m: 0 })],
+            hardware_monitor: makeHardwareMonitor({ paused: true }),
+            session: {
+              state: "bringup",
+              bringup: [
+                makeBringupRow({
+                  arm_id: "view",
+                  step: "frozen",
+                  status: "warning",
+                  detail: "Perception Arm frozen at last sample",
+                }),
+                makeBringupRow({ step: "connect", status: "ok" }),
+                makeBringupRow({ step: "rail", status: "pending" }),
+              ],
+            },
+          }),
+        ),
+      );
+      const list = await screen.findByTestId("bringup-progress");
+      expect(
+        Array.from(list.querySelectorAll("[data-testid^='bringup-row-']")).map(
+          (el) => (el as HTMLElement).dataset["testid"],
+        ),
+      ).toEqual(["bringup-row-grip-connect", "bringup-row-grip-rail", "bringup-row-view-frozen"]);
+      expect(screen.getByTestId("bringup-row-view-frozen").textContent).toContain(
+        "Perception Arm frozen at last sample",
+      );
+      // The frozen hint: every monitor arm outside `session.arms`, from the side panel.
+      expect(screen.getByTestId("frozen-hint-view").textContent).toBe(
+        "Perception Arm frozen at last sample — do not move it from Studio",
+      );
+      expect(screen.queryByTestId("frozen-hint-grip")).toBeNull();
+      // Running → the list is gone; the badge and the hint stay for the session.
+      act(() =>
+        telemetry.push(
+          makeTelemetry({
+            seq: 2,
+            arms: [makeArm({ arm_id: "grip", rail_pos_m: 0 })],
+            hardware_monitor: makeHardwareMonitor({ paused: true }),
+            session: { state: "running" },
+          }),
+        ),
+      );
+      await waitFor(() => expect(screen.queryByTestId("bringup-progress")).toBeNull());
+      expect(screen.getByTestId("speed-badge").textContent).toBe("speed 10%");
+      expect(screen.getByTestId("frozen-hint-view")).toBeInTheDocument();
+      // The recover button relies on either hardware signal (phase-09b + SessionInfo.kind).
+      act(() =>
+        telemetry.push(
+          makeTelemetry({
+            seq: 3,
+            arms: [
+              makeArm({
+                arm_id: "grip",
+                rail_pos_m: 0,
+                error_code: 24,
+                fault_detail: "controller error 24: Speed Exceeds Limit",
+              }),
+            ],
+            hardware_monitor: makeHardwareMonitor({ paused: false }),
+            session: { state: "fault" },
+          }),
+        ),
+      );
+      await screen.findByTestId("fault-recover-grip");
+    } finally {
+      cams.forEach((c) => c.stop());
+    }
+  });
+
+  it("sim session: no speed badge, no frozen hint, no bring-up list", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    act(() =>
+      telemetry.push(
+        makeTelemetry({ hardware_monitor: makeHardwareMonitor(), session: { state: "running" } }),
+      ),
+    );
+    await screen.findByTestId("arm-indicator");
+    expect(screen.queryByTestId("speed-badge")).toBeNull();
+    expect(screen.queryByTestId("frozen-arms")).toBeNull();
+    expect(screen.queryByTestId("bringup-progress")).toBeNull();
+  });
 });

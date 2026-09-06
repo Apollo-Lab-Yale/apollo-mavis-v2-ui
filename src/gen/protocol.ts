@@ -27,7 +27,8 @@ export type Name1 =
   | "joint_target"
   | "tracker_settings";
 export type T1 = "action";
-export type Op = "clear_errors" | "apply_backstops" | "recover";
+export type DryRun = boolean;
+export type Op = "clear_errors" | "apply_backstops" | "recover" | "home_rail";
 export type AgeS = number | null;
 export type ArmId = string;
 export type BackstopsMatch = boolean | null;
@@ -36,6 +37,21 @@ export type Detail1 = string;
 export type ErrorCode = number;
 export type GripperOpenFrac = number | null;
 export type GripperRaw = number | null;
+export type Detail2 = string;
+export type JobId = string;
+export type Op1 = "clear_errors" | "apply_backstops" | "recover" | "home_rail";
+export type Phase =
+  | "queued"
+  | "sweeping"
+  | "planning"
+  | "connecting"
+  | "positioning"
+  | "homing"
+  | "verifying"
+  | "done"
+  | "failed";
+export type Progress = number;
+export type StartedAt = number | null;
 export type MaintenanceBusy = boolean;
 export type Mode = number | null;
 export type Q = number[];
@@ -52,10 +68,33 @@ export type TcpLoadKg = number | null;
 export type TcpPose = number[];
 export type WarnCode = number;
 export type ArmId1 = string;
-export type Detail2 = string;
+export type Detail3 = string;
+export type JobId1 = string | null;
 export type Ok1 = boolean;
-export type Op1 = "clear_errors" | "apply_backstops" | "recover";
+export type Op2 = "clear_errors" | "apply_backstops" | "recover" | "home_rail";
 export type Path = "monitor" | "session";
+export type Assumptions = string[];
+export type Clear = boolean;
+export type FirstBlockedM = number | null;
+export type FirstBlockedPair = string[];
+export type InflationM = number;
+export type MinClearanceAtM = number | null;
+export type MinClearanceM = number | null;
+export type MinClearancePair = string[];
+export type CheckedRailPositions = number;
+export type Clear1 = boolean;
+export type Detail4 = string;
+export type DurationS = number;
+export type Needed = boolean;
+export type Source = "current" | "keyframe" | "home" | "search";
+export type TargetQ = number[];
+export type Waypoints = number;
+export type QChecked = number[];
+export type SampleSeq = number;
+export type SceneId = string;
+export type StepM = number;
+export type TravelM = number;
+export type Status1 = "done" | "accepted" | "refused";
 export type Warnings = string[];
 export type ArmId2 = string;
 export type Connected = boolean;
@@ -79,7 +118,7 @@ export type Resolution = [number, number];
 export type ArmIds = string[];
 export type DistsM = number[];
 export type Kind1 = "blocked" | "cleared" | "warn" | "penetration" | "stale_twin";
-export type MinClearanceM = number;
+export type MinClearanceM1 = number;
 export type Pairs = [string, string][];
 /**
  * Origin of the command stream a safety event refers to.
@@ -106,14 +145,14 @@ export type Seq1 = number;
 export type T4 = "keys";
 export type Ts1 = number;
 export type Channels = number;
-export type Detail3 = string;
+export type Detail5 = string;
 export type Kind3 = "pulse" | "fake" | "none";
 export type Label2 = string;
 export type Live1 = boolean;
 export type MicId = string;
 export type SampleRate = number;
-export type Source = string | null;
-export type Status1 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
+export type Source1 = string | null;
+export type Status2 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
 export type ActionFrame = string;
 export type ActionSpace = "delta_ee" | "abs_ee" | "joint";
 export type Path1 = string;
@@ -133,19 +172,22 @@ export type Kind4 = "sim" | "twin";
 export type Label3 = string;
 export type NumArms = number;
 export type RailFlags = boolean[];
-export type SceneId = string;
+export type SceneId1 = string;
 export type Arms1 = string[];
 export type Epoch1 = string;
+export type Kind5 = "hardware" | "sim";
 export type Mode2 = "teleop" | "collect" | "dagger" | "inference";
 export type SessionId1 = string;
+export type SpeedScale = number;
 export type State1 = string;
 export type Streams = string[];
 export type Arms2 = string[];
 export type DigitalTwinScene = string | null;
-export type Kind5 = "hardware" | "sim";
+export type Kind6 = "hardware" | "sim";
 export type Mode3 = "teleop" | "collect" | "dagger" | "inference";
 export type Policy = string | null;
 export type SimScene = string | null;
+export type SpeedScale1 = number;
 export type StartFrom = string;
 export type Task = string | null;
 export type ProfileId1 = string | null;
@@ -194,7 +236,7 @@ export type DistM = number;
 export type Pair = [string, string];
 export type Clearances = ClearanceItem[];
 export type Blocked = boolean;
-export type MinClearanceM1 = number;
+export type MinClearanceM2 = number;
 export type Pairs1 = [string, string][];
 export type Severity = "ok" | "warn" | "blocked";
 export type Ts2 = number;
@@ -215,7 +257,7 @@ export type LastCheckpointVersion = number | null;
 export type NewLabelFrames1 = number;
 export type State2 = "starting" | "idle" | "training" | "dead";
 export type StepsTotal = number;
-export type DurationS = number;
+export type DurationS1 = number;
 export type Frames1 = number;
 export type Index = number | null;
 export type State3 = "idle" | "recording" | "saving";
@@ -224,12 +266,12 @@ export type Arms5 = ArmMonitorTelemetry[];
 export type Enabled = boolean;
 export type ArmId5 = string;
 export type CameraId1 = string;
-export type Detail4 = string;
+export type Detail6 = string;
 export type Fps1 = number;
 export type Joint1OffsetRad = number;
 export type MaskFraction = number;
 export type RailFallbackM = number | null;
-export type Status2 = "off" | "waiting" | "live" | "stale" | "error";
+export type Status3 = "off" | "waiting" | "live" | "stale" | "error";
 export type StreamId = string;
 export type Overlays = TwinOverlayTelemetry[];
 export type Paused = boolean;
@@ -237,7 +279,7 @@ export type EngagedArm1 = string | null;
 export type PolicyVersion2 = string | null;
 export type AgeS1 = number | null;
 export type Clipping = boolean;
-export type Detail5 = string;
+export type Detail7 = string;
 export type EnvMax = number[];
 export type EnvMin = number[];
 export type MicId1 = string;
@@ -247,8 +289,13 @@ export type RateHz = number;
 export type RmsDbfs = number | null;
 export type SampleRate1 = number;
 export type Seq2 = number;
-export type Status3 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
+export type Status4 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
 export type Seq3 = number;
+export type Bringup = ArmBringupTelemetry[] | null;
+export type ArmId6 = string;
+export type Detail8 = string;
+export type Status5 = "pending" | "ok" | "warning" | "error";
+export type Step = string;
 export type PlanStatus = string | null;
 export type StartFromProgress = number | null;
 export type State4 = string;
@@ -260,13 +307,13 @@ export type AppliedYawDeg = number | null;
 export type BackupPath = string | null;
 export type BaseStationInstalledAt = number | null;
 export type ControllerStill = boolean | null;
-export type Detail6 = string;
+export type Detail9 = string;
 export type ElapsedS = number | null;
 export type FitChecks = string[];
 export type FitResidualDeg = number | null;
 export type FittedYawDeg = number | null;
 export type InstalledPath = string | null;
-export type Kind6 = "none" | "base_station" | "yaw";
+export type Kind7 = "none" | "base_station" | "yaw";
 export type Channel = number | null;
 export type Index1 = number;
 export type Reference = boolean;
@@ -274,7 +321,7 @@ export type Scenes = number;
 export type Serial = string | null;
 export type Lighthouses = LighthouseStatus[];
 export type NextPoint = ("start" | "left" | "forward" | "right" | "back" | "up" | "down") | null;
-export type Phase =
+export type Phase1 =
   | "idle"
   | "starting"
   | "capturing"
@@ -285,7 +332,7 @@ export type Phase =
   | "failed"
   | "aborted";
 export type Scenes1 = number;
-export type StartedAt = number | null;
+export type StartedAt1 = number | null;
 export type StationsVisible = number;
 export type MaxStepMm = number;
 export type Passed = boolean;
@@ -312,7 +359,7 @@ export type TrackpadX = number;
 export type TrackpadY = number;
 export type Trigger = number;
 export type TriggerPressed = boolean;
-export type Detail7 = string;
+export type Detail10 = string;
 export type DeviceAction = string | null;
 export type DeviceHeld = string[];
 export type EngagedArm2 = string | null;
@@ -325,10 +372,10 @@ export type FilterMinCutoffHz = number;
 export type FollowRotation = boolean;
 export type PosScale = number;
 export type YawDeg = number;
-export type Status4 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
+export type Status6 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
 export type Ts3 = number;
-export type Kind7 = "base_station" | "yaw";
-export type Op2 = "start" | "capture" | "validate" | "install" | "apply" | "abort";
+export type Kind8 = "base_station" | "yaw";
+export type Op3 = "start" | "capture" | "validate" | "install" | "apply" | "abort";
 export type Point = ("start" | "left" | "forward" | "right" | "back" | "up" | "down") | null;
 export type FilterBeta1 = number | null;
 export type FilterEnabled1 = boolean | null;
@@ -340,7 +387,7 @@ export type Arms6 = ArmStatusInfo[];
 export type AvailableKinds = ("hardware" | "sim")[];
 export type Cameras1 = CameraInfo[];
 export type HardwareReady = boolean;
-export type Kind8 = "hardware" | "sim";
+export type Kind9 = "hardware" | "sim";
 export type PoliciesAvailable = boolean;
 
 export interface ApolloProtocol {
@@ -394,6 +441,7 @@ export interface Args {
  * ``POST /api/hardware/arms/{arm_id}/maintenance`` body.
  */
 export interface ArmMaintenanceRequest {
+  dry_run?: DryRun;
   op: Op;
 }
 /**
@@ -404,16 +452,31 @@ export interface ArmMaintenanceRequest {
  * non-fatal ``apply_backstops`` codes (e.g. a self-collision tool model the
  * firmware rejected). ``before``/``after`` are ``None`` when the executing
  * path had no monitor sample (session path, or the monitor never connected).
+ * ``rail_sweep`` is the twin verdict for ``home_rail`` (dry-run or real;
+ * ``None`` for the other ops) — a refused sweep is ``ok=False`` with the
+ * verdict and an empty ``sdk_codes`` (zero writes).
+ *
+ * phase-09d (additive): ``status`` says how the op ran — ``"done"`` (the
+ * default; synchronous, 200), ``"accepted"`` (an asynchronous ``RailHomingJob``
+ * started because the posture needs a planned pre-positioning motion; 202,
+ * ``job_id`` set, ``ok`` True, ``sdk_codes`` empty so far — progress rides
+ * ``ArmMonitorTelemetry.maintenance`` and the job's final result, again an
+ * ``ArmMaintenanceResult`` with ``status: done`` and the same ``job_id``,
+ * replaces it at ``GET .../maintenance/last``) or ``"refused"`` (nothing ran,
+ * ``ok`` False, suggestion in ``detail``).
  */
 export interface ArmMaintenanceResult {
   after?: ArmMonitorTelemetry | null;
   arm_id: ArmId1;
   before?: ArmMonitorTelemetry | null;
-  detail?: Detail2;
+  detail?: Detail3;
+  job_id?: JobId1;
   ok: Ok1;
-  op: Op1;
+  op: Op2;
   path: Path;
+  rail_sweep?: RailSweepVerdict | null;
   sdk_codes?: SdkCodes;
+  status?: Status1;
   warnings?: Warnings;
 }
 /**
@@ -439,6 +502,11 @@ export interface ArmMaintenanceResult {
  * the arm's ``ArmConfig`` (sensitivity equal, load within 0.05 kg, centre of
  * gravity within 10 mm; ``None`` = not compared) and ``maintenance_busy`` is
  * true while a maintenance op executes on this arm.
+ *
+ * phase-09d (additive): ``maintenance`` is the live :class:`MaintenanceProgress`
+ * of an asynchronous job (rail homing that first needs a planned
+ * pre-positioning motion) on this arm, ``None`` when no job exists;
+ * ``maintenance_busy`` stays true for the job's whole life.
  */
 export interface ArmMonitorTelemetry {
   age_s?: AgeS;
@@ -449,6 +517,7 @@ export interface ArmMonitorTelemetry {
   error_code?: ErrorCode;
   gripper_open_frac?: GripperOpenFrac;
   gripper_raw?: GripperRaw;
+  maintenance?: MaintenanceProgress | null;
   maintenance_busy?: MaintenanceBusy;
   mode?: Mode;
   q?: Q;
@@ -464,6 +533,94 @@ export interface ArmMonitorTelemetry {
   tcp_load_kg?: TcpLoadKg;
   tcp_pose?: TcpPose;
   warn_code?: WarnCode;
+}
+/**
+ * Live progress of an asynchronous maintenance job on one arm (phase-09d).
+ *
+ * Rides :attr:`ArmMonitorTelemetry.maintenance` while a ``RailHomingJob`` runs
+ * (``None`` when no job exists) so the UI's Home-rail sheet can list the
+ * phases as they happen. ``job_id`` matches the ``202`` response's
+ * ``ArmMaintenanceResult.job_id``; ``progress`` is a coarse 0..1 estimate
+ * (phase index, plus the waypoint fraction while ``positioning``);
+ * ``started_at`` is unix seconds. How long a terminal ``done`` / ``failed``
+ * stays visible is runtime territory (04-runtime §13.3); the final
+ * ``ArmMaintenanceResult`` is fetched from ``GET .../maintenance/last``.
+ */
+export interface MaintenanceProgress {
+  detail?: Detail2;
+  job_id: JobId;
+  op: Op1;
+  phase: Phase;
+  progress?: Progress;
+  started_at?: StartedAt;
+}
+/**
+ * Digital-twin rail sweep that gates ``home_rail`` (phase-09c).
+ *
+ * The carriage position is UNKNOWN while the track is unhomed, so the runtime
+ * sweeps the full travel: it poses the twin at the arm's current 7 joints
+ * (``q_checked``), the other arm(s) at their last monitor sample
+ * (``other_arms``: q7 + rail position, ``rail_fallback_m`` when the rail is
+ * unknown — recorded in ``assumptions``), and steps the target arm's rail
+ * slot from 0 to ``travel_m`` in ``step_m`` increments, checking every
+ * monitored geometry pair at ``inflation_m``. ``clear`` iff no step violates;
+ * otherwise ``first_blocked_m`` / ``first_blocked_pair`` name the first
+ * blocking position and pair. ``min_clearance_*`` report the tightest pair
+ * over the whole sweep (``None`` when no pair was measured). ``sample_seq``
+ * is the monitor sample the posture came from; the executing monitor
+ * re-samples and refuses if the joints moved since. ``pre_position``
+ * (phase-09d, additive) carries the planned pre-positioning motion when the
+ * posture is not clear (``needed`` True) or says none is needed; ``None`` =
+ * a pre-09d producer / planning not evaluated.
+ */
+export interface RailSweepVerdict {
+  assumptions?: Assumptions;
+  clear: Clear;
+  first_blocked_m?: FirstBlockedM;
+  first_blocked_pair?: FirstBlockedPair;
+  inflation_m: InflationM;
+  min_clearance_at_m?: MinClearanceAtM;
+  min_clearance_m?: MinClearanceM;
+  min_clearance_pair?: MinClearancePair;
+  other_arms?: OtherArms;
+  pre_position?: PrePositionPlan | null;
+  q_checked?: QChecked;
+  sample_seq?: SampleSeq;
+  scene_id: SceneId;
+  step_m: StepM;
+  travel_m?: TravelM;
+}
+export interface OtherArms {
+  [k: string]: number[];
+}
+/**
+ * Twin-planned pre-positioning motion that makes ``home_rail`` possible (phase-09d).
+ *
+ * Rides :attr:`RailSweepVerdict.pre_position`. ``needed`` is ``False`` when
+ * the arm's CURRENT posture is already sweep-clear (the rail homes with the
+ * joints untouched, 09c path). Otherwise the runtime tries candidate postures
+ * in order (``source``: the scene keyframe's 7 joints for this arm, then the
+ * ``<arm>_home`` keyframe; ``"search"`` is reserved for a sampled posture
+ * around a candidate and is not produced in phase-09d) and keeps the first
+ * that is sweep-clear over the full travel AND reachable by a twin RRT-Connect
+ * plan from the current posture whose EVERY waypoint is collision-free for
+ * EVERY rail position (``checked_rail_positions`` = 131 at 5 mm steps - the
+ * carriage is unknown, so the path must be position-agnostic; this check is
+ * the ONLY safety basis of the motion). ``clear`` is that verdict;
+ * ``needed and not clear`` means no plan was found and the op is refused
+ * (``detail`` tells the operator what to do, e.g. fold the arm toward the
+ * factory-zero posture in Studio and retry). ``duration_s`` is the estimated
+ * execution time at ``speed_scale`` 0.1 so the UI can say "~X s".
+ */
+export interface PrePositionPlan {
+  checked_rail_positions?: CheckedRailPositions;
+  clear?: Clear1;
+  detail?: Detail4;
+  duration_s?: DurationS;
+  needed: Needed;
+  source?: Source;
+  target_q?: TargetQ;
+  waypoints?: Waypoints;
 }
 export interface SdkCodes {
   [k: string]: number;
@@ -500,7 +657,7 @@ export interface CollisionEvent {
   arm_ids?: ArmIds;
   dists_m: DistsM;
   kind: Kind1;
-  min_clearance_m: MinClearanceM;
+  min_clearance_m: MinClearanceM1;
   pairs: Pairs;
   source?: CommandSource | null;
   t?: T2;
@@ -549,14 +706,14 @@ export interface KeysMsg {
  */
 export interface MicrophoneInfo {
   channels?: Channels;
-  detail?: Detail3;
+  detail?: Detail5;
   kind: Kind3;
   label: Label2;
   live: Live1;
   mic_id: MicId;
   sample_rate: SampleRate;
-  source: Source;
-  status: Status1;
+  source: Source1;
+  status: Status2;
 }
 /**
  * GET /api/policies row (04-runtime §13.1).
@@ -596,7 +753,7 @@ export interface SceneInfo {
   label: Label3;
   num_arms: NumArms;
   rail_flags: RailFlags;
-  scene_id: SceneId;
+  scene_id: SceneId1;
 }
 /**
  * POST/GET /api/session response.
@@ -604,8 +761,10 @@ export interface SceneInfo {
 export interface SessionInfo {
   arms: Arms1;
   epoch: Epoch1;
+  kind?: Kind5;
   mode: Mode2;
   session_id: SessionId1;
+  speed_scale?: SpeedScale;
   state: State1;
   streams: Streams;
 }
@@ -616,10 +775,11 @@ export interface SessionSpec {
   arms: Arms2;
   digital_twin_scene?: DigitalTwinScene;
   frames: Frames;
-  kind: Kind5;
+  kind: Kind6;
   mode: Mode3;
   policy?: Policy;
   sim_scene?: SimScene;
+  speed_scale?: SpeedScale1;
   start_from?: StartFrom;
   task?: Task;
 }
@@ -713,7 +873,7 @@ export interface ClearanceItem {
  */
 export interface CollisionReport {
   blocked: Blocked;
-  min_clearance_m?: MinClearanceM1;
+  min_clearance_m?: MinClearanceM2;
   pairs?: Pairs1;
   severity: Severity;
   ts?: Ts2;
@@ -749,7 +909,7 @@ export interface TrainerStatus {
  * Episode recorder status (collect/DAgger).
  */
 export interface EpisodeStatus {
-  duration_s: DurationS;
+  duration_s: DurationS1;
   frames: Frames1;
   index: Index;
   state: State3;
@@ -781,12 +941,12 @@ export interface HardwareMonitorTelemetry {
 export interface TwinOverlayTelemetry {
   arm_id: ArmId5;
   camera_id: CameraId1;
-  detail?: Detail4;
+  detail?: Detail6;
   fps?: Fps1;
   joint1_offset_rad?: Joint1OffsetRad;
   mask_fraction?: MaskFraction;
   rail_fallback_m?: RailFallbackM;
-  status?: Status2;
+  status?: Status3;
   stream_id: StreamId;
 }
 /**
@@ -814,7 +974,7 @@ export interface InferenceStatus {
 export interface MicrophoneTelemetry {
   age_s?: AgeS1;
   clipping?: Clipping;
-  detail?: Detail5;
+  detail?: Detail7;
   env_max?: EnvMax;
   env_min?: EnvMin;
   mic_id?: MicId1;
@@ -824,16 +984,32 @@ export interface MicrophoneTelemetry {
   rms_dbfs?: RmsDbfs;
   sample_rate?: SampleRate1;
   seq?: Seq2;
-  status?: Status3;
+  status?: Status4;
 }
 /**
  * Additive session-lifecycle block (04-runtime §13.3).
  */
 export interface SessionTelemetry {
+  bringup?: Bringup;
   plan_status?: PlanStatus;
   start_from_progress?: StartFromProgress;
   state: State4;
   trainer_alive?: TrainerAlive;
+}
+/**
+ * One hardware bring-up step of one arm (phase-09c; 04-runtime §5).
+ *
+ * Fed from the workcell's ``status_cb`` while ``SessionTelemetry.state`` is
+ * ``bringup``; the Cockpit lists the rows until the session is running.
+ * ``step`` names the stage (``network`` / ``connect`` / ``rail`` / ``gripper``
+ * / ``report`` / ``frozen`` ...), ``detail`` the human-readable outcome, e.g.
+ * "Perception Arm frozen at last sample".
+ */
+export interface ArmBringupTelemetry {
+  arm_id: ArmId6;
+  detail?: Detail8;
+  status: Status5;
+  step: Step;
 }
 /**
  * Vive-tracker block (13-tracker §3.5), additive.
@@ -858,7 +1034,7 @@ export interface TrackerTelemetry {
   charging?: Charging;
   clutch?: Clutch;
   controller?: ControllerTelemetry | null;
-  detail?: Detail7;
+  detail?: Detail10;
   device_action?: DeviceAction;
   device_held?: DeviceHeld;
   engaged_arm?: EngagedArm2;
@@ -869,7 +1045,7 @@ export interface TrackerTelemetry {
   rate_hz?: RateHz1;
   seq?: Seq4;
   settings: TrackerSettingsMsg;
-  status: Status4;
+  status: Status6;
   target_tcp?: PoseMsg | null;
 }
 /**
@@ -884,18 +1060,18 @@ export interface TrackerCalibrationStatus {
   backup_path?: BackupPath;
   base_station_installed_at?: BaseStationInstalledAt;
   controller_still?: ControllerStill;
-  detail?: Detail6;
+  detail?: Detail9;
   elapsed_s?: ElapsedS;
   fit_checks?: FitChecks;
   fit_residual_deg?: FitResidualDeg;
   fitted_yaw_deg?: FittedYawDeg;
   installed_path?: InstalledPath;
-  kind?: Kind6;
+  kind?: Kind7;
   lighthouses?: Lighthouses;
   next_point?: NextPoint;
-  phase?: Phase;
+  phase?: Phase1;
   scenes?: Scenes1;
-  started_at?: StartedAt;
+  started_at?: StartedAt1;
   stations_visible?: StationsVisible;
   validation?: CalibrationValidation | null;
   yaw_calibrated_at?: YawCalibratedAt;
@@ -972,8 +1148,8 @@ export interface TrackerSettingsMsg {
  * POST /api/tracker/calibration body (illegal transitions -> 409).
  */
 export interface TrackerCalibrationCommand {
-  kind: Kind7;
-  op: Op2;
+  kind: Kind8;
+  op: Op3;
   point?: Point;
 }
 /**
@@ -1000,6 +1176,6 @@ export interface WorkcellStatus {
   available_kinds: AvailableKinds;
   cameras: Cameras1;
   hardware_ready?: HardwareReady;
-  kind: Kind8;
+  kind: Kind9;
   policies_available?: PoliciesAvailable;
 }

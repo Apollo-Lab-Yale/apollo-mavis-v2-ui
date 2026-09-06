@@ -56,6 +56,8 @@ self.onmessage = (ev: MessageEvent) => {
       },
       onStatus: (status) => postMessage({ t: "status", status }),
     });
+  } else if (m.t === "reconnect") {
+    ws?.reconnectNow(); // main thread saw a half-open socket (video.ts healIfHalfOpen)
   } else if (m.t === "stop") {
     ws?.close();
     ws = null;

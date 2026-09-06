@@ -79,4 +79,29 @@ describe("ReconnectingWS", () => {
     expect(sockets[0]!.sent).toEqual(["x"]);
     ws.close();
   });
+
+  it("reconnectNow() drops an OPEN socket, dials again at once and resets the backoff", () => {
+    const { factory, sockets } = fakeFactory();
+    const ws = make(factory);
+    sockets[0]!.open();
+    // escalate the backoff first so the reset is observable
+    sockets[0]!.serverClose();
+    vi.advanceTimersByTime(10_000);
+    sockets[sockets.length - 1]!.fail();
+    vi.advanceTimersByTime(10_000);
+    const opened = sockets[sockets.length - 1]!;
+    opened.open();
+    const before = sockets.length;
+    ws.reconnectNow();
+    expect(opened.readyState).toBe(3); // the half-open socket is closed
+    expect(sockets.length).toBe(before + 1); // ...and a new one dialled immediately
+    // backoff is back at the 250 ms base: a failure reconnects within 2*250 ms
+    sockets[sockets.length - 1]!.fail();
+    vi.advanceTimersByTime(501);
+    expect(sockets.length).toBe(before + 2);
+    ws.close();
+    const after = sockets.length;
+    ws.reconnectNow(); // no-op once closed
+    expect(sockets.length).toBe(after);
+  });
 });

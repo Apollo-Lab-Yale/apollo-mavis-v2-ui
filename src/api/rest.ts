@@ -25,11 +25,29 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    headers: { "content-type": "application/json" },
-    ...init,
-  });
+/** Client-side deadline for a long synchronous POST (`home_rail`: the runtime
+ * waits up to 45 s for the carriage, the client gives it 60 s). */
+export const HOME_RAIL_TIMEOUT_MS = 60_000;
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      headers: { "content-type": "application/json" },
+      ...(timeoutMs != null ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+      ...init,
+    });
+  } catch (e) {
+    // The signal's DOMException may come from another realm (jsdom) — match by name.
+    const name = typeof e === "object" && e !== null && "name" in e ? String(e.name) : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new ApiError(
+        0,
+        `no answer after ${Math.round((timeoutMs ?? 0) / 1000)} s — check the arm card's rail read-back`,
+      );
+    }
+    throw e;
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -90,19 +108,64 @@ export const postTrackerCalibration = (
 ): Promise<TrackerCalibrationStatus> =>
   request("/api/tracker/calibration", { method: "POST", body: JSON.stringify(cmd) });
 
-// Arm maintenance (phase-09b, 04-runtime §13.1): session-less controller
-// hygiene from the Welcome Hardware tab (`clear_errors`, `apply_backstops` —
-// neither produces motion) and the in-session recovery from the Cockpit fault
-// banner (`recover`). The runtime picks the path (read-only monitor vs the
-// session's driver) and answers 200 with `ok` either way; 404 = unknown arm,
-// 409 = wrong path for the current state (session owns the boxes while an
-// `apply_backstops` arrives, monitor off / paused, `recover` without a
-// session, …) — the `detail` surfaces through ApiError for the toast.
+// Arm maintenance (phase-09b/09c/09d, 04-runtime §13.1): session-less
+// controller hygiene from the Welcome Hardware tab (`clear_errors`,
+// `apply_backstops` — neither produces motion), the in-session recovery from
+// the Cockpit fault banner (`recover`), and — phase-09c — `home_rail`, the ONE
+// maintenance op that moves hardware: operator-triggered, twin-gated (the
+// runtime sweeps the full rail travel at the arm's current posture first),
+// session-less. With `dryRun: true` the runtime only runs the sweep (and,
+// phase-09d, plans the pre-positioning motion when the posture is not
+// sweep-clear — `rail_sweep.pre_position`) and answers with the verdict (zero
+// writes). The real op has three shapes (phase-09d, `ArmMaintenanceResult.
+// status`): `done` — 200, the carriage homed synchronously with the joints
+// untouched (runtime timeout 45 s → `timeoutMs` 60 s here); `accepted` — 202
+// with a `job_id`, an asynchronous `RailHomingJob` first moves the arm along
+// the planned path, then homes; its progress rides
+// `telemetry.hardware_monitor.arms[].maintenance` and its final result is
+// fetched from `getArmMaintenanceLast`; `refused` — no plan exists, `ok`
+// false, suggestion in `detail`. The runtime picks the path (read-only monitor
+// vs the session's driver); 404 = unknown arm, 409 = wrong path for the
+// current state (session owns the boxes while an `apply_backstops` /
+// `home_rail` arrives, monitor off / paused, `recover` without a session, rail
+// homing in progress, …) — the `detail` surfaces through ApiError for the toast.
+export interface MaintenanceOptions {
+  /** `home_rail` only: sweep verdict without motion. Sent as `dry_run` when given. */
+  dryRun?: boolean;
+  /** Client deadline; a timeout surfaces as `ApiError{status: 0}`. */
+  timeoutMs?: number;
+}
+
 export const postArmMaintenance = (
   armId: string,
   op: ArmMaintenanceRequest["op"],
+  { dryRun, timeoutMs }: MaintenanceOptions = {},
 ): Promise<ArmMaintenanceResult> =>
-  request(`/api/hardware/arms/${encodeURIComponent(armId)}/maintenance`, {
-    method: "POST",
-    body: JSON.stringify({ op } satisfies ArmMaintenanceRequest),
-  });
+  request(
+    `/api/hardware/arms/${encodeURIComponent(armId)}/maintenance`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        op,
+        ...(dryRun != null ? { dry_run: dryRun } : {}),
+      } satisfies ArmMaintenanceRequest),
+    },
+    timeoutMs,
+  );
+
+/** `GET /api/hardware/arms/{arm_id}/maintenance/last` (phase-09d): the last
+ * `ArmMaintenanceResult` the runtime stored for this arm — for a `home_rail`
+ * that was `accepted` (202) it is the asynchronous job's FINAL result, an
+ * `ArmMaintenanceResult` with `status: "done"` (or `ok: false` on failure) and
+ * the same `job_id`, once the job ended; until then the stored value is still
+ * the `accepted` one. 404 (no result yet / unknown arm) → null. */
+export async function getArmMaintenanceLast(armId: string): Promise<ArmMaintenanceResult | null> {
+  try {
+    return await request<ArmMaintenanceResult>(
+      `/api/hardware/arms/${encodeURIComponent(armId)}/maintenance/last`,
+    );
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}

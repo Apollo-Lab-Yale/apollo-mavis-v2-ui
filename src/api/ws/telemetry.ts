@@ -9,6 +9,8 @@ import { ReconnectingWS, type WsFactory } from "./reconnecting";
 import { wsUrl } from "./url";
 
 export const STALE_AFTER_MS = 1000;
+/** OPEN socket but no telemetry for this long -> half-open connection, dial again. */
+export const STALE_RECONNECT_MS = 10_000;
 const TICK_MS = 500;
 
 export interface TelemetryClientOpts {
@@ -25,6 +27,7 @@ export class TelemetryClient {
   private lastSeq = -Infinity;
   private lastAt = -Infinity;
   private stale = true;
+  private lastHealAt = -Infinity;
   private ticker: ReturnType<typeof setInterval> | null = null;
   private readonly now: () => number;
 
@@ -34,6 +37,7 @@ export class TelemetryClient {
 
   connect(): void {
     if (this.ws) return;
+    this.lastHealAt = this.now(); // grace: a fresh socket gets a full window before any heal
     this.ws = new ReconnectingWS({
       url: this.opts.url ?? wsUrl("/ws/telemetry"),
       wsFactory: this.opts.wsFactory,
@@ -44,10 +48,21 @@ export class TelemetryClient {
       },
     });
     this.ticker = setInterval(() => {
-      const stale = this.now() - this.lastAt > STALE_AFTER_MS;
+      const now = this.now();
+      const stale = now - this.lastAt > STALE_AFTER_MS;
       if (stale !== this.stale) {
         this.stale = stale;
         this.opts.onStale(stale);
+      }
+      // Self-heal a half-open socket: OPEN for the whole silence, nothing arrived.
+      if (
+        this.ws &&
+        this.ws.readyState === WebSocket.OPEN &&
+        now - Math.max(this.lastAt, this.lastHealAt) > STALE_RECONNECT_MS &&
+        !(typeof document !== "undefined" && document.hidden)
+      ) {
+        this.lastHealAt = now;
+        this.ws.reconnectNow();
       }
     }, TICK_MS);
   }

@@ -1,7 +1,12 @@
 /** Welcome page (phase-11 §4): pure launch matrix + the new IA — tab tile
  * sets and black tiles, single-scene auto-select, Hardware gating both ways,
  * LaunchSheet → exact POST bodies, Inference promoted-only, 409 inside the
- * sheet, Escape, titles, first-mount reveal, hardware polling. */
+ * sheet, Escape, titles, first-mount reveal, hardware polling; (phase-09c) the
+ * Hardware tab's Speed control → `speed_scale`, the rail-homed / homing /
+ * eligibility launcher reasons, "teleop only" on the other three launchers,
+ * and the bring-up progress list; (phase-09d) `arms` = EVERY hardware arm (no
+ * Include switch), the per-arm named reasons, the card's session-eligibility
+ * line and the hero's **Debug** link. */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { WebSocket as MockWebSocket } from "mock-socket";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -11,7 +16,9 @@ import {
   HARDWARE_CAMERA_IDS,
   HARDWARE_OVERLAY_IDS,
   KEYMAP,
+  makeArmMonitor,
   makeArmStatus,
+  makeBringupRow,
   makeHardwareArms,
   makeHardwareCameras,
   makeHardwareMonitor,
@@ -177,6 +184,20 @@ const MODES = ["teleop", "collect", "dagger", "inference"] as const;
 /** Wait for the keymap + scenes to land (teleop becomes launchable on the Sim tab). */
 const ready = () => waitFor(() => expect(enabled("launch-teleop")).toBe(true));
 
+/** A homed, enabled track at the origin (phase-09c: the arm can join a session). */
+const homedGrip = (over: Partial<ReturnType<typeof makeArmMonitor>> = {}) =>
+  makeArmMonitor({ rail_homed: true, rail_enabled: true, rail_pos_m: 0, ...over });
+/** Both arms homed and error-free — every launcher gate on the Hardware tab passes. */
+const eligibleMonitor = () =>
+  makeHardwareMonitor({
+    arms: [homedGrip(), homedGrip({ arm_id: "view", tcp_load_kg: 0.55 })],
+  });
+/** Push one telemetry frame once the Hardware tab has connected the socket. */
+async function pushTelemetry(msg: ReturnType<typeof makeTelemetry>) {
+  await waitFor(() => expect(useStore.getState().conn.telemetry).toBe("open"));
+  act(() => telemetryServer.push(msg));
+}
+
 /** Pointer tab switch, settled: incoming pane present, outgoing pane gone (120 ms crossfade). */
 async function switchTab(k: "hardware" | "sim") {
   fireEvent.click(screen.getByTestId(`kind-${k}`));
@@ -264,6 +285,60 @@ describe("validateLaunch (matrix)", () => {
       "Keymap unavailable — retry",
     );
   });
+  it("phase-09c Hardware gating: teleop only, arm subset, rail homed, homing in flight, eligibility", () => {
+    // The three non-teleop modes are blocked on the Hardware tab before anything else.
+    for (const m of ["collect", "dagger", "inference"] as const) {
+      expect(validateLaunch(m, { ...hwSel, task: "t", policiesAvailable: true })).toBe(
+        REASON.hardwareTeleopOnly,
+      );
+      expect(validateLaunch(m, { ...hwSel, hardwareReady: false })).toBe(REASON.hardwareTeleopOnly);
+    }
+    expect(REASON.hardwareTeleopOnly).toBe("Hardware sessions support teleop only for now");
+    // A workcell without arms (phase-09d: there is no "nothing selected" any more —
+    // every hardware arm joins the session).
+    expect(validateLaunch("teleop", { ...hwSel, arms: [] })).toBe(REASON.noWorkcellArms);
+    expect(REASON).not.toHaveProperty("noArmsSelected");
+    // Homing in flight wins over an unhomed rail; an unhomed rail over an ineligible arm.
+    expect(
+      validateLaunch("teleop", {
+        ...hwSel,
+        homingInProgress: true,
+        unhomedRailArms: ["grip"],
+        armsNotReady: ["grip"],
+      }),
+    ).toBe(REASON.homingInProgress);
+    // Phase-09d: the rail / not-ready reasons name the arm(s), Manipulation Arm first.
+    expect(validateLaunch("teleop", { ...hwSel, unhomedRailArms: ["view"] })).toBe(
+      "Perception Arm: rail not homed — use Home rail",
+    );
+    expect(validateLaunch("teleop", { ...hwSel, unhomedRailArms: ["view", "grip"] })).toBe(
+      "Manipulation Arm, Perception Arm: rail not homed — use Home rail",
+    );
+    expect(validateLaunch("teleop", { ...hwSel, armsNotReady: ["view"] })).toBe(
+      "Perception Arm: not ready — see the arm card",
+    );
+    expect(
+      validateLaunch("teleop", { ...hwSel, unhomedRailArms: ["grip"], armsNotReady: ["view"] }),
+    ).toBe("Manipulation Arm: rail not homed — use Home rail");
+    // Empty lists / false pass; the Sim tab ignores every phase-09c field.
+    expect(
+      validateLaunch("teleop", {
+        ...hwSel,
+        unhomedRailArms: [],
+        armsNotReady: [],
+        homingInProgress: false,
+      }),
+    ).toBeNull();
+    expect(
+      validateLaunch("collect", {
+        ...simSel,
+        task: "t",
+        unhomedRailArms: ["grip"],
+        homingInProgress: true,
+      }),
+    ).toBeNull();
+  });
+
   it("launcherReason assumes the sheet collects task/policy; inference needs a promoted one", () => {
     expect(launcherReason("collect", simSel, [])).toBeNull();
     expect(launcherReason("inference", { ...simSel, policiesAvailable: true }, [])).toBe(
@@ -294,14 +369,23 @@ describe("buildSpec", () => {
       sim_scene: "mavis_v2",
       start_from: "profile:p0",
     });
+    // Hardware: `speed_scale` always travels (the runtime default is 1.0 = full speed;
+    // the UI default is 10 %), sim specs never carry it.
     expect(buildSpec("teleop", hwSel)).toEqual({
       mode: "teleop",
       kind: "hardware",
       arms: ["grip", "view"],
       frames: { grip: "arm_base:grip", view: "arm_base:view" },
       digital_twin_scene: "mavis_v2",
+      speed_scale: 0.1,
       start_from: "keep_current",
     });
+    expect(buildSpec("teleop", { ...hwSel, arms: ["grip"], speedScale: 0.3 })).toMatchObject({
+      arms: ["grip"],
+      frames: { grip: "arm_base:grip" },
+      speed_scale: 0.3,
+    });
+    expect(buildSpec("teleop", simSel)).not.toHaveProperty("speed_scale");
   });
   it("task only for collect/dagger; policy only when chosen (DAgger 'Latest' omits it)", () => {
     expect(buildSpec("collect", { ...simSel, task: " stack " }).task).toBe("stack");
@@ -329,6 +413,10 @@ describe("Welcome page", () => {
     );
     expect(screen.getByTestId("kind-sim").getAttribute("aria-selected")).toBe("true");
     expect(screen.getByTestId("kind-hardware")).toBeEnabled(); // openable without a runtime hardware block
+    // Phase-09d: the quiet hero link is called Debug; the route stays #/devices.
+    expect(screen.getByTestId("nav-devices").textContent).toBe("Debug");
+    expect(screen.getByTestId("nav-devices").getAttribute("href")).toBe("/devices");
+    expect(screen.queryByText("Devices")).toBeNull();
 
     const grid = screen.getByTestId("camera-preview-grid");
     expect(grid.dataset["tab"]).toBe("sim");
@@ -417,7 +505,12 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-card-placeholder").textContent).toContain("192.168.1.201");
     for (const m of MODES) {
       expect(screen.getByTestId(`launch-${m}`).getAttribute("aria-disabled")).toBe("true");
-      expect(reasonOf(m)).toContain("Requires real arms — none detected");
+      // Teleop reports the arms; the other three are teleop-only on hardware (phase-09c).
+      expect(reasonOf(m)).toContain(
+        m === "teleop"
+          ? "Requires real arms — none detected"
+          : "Hardware sessions support teleop only for now",
+      );
     }
     // Disabled cards stay reachable by keyboard and ignore activation.
     fireEvent.keyDown(screen.getByTestId("launch-teleop"), { key: "Enter" });
@@ -437,16 +530,16 @@ describe("Welcome page", () => {
     await ready();
   });
 
-  it("hardware_ready → modes enabled, arm cards Reachable, Teleop posts kind hardware + digital_twin_scene", async () => {
+  it("hardware_ready → arm cards Reachable; Teleop waits for the monitor, then posts BOTH arms at 10 % (phase-09d)", async () => {
     await mount({
       hardware: makeHardwareWorkcell({ hardware_ready: true, arms: makeHardwareArms("open") }),
       cameras: [...makeSimCameras(), ...makeHardwareCameras(true)],
     });
     await ready();
     await switchTab("hardware");
-    await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
-    for (const m of ["teleop", "collect"]) expect(enabled(`launch-${m}`)).toBe(true);
-    expect(screen.getByTestId("arm-state-grip").textContent).toContain("Reachable");
+    await waitFor(() =>
+      expect(screen.getByTestId("arm-state-grip").textContent).toContain("Reachable"),
+    );
     expect(screen.getByTestId("arm-card-grip").textContent).toContain("192.168.1.201");
     expect(screen.getByTestId("status-hardware").textContent).toBe(
       "Manipulation Arm reachable, Perception Arm reachable · grip_wrist (live), view_wrist (live) · mic: RØDE NT-USB Mini (live)",
@@ -455,6 +548,34 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("scene-picker-twin").textContent).toContain(
       "Scene·APOLLO MAVIS V2 Digital Twin·2 arms · rails · 4 cameras",
     );
+    // Phase-09d: no Include switch — every hardware arm joins the session; Speed 10 %.
+    expect(screen.queryByTestId("arm-include-grip")).toBeNull();
+    expect(screen.queryByTestId("arm-include-view")).toBeNull();
+    expect(screen.queryByText("Include in session")).toBeNull();
+    expect(screen.getByTestId("speed-10").getAttribute("aria-selected")).toBe("true");
+    // No monitor sample yet → the twin cannot be posed → teleop waits (the runtime
+    // would 409 too), naming both arms; each card explains why it is not ready;
+    // the other three launchers are teleop-only on hardware.
+    expect(enabled("launch-teleop")).toBe(false);
+    expect(reasonOf("teleop")).toBe(
+      "Manipulation Arm, Perception Arm: not ready — see the arm card",
+    );
+    expect(screen.getByTestId("arm-session-reason-grip").textContent).toBe(
+      "Not ready for a session — Monitor not connected — no sample to pose the twin",
+    );
+    expect(screen.getByTestId("arm-session-reason-grip").dataset["gate"]).toBe("monitor_off");
+    expect(screen.getByTestId("arm-session-reason-view")).toBeInTheDocument();
+    for (const m of ["collect", "dagger", "inference"]) {
+      expect(enabled(`launch-${m}`)).toBe(false);
+      expect(reasonOf(m)).toBe("Hardware sessions support teleop only for now");
+    }
+    // The monitor reports both arms homed and clean → launchable, reason lines gone.
+    await pushTelemetry(makeTelemetry({ hardware_monitor: eligibleMonitor() }));
+    await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
+    expect(screen.queryByTestId("arm-session-reason-grip")).toBeNull();
+    expect(screen.queryByTestId("arm-session-reason-view")).toBeNull();
+    expect(screen.getByTestId("arm-rail-grip").textContent).toBe("rail 0.000 m");
+    expect(screen.queryByTestId("arm-home-rail-grip")).toBeNull();
     fireEvent.click(screen.getByTestId("launch-teleop"));
     await screen.findByTestId("mode-page");
     expect(posts[0]).toEqual({
@@ -463,8 +584,135 @@ describe("Welcome page", () => {
       arms: ["grip", "view"],
       frames: { grip: "arm_base:grip", view: "arm_base:view" },
       digital_twin_scene: "mavis_v2",
+      speed_scale: 0.1,
       start_from: "keep_current",
     });
+  });
+
+  it("phase-09c speed: pick 30 % → speed_scale 0.3 with both arms (phase-09d)", async () => {
+    await mount({
+      hardware: makeHardwareWorkcell({ hardware_ready: true, arms: makeHardwareArms("open") }),
+      cameras: [...makeSimCameras(), ...makeHardwareCameras(true)],
+    });
+    await ready();
+    await switchTab("hardware");
+    await screen.findByTestId("arm-card-view");
+    await pushTelemetry(makeTelemetry({ hardware_monitor: eligibleMonitor() }));
+    await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
+    fireEvent.click(screen.getByTestId("speed-30"));
+    expect(screen.getByTestId("speed-30").getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByTestId("launch-teleop"));
+    await screen.findByTestId("mode-page");
+    // Manipulation Arm first; both frames; 30 %.
+    expect(posts[0]).toMatchObject({
+      arms: ["grip", "view"],
+      frames: { grip: "arm_base:grip", view: "arm_base:view" },
+      speed_scale: 0.3,
+    });
+  });
+
+  it("phase-09c/09d: unhomed rails → amber pills + Home rail + the named 'rail not homed' reason; homing in flight → its own reason; a C19 arm → named 'not ready' + card line", async () => {
+    await mount({
+      hardware: makeHardwareWorkcell({ hardware_ready: true, arms: makeHardwareArms("open") }),
+      cameras: [...makeSimCameras(), ...makeHardwareCameras(true)],
+    });
+    await ready();
+    await switchTab("hardware");
+    await screen.findByTestId("arm-card-grip");
+    // The real cell on 2026-09-04: both tracks present, neither homed (the Perception
+    // Arm also reports C19 — the rail reason comes first).
+    await pushTelemetry(makeTelemetry({ hardware_monitor: makeHardwareMonitor() }));
+    await waitFor(() =>
+      expect(screen.getByTestId("arm-rail-grip").textContent).toBe("rail not homed"),
+    );
+    expect(screen.getByTestId("arm-rail-grip").className).toBe("pill pill-warn arm-card-rail");
+    expect(screen.getByTestId("arm-home-rail-grip")).toBeEnabled();
+    expect(screen.getByTestId("arm-rail-view").textContent).toBe("rail not homed");
+    expect(enabled("launch-teleop")).toBe(false);
+    expect(reasonOf("teleop")).toBe(
+      "Manipulation Arm, Perception Arm: rail not homed — use Home rail",
+    );
+    // The rail case is explained by the pill + button, not by a session-reason line.
+    expect(screen.queryByTestId("arm-session-reason-grip")).toBeNull();
+    expect(screen.queryByTestId("arm-session-reason-view")).toBeNull();
+    // A homing in flight (maintenance_busy) blocks the launcher with its own reason.
+    await pushTelemetry(
+      makeTelemetry({
+        seq: 2,
+        hardware_monitor: makeHardwareMonitor({
+          arms: [makeArmMonitor({ maintenance_busy: true }), makeArmMonitor({ arm_id: "view" })],
+        }),
+      }),
+    );
+    await waitFor(() =>
+      expect(reasonOf("teleop")).toBe("Rail homing in progress — wait for it to finish"),
+    );
+    // Both homed but the Perception Arm still C19 → it alone blocks, named; its card says why.
+    await pushTelemetry(
+      makeTelemetry({
+        seq: 3,
+        hardware_monitor: makeHardwareMonitor({
+          arms: [homedGrip(), homedGrip({ arm_id: "view", tcp_load_kg: 0.55, error_code: 19 })],
+        }),
+      }),
+    );
+    await waitFor(() =>
+      expect(reasonOf("teleop")).toBe("Perception Arm: not ready — see the arm card"),
+    );
+    expect(screen.getByTestId("arm-session-reason-view").textContent).toBe(
+      "Not ready for a session — Controller error C19 — clear errors first",
+    );
+    expect(screen.getByTestId("arm-session-reason-view").dataset["gate"]).toBe("error");
+    expect(screen.queryByTestId("arm-session-reason-grip")).toBeNull();
+    // Homed + clean → the pill becomes the position, Home rail disappears, teleop opens up.
+    await pushTelemetry(makeTelemetry({ seq: 4, hardware_monitor: eligibleMonitor() }));
+    await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
+    expect(screen.getByTestId("arm-rail-grip").textContent).toBe("rail 0.000 m");
+    expect(screen.getByTestId("arm-rail-grip").dataset["rail"]).toBe("homed");
+    expect(screen.queryByTestId("arm-home-rail-grip")).toBeNull();
+    expect(screen.queryByTestId("arm-session-reason-view")).toBeNull();
+    expect(posts).toHaveLength(0);
+  });
+
+  it("phase-09c: the bring-up progress list shows under the launchers while telemetry says bringup", async () => {
+    await mount({
+      hardware: makeHardwareWorkcell({ hardware_ready: true, arms: makeHardwareArms("open") }),
+    });
+    await ready();
+    await switchTab("hardware");
+    expect(screen.queryByTestId("bringup-progress")).toBeNull();
+    await pushTelemetry(
+      makeTelemetry({
+        session: {
+          state: "bringup",
+          bringup: [
+            makeBringupRow({
+              arm_id: "view",
+              step: "frozen",
+              status: "warning",
+              detail: "Perception Arm frozen at last sample",
+            }),
+            makeBringupRow(),
+            makeBringupRow({ step: "rail", status: "pending" }),
+          ],
+        },
+      }),
+    );
+    const list = await screen.findByTestId("bringup-progress");
+    expect(list.textContent).toContain("Bringing up the hardware session…");
+    // Manipulation Arm rows first; status + detail per row.
+    const rows = within(list).getAllByTestId(/^bringup-row-/);
+    expect(rows.map((r) => r.dataset["testid"])).toEqual([
+      "bringup-row-grip-connect",
+      "bringup-row-grip-rail",
+      "bringup-row-view-frozen",
+    ]);
+    expect(rows[1]!.dataset["status"]).toBe("pending");
+    expect(rows[1]!.querySelector(".spinner")).not.toBeNull();
+    expect(rows[2]!.textContent).toContain("Perception Arm frozen at last sample");
+    // Running → gone.
+    await pushTelemetry(makeTelemetry({ seq: 2, session: { state: "running" } }));
+    await waitFor(() => expect(screen.queryByTestId("bringup-progress")).toBeNull());
   });
 
   it("twin overlays (phase-09a): live cameras with absent overlays, then live overlays with the monitor's note, caption twin segment and the C19 chip", async () => {
@@ -487,7 +735,9 @@ describe("Welcome page", () => {
     });
     await ready();
     await switchTab("hardware");
-    await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
+    await waitFor(() =>
+      expect(screen.getByTestId("arm-state-grip").textContent).toContain("Reachable"),
+    );
     const grid = screen.getByTestId("camera-preview-grid");
     expect(grid.className).toBe("obs-grid obs-grid-5");
     for (const id of HARDWARE_CAMERA_IDS)
@@ -887,5 +1137,31 @@ describe("Welcome page", () => {
     await waitFor(() => expect(hardwarePolls).toBeGreaterThan(0));
     expect(screen.getByTestId("arm-card-placeholder").textContent).toContain("Searching for arms…");
     expect(reasonOf("teleop")).toContain("Requires real arms — none detected");
+  });
+
+  it("Hardware tab re-polls /api/microphones, so a mic tile missing at mount (runtime restarting) comes back", async () => {
+    const api: MockApi = { microphones: 404 };
+    await mount(api);
+    await switchTab("hardware");
+    expect(screen.queryByTestId("mic-tile")).toBeNull();
+    api.microphones = [makeMicrophoneInfo()];
+    await screen.findByTestId("mic-tile", {}, { timeout: 2000 });
+  });
+
+  it("remembers the chosen tab across reloads (localStorage)", async () => {
+    localStorage.setItem("mavis.welcome.tab", "hardware");
+    installFetch();
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route path="/" element={<Landing hardwarePollMs={50} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const hw = await screen.findByTestId("kind-hardware");
+    await waitFor(() => expect(hw.getAttribute("aria-selected")).toBe("true"));
+    await screen.findByTestId("camera-preview-grid");
+    await switchTab("sim");
+    expect(localStorage.getItem("mavis.welcome.tab")).toBe("sim");
   });
 });

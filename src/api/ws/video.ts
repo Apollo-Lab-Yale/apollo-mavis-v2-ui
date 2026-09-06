@@ -13,6 +13,10 @@ import { ReconnectingWS, type WsFactory } from "./reconnecting";
 import { wsUrl } from "./url";
 
 export const VIDEO_STALE_MS = 500;
+/** A socket that says OPEN but has drawn nothing for this long is treated as
+ * half-open (proxy / NAT / sleep drop without a close event): dial again. Not
+ * while the document is hidden — a throttled background tab draws nothing. */
+export const VIDEO_STALE_RECONNECT_MS = 10_000;
 const STATS_MS = 250; // ≤4 Hz
 
 export interface VideoStats {
@@ -43,11 +47,13 @@ export class VideoStream {
   private skew = new SkewEstimator();
   private latencyMs: number | null = null;
   private sized = false;
+  private lastHealAt = -Infinity;
 
   constructor(private opts: VideoStreamOpts) {}
 
   start(): void {
     if (this.ws || this.worker) return;
+    this.lastHealAt = performance.now(); // grace: a fresh socket gets a full window first
     const url = this.opts.url ?? wsUrl(`/ws/video/${this.opts.streamId}`);
     if (this.opts.useWorker && "transferControlToOffscreen" in this.opts.canvas) {
       this.startWorker(url);
@@ -128,9 +134,21 @@ export class VideoStream {
     }
   }
 
+  /** Self-heal: OPEN socket, no frame drawn for VIDEO_STALE_RECONNECT_MS -> dial again. */
+  private healIfHalfOpen(now: number, staleMs: number): void {
+    if (this.status !== "open" || staleMs < VIDEO_STALE_RECONNECT_MS) return;
+    if (now - this.lastHealAt < VIDEO_STALE_RECONNECT_MS) return;
+    if (typeof document !== "undefined" && document.hidden) return;
+    this.lastHealAt = now;
+    this.lastDrawAt = now; // give the fresh socket a full window before the next heal
+    if (this.ws) this.ws.reconnectNow();
+    else this.worker?.postMessage({ t: "reconnect" });
+  }
+
   private emitStats(): void {
     const now = performance.now();
     const staleMs = now - this.lastDrawAt;
+    this.healIfHalfOpen(now, staleMs);
     this.opts.onStats({
       staleMs,
       stale: staleMs > VIDEO_STALE_MS,

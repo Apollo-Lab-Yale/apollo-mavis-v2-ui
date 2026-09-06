@@ -1,4 +1,5 @@
-/** Devices page smoke (13-tracker §5): mock control + telemetry servers, a
+/** Debug page (`#/devices`) smoke (13-tracker §5; named "Debug" since
+ * phase-09d): mock control + telemetry servers, a
  * TelemetryMsg carrying `tracker` (+ `controller` / `device_held` /
  * `device_action` / `pose_filtered`), a fake gamepad (incl. the release-all
  * latch), the settings form's commit semantics + nack toasts, the keyboard
@@ -13,7 +14,7 @@ import type { GamepadLike } from "../input/gamepad";
 import { useStore } from "../store";
 import { KEYMAP, makeCalibration, makeTelemetry, makeTracker } from "../../tests/mocks/fixtures";
 import { MockControlServer, MockTelemetryServer } from "../../tests/mocks/mockWs";
-import { DEVICES_SESSION_SPEC, Devices } from "./Devices";
+import { DEBUG_PAGE_HEADING, DEVICES_SESSION_SPEC, Devices } from "./Devices";
 
 const base = `ws://${location.host}`;
 
@@ -112,6 +113,11 @@ describe("Devices page", () => {
     mount();
     await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
     await waitFor(() => expect(useStore.getState().bindings).not.toBeNull());
+    // Phase-09d: the page is called "Debug" (route and testids keep `devices`).
+    expect(document.title).toBe("APOLLO MAVIS V2 · Debug");
+    expect(DEBUG_PAGE_HEADING).toBe("Debug — gamepad & tracker");
+    expect(screen.getByTestId("debug-heading").textContent).toBe("Debug — gamepad & tracker");
+    expect(screen.getByTestId("devices-page").textContent).not.toContain("Devices —");
     expect(screen.getByTestId("no-streams")).toBeInTheDocument();
     expect(screen.getByTestId("tracker-status").textContent).toContain("no telemetry");
     // No session → the settings form is disabled with a reason.

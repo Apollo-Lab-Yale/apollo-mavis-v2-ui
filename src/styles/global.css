@@ -2123,3 +2123,271 @@ summary.summary::-webkit-details-marker {
     background: rgba(0, 0, 0, 0.9);
   }
 }
+
+/* ---- Phase-09c: rail homing, session subset + speed, bring-up ----------------------- */
+/* Arm-card rail read-back: the amber pill is a status (glyph + words), never colour alone. */
+.arm-card-rail {
+  height: 20px;
+}
+/* Session-eligibility line (phase-09d: every arm joins the session, so the card
+   explains why THIS arm blocks Teleop — monitor off / controller error; the rail
+   case has its pill). Glyph + words, never colour alone. */
+.arm-card-session-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--fg-2);
+  line-height: 1.45;
+}
+.arm-card-session-reason .icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--fg-3);
+}
+/* Speed row under the Hardware arm cards. */
+.session-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-1);
+}
+.segmented-compact .seg-tab {
+  min-width: 72px;
+  padding: 0 12px;
+}
+/* HomeRailSheet body */
+.home-rail-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-1);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--text-callout);
+  line-height: 1.45;
+}
+.home-rail-notice .icon {
+  flex: none;
+  margin-top: 1px;
+}
+.home-rail-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--fg-2);
+  font-size: var(--text-callout);
+  line-height: 1.45;
+}
+.home-rail-verdict {
+  align-self: flex-start;
+}
+.home-rail-facts {
+  margin: 0;
+  padding: 0 0 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
+.home-rail-blocked {
+  color: var(--danger-text);
+}
+.home-rail-assumption {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  list-style: none;
+  margin-left: calc(-1 * var(--space-4));
+  color: var(--fg-3);
+}
+.home-rail-assumption .icon {
+  flex: none;
+  transform: translateY(2px);
+}
+.home-rail-hint {
+  margin: 0;
+}
+/* Phase-09d: planned pre-positioning explanation (amber block) + the job progress view. */
+.home-rail-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-1);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.home-rail-plan p {
+  margin: 0;
+  line-height: 1.45;
+}
+.home-rail-plan-target {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+.home-rail-job {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.home-rail-job-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.home-rail-job[data-job-phase="done"] .home-rail-job-head .icon {
+  color: var(--ok);
+}
+.home-rail-job[data-job-phase="failed"] .home-rail-job-head .icon {
+  color: var(--danger);
+}
+.home-rail-phases {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.home-rail-phase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-callout);
+  color: var(--fg-3);
+}
+.home-rail-phase[data-state="active"],
+.home-rail-phase[data-state="failed"] {
+  color: var(--fg);
+}
+.home-rail-phase[data-state="done"] {
+  color: var(--fg-2);
+}
+.home-rail-phase-glyph {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+}
+.home-rail-phase-glyph .spinner {
+  width: 12px;
+  height: 12px;
+}
+.home-rail-phase[data-state="done"] .home-rail-phase-glyph {
+  color: var(--ok);
+}
+.home-rail-phase[data-state="failed"] .home-rail-phase-glyph {
+  color: var(--danger);
+}
+.home-rail-phase-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.home-rail-phase-detail {
+  flex-basis: 100%;
+  padding-left: calc(14px + var(--space-2));
+  line-height: 1.45;
+}
+.home-rail-progress {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.home-rail-progress-fill {
+  height: 100%;
+  background: var(--accent-fill);
+  transition: width var(--dur-base) var(--ease-out);
+}
+/* Bring-up progress (Cockpit main column / Welcome Modes section). */
+.bringup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.bringup-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.bringup-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bringup-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-callout);
+}
+.bringup-glyph {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-3);
+}
+.bringup-glyph .spinner {
+  width: 12px;
+  height: 12px;
+}
+.bringup-row[data-status="ok"] .bringup-glyph {
+  color: var(--ok);
+}
+.bringup-row[data-status="warning"] .bringup-glyph {
+  color: var(--warn);
+}
+.bringup-row[data-status="error"] .bringup-glyph {
+  color: var(--danger);
+}
+.bringup-status {
+  color: var(--fg-3);
+}
+/* Cockpit heading: mode title + the speed badge. */
+.cockpit-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.speed-badge {
+  font-variant-numeric: tabular-nums;
+}
+/* Frozen-arm hint (D1): amber, glyph + words. */
+.frozen-arms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--warn);
+  font-size: var(--text-callout);
+  line-height: 1.45;
+}
+.frozen-arm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.frozen-arm .icon {
+  flex: none;
+  margin-top: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-rail-progress-fill {
+    transition: none;
+  }
+}

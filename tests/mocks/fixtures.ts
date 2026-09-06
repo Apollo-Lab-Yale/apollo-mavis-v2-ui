@@ -7,6 +7,7 @@
  * camera rows plus the read-only `hardware_monitor` telemetry block. */
 import keymapJson from "../../schemas/keymap.json";
 import type {
+  ArmBringupTelemetry,
   ArmMaintenanceResult,
   ArmMonitorTelemetry,
   ArmStatusInfo,
@@ -14,11 +15,15 @@ import type {
   CameraInfo,
   HardwareMonitorTelemetry,
   KeymapEntry,
+  MaintenanceProgress,
   MicrophoneInfo,
   MicrophoneTelemetry,
   PolicyInfo,
+  PrePositionPlan,
   ProfileInfo,
+  RailSweepVerdict,
   SceneInfo,
+  SessionInfo,
   TelemetryMsg,
   TrackerCalibrationStatus,
   TrackerTelemetry,
@@ -294,6 +299,108 @@ export function makeMaintenanceResult(
     warnings: [],
     before: makeArmMonitor({ arm_id: "view", error_code: 19, tcp_load_kg: 0.55 }),
     after: makeArmMonitor({ arm_id: "view", tcp_load_kg: 0.55 }),
+    ...over,
+  };
+}
+
+/** `ArmMaintenanceResult.rail_sweep` (phase-09c): a CLEAR full-travel sweep of
+ * the Manipulation Arm at the factory-zero posture (inflation 25 mm, 5 mm
+ * steps), tightest pair link2 ↔ table at 0.315 m; the Perception Arm posed at
+ * its last sample with the rail fallback (its track is not homed either).
+ * Phase-09d: `pre_position` says no pre-positioning is needed (the current
+ * posture is sweep-clear); a pre-09d producer omits the block. */
+export function makeRailSweepVerdict(over: Partial<RailSweepVerdict> = {}): RailSweepVerdict {
+  return {
+    scene_id: "mavis_v2",
+    inflation_m: 0.025,
+    step_m: 0.005,
+    travel_m: 0.65,
+    clear: true,
+    first_blocked_m: null,
+    first_blocked_pair: [],
+    min_clearance_m: 0.0321,
+    min_clearance_at_m: 0.315,
+    min_clearance_pair: ["grip/link2", "table"],
+    q_checked: [Math.PI, 0, 0, 0, 0, 0, 0],
+    other_arms: { view: [Math.PI, 0, 0, 0, 0, 0, 0, 0] },
+    assumptions: ["view rail unknown - used fallback 0.00 m"],
+    sample_seq: 120,
+    pre_position: { needed: false },
+    ...over,
+  };
+}
+
+/** `RailSweepVerdict.pre_position` (phase-09d): a PLANNED pre-positioning
+ * motion — the current posture blocks the sweep, the scene keyframe's folded
+ * posture (joint 1 at π) clears it, RRT-Connect found a 12-waypoint path whose
+ * every waypoint is collision-free at all 131 rail positions, ~19 s at 10 %. */
+export function makePrePositionPlan(over: Partial<PrePositionPlan> = {}): PrePositionPlan {
+  return {
+    needed: true,
+    source: "keyframe",
+    target_q: [Math.PI, 0, 0, 0, 0, 0, 0],
+    waypoints: 12,
+    duration_s: 18.6,
+    checked_rail_positions: 131,
+    clear: true,
+    detail: "",
+    ...over,
+  };
+}
+
+/** A BLOCKED sweep whose runtime found a pre-positioning plan (phase-09d):
+ * link6 ↔ table at 0.120 m at the current posture, plan from the keyframe. */
+export function makePlannedSweepVerdict(over: Partial<RailSweepVerdict> = {}): RailSweepVerdict {
+  return makeRailSweepVerdict({
+    clear: false,
+    first_blocked_m: 0.12,
+    first_blocked_pair: ["grip/link6", "table"],
+    min_clearance_m: -0.004,
+    min_clearance_at_m: 0.2,
+    min_clearance_pair: ["grip/link6", "table"],
+    pre_position: makePrePositionPlan(),
+    ...over,
+  });
+}
+
+/** `ArmMonitorTelemetry.maintenance` (phase-09d): a `RailHomingJob` on the
+ * Manipulation Arm in its `planning` phase. */
+export function makeMaintenanceProgress(
+  over: Partial<MaintenanceProgress> = {},
+): MaintenanceProgress {
+  return {
+    op: "home_rail",
+    job_id: "job-1",
+    phase: "planning",
+    detail: "",
+    progress: 0.2,
+    started_at: 100.0,
+    ...over,
+  };
+}
+
+/** One `telemetry.session.bringup` row (phase-09c): the Manipulation Arm's
+ * `connect` step done. */
+export function makeBringupRow(over: Partial<ArmBringupTelemetry> = {}): ArmBringupTelemetry {
+  return { arm_id: "grip", step: "connect", status: "ok", detail: "", ...over };
+}
+
+/** `POST /api/session` answer for a phase-09c/09d hardware teleop session:
+ * both arms (phase-09d: a hardware session includes every configured arm) at
+ * 10 % speed. `streams` is `[]` — the real wire shape (runtime
+ * `SessionManager.info()`, pinned by its tests and 04-runtime §5 step 12): the
+ * two wrist cameras are ADOPTED on the hub under unchanged ids, not re-added,
+ * so the Cockpit derives its tiles from `HARDWARE_GRID_SLOTS`. */
+export function makeHardwareSession(over: Partial<SessionInfo> = {}): SessionInfo {
+  return {
+    session_id: "s-hw",
+    epoch: "epoch-1",
+    mode: "teleop",
+    arms: ["grip", "view"],
+    streams: [],
+    state: "running",
+    kind: "hardware",
+    speed_scale: 0.1,
     ...over,
   };
 }

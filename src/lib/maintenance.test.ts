@@ -1,16 +1,48 @@
 /** Pure maintenance helpers (phase-09b): fault labels, the arm-card view
- * (enable/disable matrix) and the exact toast copy. */
+ * (enable/disable matrix) and the exact toast copy; (phase-09c) the rail
+ * read-back, Home rail enablement, session eligibility, the RailSweepVerdict
+ * copy and the `home_rail` toast; (phase-09d) the PrePositionPlan copy, the
+ * RailHomingJob phase vocabulary, the card's session-reason line and the
+ * `accepted` / `refused` result statuses. */
 import { describe, expect, it } from "vitest";
-import { makeArmMonitor, makeArmStatus, makeMaintenanceResult } from "../../tests/mocks/fixtures";
+import {
+  makeArmMonitor,
+  makeArmStatus,
+  makeMaintenanceResult,
+  makePlannedSweepVerdict,
+  makePrePositionPlan,
+  makeRailSweepVerdict,
+} from "../../tests/mocks/fixtures";
 import {
   faultLabel,
+  formatDeg,
   formatKg,
+  formatM,
+  formatMm,
+  frozenHint,
+  HOME_RAIL_NOTICE,
+  isTerminalPhase,
   isWarningDetail,
+  MAINTENANCE_PHASES,
   maintenanceErrorText,
   maintenanceToast,
   maintenanceView,
+  monitorLive,
+  pairText,
   parseFaultDetail,
+  PHASE_LABELS,
+  phaseState,
+  PRE_POSITION_REFUSED_HINT,
+  prePositionKind,
+  prePositionSummary,
+  railState,
+  railText,
+  REASON_CLEAR_FIRST,
+  REASON_HOMING_IN_PROGRESS,
   REASON_USE_COCKPIT,
+  sessionGate,
+  sessionGateReason,
+  sweepSummary,
   warningText,
 } from "./maintenance";
 import { ApiError } from "../api/rest";
@@ -152,6 +184,382 @@ describe("maintenanceView (arm-card matrix)", () => {
       applyEnabled: false,
       reason: null,
     });
+    // phase-09d: a rail homing on ANOTHER arm (the monitor is paused for the JOB, not a
+    // session) locks the card with its own reason - never "Use the Cockpit"
+    expect(maintenanceView(m, arm, false, true)).toMatchObject({
+      sessionActive: false,
+      homingInProgress: true,
+      clearEnabled: false,
+      applyEnabled: false,
+      homeRailEnabled: false,
+      homeRailReason: null,
+      sessionReason: null,
+      reason: REASON_HOMING_IN_PROGRESS,
+    });
+    // the homing arm itself: busy wins (the card shows the running indicator instead)
+    expect(maintenanceView({ ...m, maintenance_busy: true }, arm, false, true)).toMatchObject({
+      busy: true,
+      homingInProgress: true,
+      reason: null,
+    });
+    expect(maintenanceView(m, arm, false, false).homingInProgress).toBe(false);
+  });
+});
+
+describe("phase-09c: rail read-back, Home rail, session eligibility", () => {
+  const arm = makeArmStatus({ arm_id: "grip", ip: "192.168.1.201", reachable: "open" });
+  const homed = makeArmMonitor({ rail_homed: true, rail_enabled: true, rail_pos_m: 0.65 });
+
+  it("railState / railText: unknown without a row, unhomed unless homed AND enabled, position once homed", () => {
+    expect(railState(null)).toBe("unknown");
+    expect(railState(undefined)).toBe("unknown");
+    expect(railState(makeArmMonitor())).toBe("unhomed"); // present, on_zero 0, disabled
+    expect(railState(makeArmMonitor({ rail_homed: true }))).toBe("unhomed"); // not enabled
+    expect(railState(makeArmMonitor({ rail_enabled: true }))).toBe("unhomed"); // not homed
+    expect(railState(homed)).toBe("homed");
+    expect(railState(makeArmMonitor({ rail_present: false }))).toBe("none");
+    expect(railText(null, arm)).toBe("rail 0–0.65 m");
+    expect(railText(null, { has_rail: false })).toBe("no rail");
+    expect(railText(null, {})).toBe("no rail");
+    expect(railText(makeArmMonitor(), arm)).toBe("rail not homed");
+    expect(railText(homed, arm)).toBe("rail 0.650 m");
+    expect(railText({ ...homed, rail_pos_m: null }, arm)).toBe("rail homed");
+    expect(railText(makeArmMonitor({ rail_present: false }), arm)).toBe("no rail");
+    expect(monitorLive(makeArmMonitor())).toBe(true);
+    expect(monitorLive(makeArmMonitor({ status: "stale" }))).toBe(true);
+    for (const status of ["off", "connecting", "paused", "error"] as const) {
+      expect(monitorLive(makeArmMonitor({ status }))).toBe(false);
+    }
+    expect(monitorLive(null)).toBe(false);
+  });
+
+  it("maintenanceView: Home rail shown while unhomed; enabled iff no session, not busy, error_code 0", () => {
+    expect(maintenanceView(makeArmMonitor(), arm, false)).toMatchObject({
+      rail: "unhomed",
+      railLabel: "rail not homed",
+      homeRailShown: true,
+      homeRailEnabled: true,
+      homeRailReason: null,
+      gate: "rail_unhomed",
+      sessionReason: null, // the rail case has its pill + Home rail button
+      errorCode: 0,
+    });
+    // warn_code alone does not block homing; error_code does, with its reason.
+    expect(maintenanceView(makeArmMonitor({ warn_code: 11 }), arm, false)).toMatchObject({
+      homeRailEnabled: true,
+      homeRailReason: null,
+    });
+    expect(maintenanceView(makeArmMonitor({ error_code: 19 }), arm, false)).toMatchObject({
+      homeRailShown: true,
+      homeRailEnabled: false,
+      homeRailReason: REASON_CLEAR_FIRST,
+      errorCode: 19,
+    });
+    // Session / busy: disabled, no extra reason (the strip shows its own line).
+    expect(maintenanceView(makeArmMonitor(), arm, true)).toMatchObject({
+      homeRailEnabled: false,
+      homeRailReason: null,
+      reason: REASON_USE_COCKPIT,
+    });
+    expect(maintenanceView(makeArmMonitor({ maintenance_busy: true }), arm, false)).toMatchObject({
+      homeRailEnabled: false,
+      homeRailReason: null,
+    });
+    // Homed: not shown at all; no row: config fallback text, gate monitor_off.
+    expect(maintenanceView(homed, arm, false)).toMatchObject({
+      rail: "homed",
+      railLabel: "rail 0.650 m",
+      homeRailShown: false,
+      homeRailEnabled: false,
+      gate: "ok",
+      sessionReason: null,
+    });
+    expect(maintenanceView(null, arm, false)).toMatchObject({
+      rail: "unknown",
+      railLabel: "rail 0–0.65 m",
+      homeRailShown: false,
+      gate: "monitor_off",
+      sessionReason: "Monitor not connected — no sample to pose the twin",
+    });
+    expect(maintenanceView(null, { error_code: 19 }, false).railLabel).toBe("no rail");
+    // Phase-09d: the card's eligibility line for the gates the strip does not
+    // explain (monitor off / controller error), hidden while a session owns the boxes.
+    expect(maintenanceView({ ...homed, error_code: 19 }, arm, false)).toMatchObject({
+      gate: "error",
+      sessionReason: "Controller error C19 — clear errors first",
+    });
+    expect(maintenanceView(makeArmMonitor({ status: "paused" }), arm, true)).toMatchObject({
+      gate: "monitor_off",
+      sessionReason: null,
+      reason: REASON_USE_COCKPIT,
+    });
+  });
+
+  it("sessionGate / sessionGateReason: monitor first, then the rail, then the controller error", () => {
+    expect(sessionGate(null, arm)).toBe("monitor_off");
+    expect(sessionGate(makeArmMonitor({ status: "off" }), arm)).toBe("monitor_off");
+    expect(sessionGate(makeArmMonitor({ status: "paused" }), arm)).toBe("monitor_off");
+    expect(sessionGate(makeArmMonitor(), arm)).toBe("rail_unhomed");
+    expect(sessionGate(makeArmMonitor({ error_code: 19 }), arm)).toBe("rail_unhomed"); // rail first
+    expect(sessionGate({ ...homed, error_code: 19 }, arm)).toBe("error");
+    expect(sessionGate({ ...homed, status: "stale" }, arm)).toBe("ok"); // a stale sample still poses the twin
+    expect(sessionGate(homed, arm)).toBe("ok");
+    expect(sessionGate({ ...homed, rail_present: false }, arm)).toBe("ok"); // no track → nothing to home
+    // The REST error_code is the fallback only when the row has none.
+    expect(sessionGate({ ...homed, error_code: undefined }, { error_code: 24 })).toBe("error");
+    expect(sessionGateReason("ok")).toBeNull();
+    expect(sessionGateReason("monitor_off")).toBe(
+      "Monitor not connected — no sample to pose the twin",
+    );
+    expect(sessionGateReason("rail_unhomed")).toBe("Rail not homed — use Home rail");
+    expect(sessionGateReason("error", 19)).toBe("Controller error C19 — clear errors first");
+    expect(sessionGateReason("error")).toBe("Controller error — clear errors first");
+  });
+
+  it("sweepSummary: headline, recipe, blocked / clearance lines, other arms, assumptions; format helpers", () => {
+    expect(formatM(0.12)).toBe("0.120 m");
+    expect(formatMm(0.0321)).toBe("32 mm");
+    expect(formatMm(0.025)).toBe("25 mm");
+    expect(pairText(["grip/link6", "table"])).toBe("grip/link6 ↔ table");
+    expect(sweepSummary(makeRailSweepVerdict())).toEqual({
+      headline: "Sweep clear — safe to home",
+      recipe: "Full travel 0–0.650 m at the current posture · inflation 25 mm · step 5 mm",
+      blocked: null,
+      clearance: "min clearance 32 mm at 0.315 m (grip/link2 ↔ table)",
+      others: ["Perception Arm posed at its last sample (rail 0.000 m)"],
+      assumptions: ["view rail unknown - used fallback 0.00 m"],
+    });
+    expect(
+      sweepSummary(
+        makeRailSweepVerdict({
+          clear: false,
+          first_blocked_m: 0.12,
+          first_blocked_pair: ["grip/link6", "table"],
+          min_clearance_m: null,
+          min_clearance_at_m: null,
+          min_clearance_pair: [],
+          other_arms: { view: [Math.PI, 0, 0, 0, 0, 0, 0] }, // 7 values: rail unknown
+          assumptions: [],
+        }),
+      ),
+    ).toEqual({
+      headline: "Sweep blocked — homing refused",
+      recipe: "Full travel 0–0.650 m at the current posture · inflation 25 mm · step 5 mm",
+      blocked: "first blocked at 0.120 m: grip/link6 ↔ table",
+      clearance: null,
+      others: ["Perception Arm posed at its last sample"],
+      assumptions: [],
+    });
+    // Blocked without a position (defensive): still a line; travel / other_arms defaults.
+    expect(
+      sweepSummary({ scene_id: "mavis_v2", inflation_m: 0.008, step_m: 0.01, clear: false }),
+    ).toMatchObject({
+      recipe: "Full travel 0–0.650 m at the current posture · inflation 8 mm · step 10 mm",
+      blocked: "blocked — see the assumptions below",
+      clearance: null,
+      others: [],
+      assumptions: [],
+    });
+    // Phase-09d headlines: a planned pre-positioning motion / a refused plan.
+    expect(sweepSummary(makePlannedSweepVerdict())).toMatchObject({
+      headline: "Current posture blocks the sweep — pre-positioning planned",
+      blocked: "first blocked at 0.120 m: grip/link6 ↔ table",
+    });
+    expect(
+      sweepSummary(makePlannedSweepVerdict({ pre_position: makePrePositionPlan({ clear: false }) }))
+        .headline,
+    ).toBe("Sweep blocked — no safe pre-positioning path");
+    // `needed: false` (the fixture default) and a pre-09d verdict read as before.
+    expect(sweepSummary(makeRailSweepVerdict({ clear: false })).headline).toBe(
+      "Sweep blocked — homing refused",
+    );
+    expect(
+      sweepSummary(makeRailSweepVerdict({ clear: false, pre_position: undefined })).headline,
+    ).toBe("Sweep blocked — homing refused");
+    expect(HOME_RAIL_NOTICE).toBe(
+      "The carriage drives to the operator's LEFT (+X) end at the track's homing speed (positioning cap 50 mm/s) — the only maintenance action that moves hardware.",
+    );
+    expect(frozenHint("view")).toBe(
+      "Perception Arm frozen at last sample — do not move it from Studio",
+    );
+  });
+
+  it("maintenanceToast home_rail: 'rail homed (rail 0.000 m)', warnings amber, ok:false → error with detail", () => {
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "home_rail",
+          after: makeArmMonitor({ rail_homed: true, rail_enabled: true, rail_pos_m: 0 }),
+          rail_sweep: makeRailSweepVerdict(),
+        }),
+      ),
+    ).toEqual({ text: "Manipulation Arm · rail homed (rail 0.000 m)", tone: "success" });
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({ arm_id: "grip", op: "home_rail", after: null, before: null }),
+      ),
+    ).toEqual({ text: "Manipulation Arm · rail homed", tone: "success" });
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "home_rail",
+          warnings: ["set_linear_track_speed -> 1"],
+          after: makeArmMonitor({ rail_homed: true, rail_enabled: true, rail_pos_m: 0 }),
+        }),
+      ),
+    ).toEqual({
+      text: "Manipulation Arm · rail homed (rail 0.000 m) — set_linear_track_speed -> 1",
+      tone: "warning",
+    });
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "home_rail",
+          ok: false,
+          detail: "posture moved since the sweep",
+          rail_sweep: makeRailSweepVerdict(),
+        }),
+      ),
+    ).toEqual({ text: "Manipulation Arm · posture moved since the sweep", tone: "error" });
+  });
+});
+
+describe("phase-09d: PrePositionPlan copy, RailHomingJob phases, result statuses", () => {
+  it("formatDeg: one decimal, never -0.0", () => {
+    expect(formatDeg(Math.PI)).toBe("180.0°");
+    expect(formatDeg(0)).toBe("0.0°");
+    expect(formatDeg(-0.0001)).toBe("0.0°");
+    expect(formatDeg(-Math.PI / 2)).toBe("-90.0°");
+    expect(formatDeg(0.5)).toBe("28.6°");
+  });
+
+  it("prePositionKind: none (absent / not needed), planned (needed + clear), refused (needed + not clear)", () => {
+    expect(prePositionKind(null)).toBe("none");
+    expect(prePositionKind(undefined)).toBe("none");
+    expect(prePositionKind({ needed: false })).toBe("none");
+    expect(prePositionKind({ needed: false, clear: false })).toBe("none"); // clear is moot when not needed
+    expect(prePositionKind(makePrePositionPlan())).toBe("planned");
+    expect(prePositionKind({ needed: true })).toBe("planned"); // `clear` defaults to true on the wire
+    expect(prePositionKind(makePrePositionPlan({ clear: false }))).toBe("refused");
+  });
+
+  it("prePositionSummary: the contract sentence (waypoints, ~duration at 10 %), target in degrees, validation line", () => {
+    expect(prePositionSummary(makePrePositionPlan())).toEqual({
+      explanation:
+        "The arm will first move along a planned path (12 waypoints, ~19 s at 10 %) to a folded posture that clears the whole rail travel, then the rail homes, then the arm holds that posture.",
+      target: "Target posture · joints 1–7: 180.0°, 0.0°, 0.0°, 0.0°, 0.0°, 0.0°, 0.0°",
+      validation: "path checked at 131 rail positions · posture from the scene keyframe",
+    });
+    // Singular / rounding / source wording / no target.
+    expect(
+      prePositionSummary(
+        makePrePositionPlan({
+          waypoints: 1,
+          duration_s: 0.2,
+          source: "home",
+          target_q: [],
+          checked_rail_positions: 1,
+        }),
+      ),
+    ).toEqual({
+      explanation:
+        "The arm will first move along a planned path (1 waypoint, ~1 s at 10 %) to a folded posture that clears the whole rail travel, then the rail homes, then the arm holds that posture.",
+      target: null,
+      validation: "path checked at 1 rail position · posture from the arm's home keyframe",
+    });
+    expect(prePositionSummary({ needed: true }).validation).toBe(
+      "path checked at 0 rail positions · posture from the current posture",
+    );
+    expect(prePositionSummary(makePrePositionPlan({ source: "search" })).validation).toContain(
+      "a sampled posture",
+    );
+    expect(PRE_POSITION_REFUSED_HINT).toContain("factory-zero posture");
+  });
+
+  it("MAINTENANCE_PHASES / PHASE_LABELS / phaseState / isTerminalPhase", () => {
+    expect(MAINTENANCE_PHASES).toEqual([
+      "queued",
+      "sweeping",
+      "planning",
+      "connecting",
+      "positioning",
+      "homing",
+      "verifying",
+    ]);
+    for (const p of MAINTENANCE_PHASES) expect(PHASE_LABELS[p]).toBeTruthy();
+    expect(PHASE_LABELS.done).toContain("holds the folded posture");
+    expect(PHASE_LABELS.failed).toBe("failed");
+    // Running in `positioning`: earlier rows done, that one active, later pending.
+    expect(phaseState("queued", "positioning")).toBe("done");
+    expect(phaseState("connecting", "positioning")).toBe("done");
+    expect(phaseState("positioning", "positioning")).toBe("active");
+    expect(phaseState("homing", "positioning")).toBe("pending");
+    expect(phaseState("verifying", "positioning")).toBe("pending");
+    // Terminal done: everything done.
+    for (const p of MAINTENANCE_PHASES) expect(phaseState(p, "done")).toBe("done");
+    // Terminal failed: the phase it failed in (last active seen) is marked, the
+    // rows before done, the rest pending; unknown → the last row.
+    expect(phaseState("connecting", "failed", "positioning")).toBe("done");
+    expect(phaseState("positioning", "failed", "positioning")).toBe("failed");
+    expect(phaseState("homing", "failed", "positioning")).toBe("pending");
+    expect(phaseState("verifying", "failed")).toBe("failed");
+    expect(phaseState("homing", "failed")).toBe("done");
+    expect(isTerminalPhase("done")).toBe(true);
+    expect(isTerminalPhase("failed")).toBe(true);
+    expect(isTerminalPhase("homing")).toBe(false);
+    expect(isTerminalPhase(null)).toBe(false);
+    expect(isTerminalPhase(undefined)).toBe(false);
+  });
+
+  it("maintenanceToast: `accepted` (202) is an info note, `refused` is ok:false → error with the suggestion", () => {
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "home_rail",
+          status: "accepted",
+          job_id: "job-1",
+          sdk_codes: {},
+          before: makeArmMonitor(),
+          after: null,
+          rail_sweep: makePlannedSweepVerdict(),
+        }),
+      ),
+    ).toEqual({
+      text: "Manipulation Arm · rail homing started — pre-positioning first",
+      tone: "info",
+    });
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "home_rail",
+          ok: false,
+          status: "refused",
+          detail: "fold the arm toward the factory zero posture in Studio and retry",
+          sdk_codes: {},
+          after: null,
+        }),
+      ),
+    ).toEqual({
+      text: "Manipulation Arm · fold the arm toward the factory zero posture in Studio and retry",
+      tone: "error",
+    });
+    // The job's FINAL result (status done, same job_id) toasts like a 09c homing.
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "home_rail",
+          status: "done",
+          job_id: "job-1",
+          after: makeArmMonitor({ rail_homed: true, rail_enabled: true, rail_pos_m: 0 }),
+        }),
+      ),
+    ).toEqual({ text: "Manipulation Arm · rail homed (rail 0.000 m)", tone: "success" });
   });
 });
 
