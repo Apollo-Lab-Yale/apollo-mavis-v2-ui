@@ -359,11 +359,14 @@ export type TrackpadX = number;
 export type TrackpadY = number;
 export type Trigger = number;
 export type TriggerPressed = boolean;
+export type ControllerAgeS = number | null;
 export type Detail10 = string;
 export type DeviceAction = string | null;
 export type DeviceHeld = string[];
+export type DonglePresent = boolean | null;
 export type EngagedArm2 = string | null;
 export type ObjectName = string;
+export type Objects = string[];
 export type RateHz1 = number;
 export type Seq4 = number;
 export type FilterBeta = number;
@@ -1025,6 +1028,23 @@ export interface ArmBringupTelemetry {
  * what the anchor/delta math actually consumes; ``None`` when no sample.
  * ``calibration`` mirrors ``GET /api/tracker/calibration`` (protocol.tracker)
  * so the Devices-page wizard follows progress without polling.
+ *
+ * Link fields (2026-09-07, 13-tracker §3.5 "controller link"): the pose path
+ * and the button path are INDEPENDENT and can fail apart, which is exactly
+ * what happened on 2026-09-06 (poses at 135 Hz while libsurvive delivered no
+ * button event at all, so the clutch could never engage and the frozen
+ * ``controller`` state looked plausible). Therefore:
+ *
+ * * ``controller_age_s`` is the age of the newest controller INPUT event
+ *   (button / touch / axis), independent of ``age_s`` (the pose age).
+ *   ``None`` when no input event has ever been seen. A pose-fresh sample with
+ *   a stale ``controller_age_s`` means "moving works, buttons do not".
+ * * ``objects`` lists the OBJECT-type devices libsurvive currently reports
+ *   (e.g. ``["WM0"]``), so a panel can separate "not paired / dongle busy"
+ *   (empty) from "paired, waiting for base stations".
+ * * ``dongle_present`` is the USB presence of the Watchman receiver
+ *   (``28de:2101``) read from sysfs, so "unplugged" is distinguishable from
+ *   "unpaired". ``None`` when the check is unavailable (non-Linux, no sysfs).
  */
 export interface TrackerTelemetry {
   age_s?: AgeS2;
@@ -1034,11 +1054,14 @@ export interface TrackerTelemetry {
   charging?: Charging;
   clutch?: Clutch;
   controller?: ControllerTelemetry | null;
+  controller_age_s?: ControllerAgeS;
   detail?: Detail10;
   device_action?: DeviceAction;
   device_held?: DeviceHeld;
+  dongle_present?: DonglePresent;
   engaged_arm?: EngagedArm2;
   object_name?: ObjectName;
+  objects?: Objects;
   pose_filtered?: PoseMsg | null;
   pose_raw?: PoseMsg | null;
   pose_world?: PoseMsg | null;

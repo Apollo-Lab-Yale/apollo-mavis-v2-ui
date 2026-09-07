@@ -58,7 +58,8 @@ describe("streams", () => {
     expect(overlayBase("grip_wrist")).toBeNull();
     expect(isOverlayStream("view_wrist_align")).toBe(true);
     expect(isOverlayStream("view_wrist_cam")).toBe(false);
-    expect(TAB_LABELS).toEqual({ hardware: "Hardware", sim: "Sim" });
+    // `setting` is the device Setting tab (2026-09-07), not a workcell kind.
+    expect(TAB_LABELS).toEqual({ hardware: "Hardware", sim: "Sim", setting: "Setting" });
     expect(micSubtitle(makeMicrophoneInfo())).toBe("RØDE NT-USB Mini · 48 kHz mono");
     expect(micSubtitle(makeMicrophoneInfo({ channels: 2, sample_rate: 44100 }))).toBe(
       "RØDE NT-USB Mini · 44.1 kHz 2 ch",

@@ -37,6 +37,9 @@ export interface LandingSelection {
   unhomedRailArms?: string[];
   /** Arms the twin cannot be posed for / with a latched controller error. */
   armsNotReady?: string[];
+  /** A tracker calibration run is live (`isCalibrationActive`): the runtime
+   * refuses every session while it is, on both tabs. */
+  calibrationActive?: boolean;
   /** Any hardware arm reports `maintenance_busy` (a `home_rail` in flight). */
   homingInProgress?: boolean;
 }
@@ -61,6 +64,11 @@ export const REASON = {
   noTask: "Task is required",
   noPolicies: "No policies available",
   noPromoted: "No promoted checkpoint",
+  // 2026-09-07: the runtime 409s POST /api/session while a tracker calibration
+  // run is live (`rest.py` post_session, "tracker calibration in progress"), and
+  // both wizards are reachable from the Welcome page's Setting tab now — so the
+  // launcher has to say it instead of letting the operator meet the 409.
+  calibrationActive: "Tracker calibration in progress — finish or abort it on the Setting tab",
 } as const;
 
 /** `["view"]` + `REASON.railNotHomed` → `"Perception Arm: rail not homed — use
@@ -91,6 +99,7 @@ export const speedLabel = (scale: number): string => `${Math.round(scale * 100)}
  * arm eligible — the reason names the arm(s)); Sim tab: the classic rules. */
 export function validateLaunch(mode: Mode, sel: LandingSelection): string | null {
   if (!sel.keymapOk) return REASON.keymap;
+  if (sel.calibrationActive) return REASON.calibrationActive;
   if (sel.tab === "hardware") {
     if (mode !== "teleop") return REASON.hardwareTeleopOnly;
     if (!sel.hardwareConfigured) return REASON.hardwareNotConfigured;

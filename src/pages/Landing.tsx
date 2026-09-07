@@ -15,10 +15,17 @@
  * appears under the launchers while the POST is pending. The hero's quiet
  * **Debug** link opens `#/devices` (gamepad + tracker). Pure launch logic
  * lives in ../lib/launch (re-exported here for the tests). */
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
-import { getTelemetry } from "../api/clients";
+import { getControl, getTelemetry } from "../api/clients";
 import {
   createSession,
   getCameras,
@@ -36,6 +43,7 @@ import type {
   ProfileInfo,
   SceneInfo,
   SessionInfo,
+  TrackerSettingsArgs,
   WorkcellStatus,
 } from "../gen";
 import { buildBindings } from "../input/bindings";
@@ -60,13 +68,27 @@ import {
   SIM_CAMERA_SLOTS,
   TAB_LABELS,
 } from "../lib/streams";
-import type { FrameRef, Kind, Mode } from "../lib/types";
+import {
+  SETTING_TAB,
+  tabKind,
+  type FrameRef,
+  type Kind,
+  type Mode,
+  type TabKey,
+} from "../lib/types";
 import { MODES } from "../lib/types";
 import { useLingeringValue } from "../lib/useDelayedUnmount";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useRevealOnce } from "../lib/useRevealOnce";
-import { selectMaintenanceBusy, selectMonitorArm, useStore, type AppState } from "../store";
+import {
+  selectMaintenanceBusy,
+  selectMonitorArm,
+  selectTracker,
+  useStore,
+  type AppState,
+} from "../store";
 import { BringupProgress } from "../components/BringupProgress";
+import { ControllerPill, useControllerLink } from "../components/controller";
 import {
   ArmCards,
   HardwareCaption,
@@ -79,8 +101,14 @@ import {
 import { LaunchSheet, type SheetMode } from "../components/LaunchSheet";
 import { ModeLauncher } from "../components/ModeLauncher";
 import { SegmentedControl, type SegmentedOrigin } from "../components/SegmentedControl";
+import { SettingPane } from "../components/setting";
 import { SHEET_EXIT_MS } from "../components/Sheet";
 import { Toasts } from "../components/Toasts";
+import {
+  isCalibrationActive,
+  TrackerCalibrationWizard,
+  type WizardKind,
+} from "../components/TrackerCalibrationWizard";
 
 export { buildSpec, launcherReason, REASON, validateLaunch } from "../lib/launch";
 export type { LandingSelection } from "../lib/launch";
@@ -95,6 +123,9 @@ export interface LandingProps {
   hardwarePollMs?: number;
 }
 
+// The two workcell tabs plus the device **Setting** tab (2026-09-07). Setting is
+// LAST so the existing keyboard order (ArrowLeft from Sim = Hardware) is intact,
+// and it is not a `Kind`: it launches nothing.
 const TAB_OPTIONS = [
   {
     value: "hardware",
@@ -103,7 +134,13 @@ const TAB_OPTIONS = [
     panelId: "pane-hardware",
   },
   { value: "sim", label: TAB_LABELS.sim, testId: "kind-sim", panelId: "pane-sim" },
-] as const satisfies readonly { value: Kind; label: string; testId: string; panelId: string }[];
+  {
+    value: SETTING_TAB,
+    label: TAB_LABELS.setting,
+    testId: "kind-setting",
+    panelId: "pane-setting",
+  },
+] as const satisfies readonly { value: TabKey; label: string; testId: string; panelId: string }[];
 
 /** Hardware-tab Speed segments (phase-09c D2), testids `speed-10` / `speed-30` / `speed-100`. */
 const SPEED_TAB_OPTIONS = SPEED_OPTIONS.map((o) => ({
@@ -113,15 +150,15 @@ const SPEED_TAB_OPTIONS = SPEED_OPTIONS.map((o) => ({
 }));
 
 const TAB_STORAGE_KEY = "mavis.welcome.tab";
-const readStoredTab = (): Kind | null => {
+const readStoredTab = (): TabKey | null => {
   try {
     const v = localStorage.getItem(TAB_STORAGE_KEY);
-    return v === "hardware" || v === "sim" ? v : null;
+    return v === "hardware" || v === "sim" || v === SETTING_TAB ? v : null;
   } catch {
     return null;
   }
 };
-const storeTab = (tab: Kind): void => {
+const storeTab = (tab: TabKey): void => {
   try {
     localStorage.setItem(TAB_STORAGE_KEY, tab);
   } catch {
@@ -138,12 +175,21 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   const setSession = useStore((s) => s.setSession);
   const addToast = useStore((s) => s.addToast);
   const reveal = useRevealOnce();
+  // Setting tab (2026-09-07): the tracker block, the served keymap (so the button
+  // self-test can name the injected codes) and the control-link role, which
+  // decides whether the live tracker fields can be sent.
+  const tracker = useStore(selectTracker);
+  const bindings = useStore((s) => s.bindings);
+  const session = useStore((s) => s.session);
+  const controlOpen = useStore((s) => s.conn.control === "open");
+  const role = useStore((s) => s.conn.role);
+  const controllerLinkNow = useControllerLink();
 
   // The chosen tab survives reloads (Chrome discards idle tabs and reloads them
   // on focus; a runtime restart sends the page back to "#/"): localStorage.
-  const [tab, setTab] = useState<Kind>(() => readStoredTab() ?? "sim");
+  const [tab, setTab] = useState<TabKey>(() => readStoredTab() ?? "sim");
   const [tabOrigin, setTabOrigin] = useState<SegmentedOrigin>("pointer");
-  const [leaving, setLeaving] = useState<Kind | null>(null);
+  const [leaving, setLeaving] = useState<TabKey | null>(null);
   const [simStatus, setSimStatus] = useState<WorkcellStatus | null>(null);
   const [hardware, setHardware] = useState<WorkcellStatus | null>(null);
   const [cameras, setCameras] = useState<CameraInfo[]>([]);
@@ -162,6 +208,10 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   const [sheet, setSheet] = useState<SheetMode | null>(null);
   // The sheet's mode lingers for the exit transition once `sheet` is cleared.
   const sheetShown = useLingeringValue(sheet, SHEET_EXIT_MS);
+  // Calibration wizard (phase-10) hosted here too, so the Setting tab reaches the
+  // same flows as the Debug page; the flow state itself lives in telemetry.
+  const [wizard, setWizard] = useState<WizardKind | null>(null);
+  const wizardShown = useLingeringValue(wizard, SHEET_EXIT_MS);
 
   const loadKeymap = useCallback(() => {
     getKeymap()
@@ -250,9 +300,12 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     () => microphones.find((m) => m.mic_id === MIC_ID) ?? microphones[0] ?? null,
     [microphones],
   );
+  // Every tab shows the controller link, and the Setting tab reads the whole
+  // tracker block, so the telemetry socket is opened unconditionally (the client
+  // is an idempotent singleton shared with the Cockpit).
   useEffect(() => {
-    if (tab === "hardware") getTelemetry();
-  }, [tab]);
+    getTelemetry();
+  }, []);
 
   // Preselect the designated initial-condition profile when switching to "profile".
   useEffect(() => {
@@ -265,7 +318,7 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   // Tab switch: pointer → 120 ms crossfade (outgoing pane kept briefly);
   // keyboard → instant, no leaving pane.
   const changeTab = useCallback(
-    (next: Kind, origin: SegmentedOrigin) => {
+    (next: TabKey, origin: SegmentedOrigin) => {
       if (next === tab) return;
       setTabOrigin(origin);
       setLeaving(origin === "pointer" ? tab : null);
@@ -303,7 +356,14 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   const hardwareReady = hardware?.hardware_ready ?? workcell?.hardware_ready ?? false;
   const simArms = useMemo(() => simStatus?.arms ?? [], [simStatus]);
   const hardwareArms = useMemo(() => hardware?.arms ?? [], [hardware]);
-  const tabArms = tab === "sim" ? simArms : hardwareArms;
+  const kind = tabKind(tab); // null on the Setting tab (no workcell, no launch)
+  const settingTab = kind === null;
+  // useMemo: the Setting tab's empty list would otherwise be a fresh array every
+  // render and re-run every downstream memo (react-hooks/exhaustive-deps).
+  const tabArms = useMemo(
+    () => (kind === "sim" ? simArms : kind === "hardware" ? hardwareArms : []),
+    [kind, simArms, hardwareArms],
+  );
   // `SessionSpec.arms` is ordered Manipulation Arm (`grip`) first on both tabs:
   // the runtime activates arms[0], so teleop always starts on the Manipulation Arm.
   const armIds = useMemo(
@@ -340,17 +400,21 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   const speedScale = SPEED_OPTIONS.find((o) => o.value === speed)?.scale ?? DEFAULT_SPEED_SCALE;
   const simScene = simScenes.find((s) => s.scene_id === SCENE_ID) ?? null;
   const twinScene = twinScenes.find((s) => s.scene_id === SCENE_ID) ?? null;
-  const tabSlots: readonly string[] = tab === "sim" ? SIM_CAMERA_SLOTS : HARDWARE_CAMERA_SLOTS;
+  const tabSlots: readonly string[] = kind === "sim" ? SIM_CAMERA_SLOTS : HARDWARE_CAMERA_SLOTS;
   const tabCameras = cameras.filter((c) => tabSlots.includes(c.camera_id));
   const promoted = useMemo(() => policies.filter((p) => p.promoted), [policies]);
 
-  const hardwareTab = tab === "hardware";
+  const hardwareTab = kind === "hardware";
+  // On the Setting tab nothing launches (the Start-from / Scene / Modes sections
+  // are not rendered), so the selection falls back to the Sim shape: it is only
+  // read by the launchers.
+  const selKind: Kind = kind ?? "sim";
   const sel: LandingSelection = {
-    tab,
-    kind: tab,
+    tab: selKind,
+    kind: selKind,
     arms: armIds,
     frames,
-    simScene: tab === "sim" && simScene ? SCENE_ID : null,
+    simScene: kind === "sim" && simScene ? SCENE_ID : null,
     twinScene: hardwareTab ? SCENE_ID : null, // the digital twin is implicitly mavis_v2
     startFrom,
     profileId,
@@ -360,6 +424,9 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     policiesAvailable: workcell?.policies_available ?? hardware?.policies_available ?? false,
     hardwareReady,
     hardwareConfigured,
+    // Both wizards are reachable from the Setting tab now, and the runtime 409s
+    // any session while one is live — say so on the launcher instead.
+    calibrationActive: isCalibrationActive(tracker?.calibration),
     ...(hardwareTab
       ? {
           speedScale,
@@ -395,10 +462,34 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     else setSheet(mode);
   };
 
+  // The Welcome page NEVER OPENS /ws/control. The runtime hands the writer role
+  // to the FIRST connection and demotes every later one to observer, so claiming
+  // it here could silently take teleop away from the Cockpit tab the operator
+  // drives with. The live tracker fields are therefore enabled only when a
+  // control socket is ALREADY open in this tab (the operator came from the
+  // Cockpit); otherwise they display the echoed values read-only and say where
+  // to tune. `getControl()` below is reached only in that state, so it returns
+  // the existing client and never dials.
+  const settingsDisabled = !session || !controlOpen || role === "observer";
+  const settingsReason = !session
+    ? "Start a session to tune the live values — tracker_settings needs a running control loop. Yaw alignment above works without one."
+    : !controlOpen
+      ? "Live tuning needs the control link — tune from the Cockpit or the Debug page."
+      : role === "observer"
+        ? "Observer role: read-only."
+        : undefined;
+  const onSettings = useCallback(
+    (args: TrackerSettingsArgs) => {
+      if (!controlOpen) return; // never dial /ws/control from the Welcome page
+      getControl().sendAction("tracker_settings", args as Record<string, unknown>);
+    },
+    [controlOpen],
+  );
+
   const stagger = (i: number): CSSProperties | undefined =>
     reveal ? ({ "--i": i } as CSSProperties) : undefined;
 
-  const pane = (k: Kind, state: "enter" | "leave") => (
+  const paneShell = (k: TabKey, state: "enter" | "leave", children: ReactNode) => (
     <section
       key={k}
       id={`pane-${k}`}
@@ -409,6 +500,12 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
       aria-hidden={state === "leave" ? "true" : undefined}
       data-testid={`pane-${k}`}
     >
+      {children}
+    </section>
+  );
+
+  const workcellPane = (k: Kind) => (
+    <>
       <ObservationGrid tab={k} cameras={cameras} microphone={k === "hardware" ? mic : null} />
       <div className="status-caption" data-testid={`status-${k}`} aria-live="polite">
         {k === "sim" ? (
@@ -422,6 +519,14 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
           />
         )}
       </div>
+      {/* Controller link, on BOTH workcell tabs: teleop needs it whatever the
+          workcell is. Deliberately a sibling of the status caption, never inside
+          it — that caption's text is the workcell's own summary. */}
+      <ControllerPill
+        link={controllerLinkNow}
+        tab={k}
+        onOpenSetting={() => changeTab(SETTING_TAB, "pointer")}
+      />
       <ArmCards
         kind={k}
         arms={k === "sim" ? simArms : hardwareArms}
@@ -445,8 +550,25 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
           </span>
         </div>
       )}
-    </section>
+    </>
   );
+
+  // Setting tab (2026-09-07): device set-up only — no observation grid, no arm
+  // cards, and the launch sections below the panes are hidden while it is open.
+  const settingPane = () => (
+    <SettingPane
+      tracker={tracker}
+      session={session}
+      bindings={bindings}
+      onOpenWizard={setWizard}
+      settingsDisabled={settingsDisabled}
+      settingsReason={settingsReason}
+      onSettings={onSettings}
+    />
+  );
+
+  const pane = (k: TabKey, state: "enter" | "leave") =>
+    paneShell(k, state, k === SETTING_TAB ? settingPane() : workcellPane(k));
 
   const profileName = profiles.find((p) => p.profile_id === profileId)?.name ?? null;
 
@@ -467,7 +589,8 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
             options={TAB_OPTIONS}
             value={tab}
             onChange={changeTab}
-            aria-label="Workcell"
+            // "Workcell" until 2026-09-07; the third tab is device set-up, not a workcell.
+            aria-label="Workcell and device settings"
             testId="kind-toggle"
           />
           <Link to="/devices" className="btn-ghost btn-sm" data-testid="nav-devices">
@@ -481,41 +604,45 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
         {pane(tab, "enter")}
       </div>
 
-      <section className="section" aria-labelledby="start-from-title">
-        <h2 id="start-from-title" className="text-label fg-3 section-title">
-          Start from
-        </h2>
-        <StartFrom
-          profiles={profiles}
-          arms={armIds}
-          startFrom={startFrom}
-          onStartFromChange={setStartFrom}
-          profileId={profileId}
-          onProfileChange={setProfileId}
-        />
-      </section>
+      {!settingTab && (
+        <>
+          <section className="section" aria-labelledby="start-from-title">
+            <h2 id="start-from-title" className="text-label fg-3 section-title">
+              Start from
+            </h2>
+            <StartFrom
+              profiles={profiles}
+              arms={armIds}
+              startFrom={startFrom}
+              onStartFromChange={setStartFrom}
+              profileId={profileId}
+              onProfileChange={setProfileId}
+            />
+          </section>
 
-      <section className="section" aria-label="Scene">
-        <SceneSummary
-          kind={tab === "hardware" ? "twin" : "sim"}
-          scene={tab === "hardware" ? (twinScene ?? simScene) : simScene}
-        />
-      </section>
+          <section className="section" aria-label="Scene">
+            <SceneSummary
+              kind={tab === "hardware" ? "twin" : "sim"}
+              scene={tab === "hardware" ? (twinScene ?? simScene) : simScene}
+            />
+          </section>
 
-      <section className="section" aria-labelledby="modes-title">
-        <h2 id="modes-title" className="text-label fg-3 section-title">
-          Modes
-        </h2>
-        <ModeLauncher
-          reasons={reasons}
-          launching={launching}
-          launchingLabel={startFrom === "profile" ? "Planning safe path…" : "Starting…"}
-          onLaunch={onLaunch}
-          onRetryKeymap={loadKeymap}
-          reveal={reveal}
-        />
-        {hardwareTab && <BringupProgress />}
-      </section>
+          <section className="section" aria-labelledby="modes-title">
+            <h2 id="modes-title" className="text-label fg-3 section-title">
+              Modes
+            </h2>
+            <ModeLauncher
+              reasons={reasons}
+              launching={launching}
+              launchingLabel={startFrom === "profile" ? "Planning safe path…" : "Starting…"}
+              onLaunch={onLaunch}
+              onRetryKeymap={loadKeymap}
+              reveal={reveal}
+            />
+            {hardwareTab && <BringupProgress />}
+          </section>
+        </>
+      )}
 
       {sheetShown !== null && (
         <LaunchSheet
@@ -528,6 +655,14 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
           profileName={profileName}
           onLaunched={onLaunched}
           onClose={() => setSheet(null)}
+        />
+      )}
+      {wizardShown !== null && (
+        <TrackerCalibrationWizard
+          kind={wizardShown}
+          open={wizard !== null}
+          onClose={() => setWizard(null)}
+          onSwitchKind={setWizard}
         />
       )}
       <Toasts />

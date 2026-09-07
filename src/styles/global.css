@@ -2158,6 +2158,49 @@ summary.summary::-webkit-details-marker {
   min-width: 72px;
   padding: 0 12px;
 }
+
+/* Controller link line (Hardware / Sim tabs) + Setting tab (2026-09-07) */
+.controller-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-1);
+}
+.controller-line-help {
+  flex: 1 1 20ch;
+  min-width: 0;
+}
+.setting-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  align-items: start;
+  gap: var(--grid-gap);
+}
+.setting-grid .panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.controller-row {
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.controller-row-hint {
+  margin-left: var(--space-2);
+}
+.code-block {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--fg-2);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* HomeRailSheet body */
 .home-rail-notice {
   display: flex;
@@ -2389,5 +2432,134 @@ summary.summary::-webkit-details-marker {
 @media (prefers-reduced-motion: reduce) {
   .home-rail-progress-fill {
     transition: none;
+  }
+}
+
+/* ---- Twin-proximity frame (05-ui §8.2, 2026-09-07) --------------------------------
+ * Overlay on `.surface` driven by `--prox` (0..1, components/proximity.tsx) and
+ * `data-tone`. Two colour layers — amber, then red — cross-fade on OPACITY only
+ * (compositor-friendly; a CSS transition so the 25 Hz level retargets smoothly,
+ * never a restarting keyframe); the colour itself is a translucent hairline plus
+ * an inward glow, not a solid border. Amber ramps 0 → 1 over --prox 0 → 0.5,
+ * red over 0.5 → 1, so the hue shifts amber → red as the clearance closes. */
+.proximity-frame {
+  --prox: 0;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 4; /* above the tiles, below the CAPTURING chips (5) and toasts (70) */
+  transition: filter var(--dur-base) var(--ease-out);
+}
+.proximity-frame::before,
+.proximity-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+.proximity-frame::before {
+  /* amber: 2 px hairline, 1 px soft halo, 56 px inward glow */
+  box-shadow:
+    inset 0 0 0 2px rgba(245, 166, 35, 0.85),
+    inset 0 0 0 3px rgba(245, 166, 35, 0.22),
+    inset 0 0 56px -18px rgba(245, 166, 35, 0.55);
+  opacity: clamp(0, calc(var(--prox) * 2), 1);
+}
+.proximity-frame::after {
+  /* red, layered over the amber once --prox passes 0.5 */
+  box-shadow:
+    inset 0 0 0 2px rgba(231, 76, 60, 0.92),
+    inset 0 0 0 3px rgba(231, 76, 60, 0.26),
+    inset 0 0 64px -16px rgba(231, 76, 60, 0.6);
+  opacity: clamp(0, calc((var(--prox) - 0.5) * 2), 1);
+}
+.proximity-frame[data-tone="clear"]::before,
+.proximity-frame[data-tone="clear"]::after {
+  opacity: 0;
+}
+.proximity-frame[data-tone="blocked"]::after {
+  opacity: 1; /* steady: the twin/sim tiles already flash while blocked */
+}
+.proximity-frame[data-stale] {
+  filter: saturate(0.15); /* telemetry stale: the ring greys instead of pretending */
+}
+/* Glass chip, top-right, naming the closest pair. Vibrancy: heavier weight + a
+ * touch of tracking over the translucent material; colour on the solid dot. */
+.proximity-chip {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px 6px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: var(--shadow-2), var(--edge);
+  color: var(--fg);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+@starting-style {
+  .proximity-chip {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.proximity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 8px rgba(245, 166, 35, 0.7);
+  transition: background var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+.proximity-frame[data-tone="close"] .proximity-dot,
+.proximity-frame[data-tone="blocked"] .proximity-dot {
+  background: var(--danger);
+  box-shadow: 0 0 8px rgba(231, 76, 60, 0.75);
+}
+.proximity-dist {
+  color: var(--fg-2);
+  font-weight: 500;
+}
+.proximity-pair,
+.proximity-stale {
+  color: var(--fg-3);
+  font-weight: 500;
+}
+.proximity-stale::before {
+  content: "· ";
+}
+@media (prefers-reduced-motion: reduce) {
+  @starting-style {
+    .proximity-chip {
+      transform: none; /* keep the opacity cross-fade, drop the translate */
+    }
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .proximity-chip {
+    background: var(--surface-2);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .proximity-chip {
+    border: 1px solid var(--border-strong);
   }
 }

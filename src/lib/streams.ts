@@ -2,7 +2,7 @@
  * (phase-11 §4). Stream ids stay the runtime's canonical ids; only the
  * displayed titles live here. */
 import type { MicrophoneInfo } from "../gen";
-import type { Kind, Mode } from "./types";
+import type { Mode, TabKey } from "./types";
 
 export const APP_TITLE = "APOLLO MAVIS V2";
 export const APP_SUBTITLE = "Manipulation and Viewpoint Selection";
@@ -54,8 +54,13 @@ export const MIC_LABEL = "Perception · microphone";
 export const micSubtitle = (m: MicrophoneInfo): string =>
   `${m.label} · ${m.sample_rate / 1000} kHz ${(m.channels ?? 1) === 1 ? "mono" : `${m.channels} ch`}`;
 
-/** Welcome tabs (SegmentedControl labels + LaunchSheet context). */
-export const TAB_LABELS: Readonly<Record<Kind, string>> = { hardware: "Hardware", sim: "Sim" };
+/** Welcome tabs (SegmentedControl labels + LaunchSheet context). `setting` is
+ * the device Setting tab (2026-09-07), not a workcell kind. */
+export const TAB_LABELS: Readonly<Record<TabKey, string>> = {
+  hardware: "Hardware",
+  sim: "Sim",
+  setting: "Setting",
+};
 
 export const STREAM_LABELS: Readonly<Record<string, string>> = {
   grip_wrist_cam: "Manipulation · wrist cam",

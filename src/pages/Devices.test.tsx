@@ -615,8 +615,16 @@ describe("Devices page", () => {
     expect(screen.getByTestId("calibration-yaw-chip").className).toContain("chip-amber");
     expect(screen.getByTestId("calibration-installed").textContent).toContain("installed");
     expect(screen.getByTestId("calibration-open-yaw")).not.toBeDisabled();
-    expect(screen.getByTestId("calibration-open-base_station")).not.toBeDisabled();
     expect(screen.queryByTestId("calibration-disabled")).toBeNull();
+    // 2026-09-07: the fixture backend is `fake`, and the runtime refuses
+    // `base_station start` unless it is libsurvive (409 "backend is not
+    // libsurvive"), so that button is disabled with its own note instead of
+    // handing the operator a 409 toast (13-tracker §5 said so all along).
+    expect(screen.getByTestId("calibration-open-base_station")).toBeDisabled();
+    expect(screen.getByTestId("calibration-kind-note").textContent).toContain(
+      "needs the libsurvive backend",
+    );
+
     // Session → "Stop the session first."
     fireEvent.click(screen.getByTestId("session-start"));
     await screen.findByTestId("session-stop");
@@ -697,4 +705,24 @@ describe("Devices page", () => {
     fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   }, 15000);
+
+  it("base-station calibration is offered only on the libsurvive backend", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    // libsurvive: both kinds are live, no per-kind note.
+    pushTracker({ backend: "libsurvive", status: "tracking", calibration: makeCalibration() }, 1);
+    await waitFor(() =>
+      expect(screen.getByTestId("calibration-open-base_station")).not.toBeDisabled(),
+    );
+    expect(screen.getByTestId("calibration-open-yaw")).not.toBeDisabled();
+    expect(screen.queryByTestId("calibration-kind-note")).toBeNull();
+    // fake: the yaw gesture still works, the base-station run would 409.
+    pushTracker({ backend: "fake", status: "tracking", calibration: makeCalibration() }, 2);
+    await waitFor(() => expect(screen.getByTestId("calibration-open-base_station")).toBeDisabled());
+    expect(screen.getByTestId("calibration-open-yaw")).not.toBeDisabled();
+    expect(screen.getByTestId("calibration-kind-note").textContent).toContain(
+      "needs the libsurvive backend",
+    );
+    expect(screen.queryByTestId("calibration-disabled")).toBeNull(); // not a shared block
+  });
 });

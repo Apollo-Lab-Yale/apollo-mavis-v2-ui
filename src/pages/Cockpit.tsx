@@ -36,6 +36,7 @@ import { InferencePanel } from "../components/InferencePanel";
 import { JointPanel } from "../components/JointPanel";
 import { KeymapOverlay } from "../components/KeymapOverlay";
 import { ProfileActions } from "../components/ProfileActions";
+import { ProximityFrame } from "../components/proximity";
 import { StreamGrid } from "../components/StreamGrid";
 import { TeleopSurface } from "../components/TeleopSurface";
 
@@ -136,6 +137,8 @@ export function Cockpit({ mode }: { mode: Mode }) {
           bindings={bindings}
           control={control}
         >
+          {/* Twin-proximity ring + chip over the whole grid (05-ui §8.2, 2026-09-07). */}
+          <ProximityFrame />
           <StreamGrid streamIds={streams} labels={labels} />
         </TeleopSurface>
         {keymap && (

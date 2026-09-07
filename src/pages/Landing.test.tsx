@@ -30,7 +30,9 @@ import {
   makeProfile,
   makeScene,
   makeSimCameras,
+  makeCalibration,
   makeTelemetry,
+  makeTracker,
   makeWorkcell,
   SIM_CAMERA_IDS,
 } from "../../tests/mocks/fixtures";
@@ -199,7 +201,7 @@ async function pushTelemetry(msg: ReturnType<typeof makeTelemetry>) {
 }
 
 /** Pointer tab switch, settled: incoming pane present, outgoing pane gone (120 ms crossfade). */
-async function switchTab(k: "hardware" | "sim") {
+async function switchTab(k: "hardware" | "sim" | "setting") {
   fireEvent.click(screen.getByTestId(`kind-${k}`));
   await waitFor(() => {
     expect(screen.getByTestId(`pane-${k}`)).toBeInTheDocument();
@@ -1163,5 +1165,151 @@ describe("Welcome page", () => {
     await screen.findByTestId("camera-preview-grid");
     await switchTab("sim");
     expect(localStorage.getItem("mavis.welcome.tab")).toBe("sim");
+  });
+});
+
+// ---------------------------------------------------------------------------------
+// Controller line + Setting tab (2026-09-07)
+// ---------------------------------------------------------------------------------
+describe("Welcome page — controller", () => {
+  const live = makeTracker({
+    backend: "libsurvive",
+    status: "tracking",
+    dongle_present: true,
+    objects: ["WM0"],
+    controller_age_s: 1.0,
+    calibration: makeCalibration(),
+  });
+
+  it("shows the controller link on the Sim tab AND the Hardware tab", async () => {
+    await mount();
+    await ready();
+    // Telemetry is connected on every tab now, not only on Hardware.
+    await pushTelemetry(makeTelemetry({ tracker: live }));
+    await waitFor(() =>
+      expect(screen.getByTestId("controller-link-sim").getAttribute("data-state")).toBe(
+        "connected",
+      ),
+    );
+    await switchTab("hardware");
+    expect(screen.getByTestId("controller-link-hardware").getAttribute("data-state")).toBe(
+      "connected",
+    );
+    // The workcell caption is untouched by the controller line (separate node).
+    expect(screen.getByTestId("status-hardware").textContent).not.toMatch(/Controller/);
+  });
+
+  it("reports an unpaired controller instead of claiming it is connected", async () => {
+    await mount();
+    await ready();
+    await pushTelemetry(
+      makeTelemetry({
+        tracker: makeTracker({
+          backend: "libsurvive",
+          status: "searching",
+          dongle_present: true,
+          objects: [],
+        }),
+      }),
+    );
+    await waitFor(() => {
+      const pill = screen.getByTestId("controller-link-sim");
+      expect(pill.getAttribute("data-state")).toBe("unpaired");
+      expect(pill.textContent).toBe("Controller not detected");
+    });
+  });
+
+  it("opens the Setting tab from the pill and shows the four device panels", async () => {
+    await mount();
+    await ready();
+    await pushTelemetry(makeTelemetry({ tracker: live }));
+    fireEvent.click(screen.getByTestId("controller-setup-sim"));
+    // The outgoing pane lingers for the 120 ms crossfade: wait for it to go.
+    await waitFor(() => {
+      expect(screen.getByTestId("pane-setting")).toBeInTheDocument();
+      expect(document.querySelector(".pane-leave")).toBeNull();
+    });
+    expect(screen.getByTestId("kind-setting").getAttribute("aria-selected")).toBe("true");
+    for (const id of ["controller-panel", "pairing-panel", "calibration-panel", "angle-panel"]) {
+      expect(screen.getByTestId(id)).toBeInTheDocument();
+    }
+    // Device set-up only: nothing that launches a session is on this tab.
+    expect(screen.queryByTestId("launch-teleop")).toBeNull();
+    expect(screen.queryByTestId("start-from")).toBeNull();
+    expect(screen.queryByTestId("camera-preview-grid")).toBeNull();
+    expect(localStorage.getItem("mavis.welcome.tab")).toBe("setting");
+  });
+
+  it("offers both calibrations and explains why the live fields are disabled", async () => {
+    await mount();
+    await ready();
+    await pushTelemetry(makeTelemetry({ tracker: live }));
+    await switchTab("setting");
+    // Session-less: both wizards are reachable (they are REST flows) …
+    expect(screen.getByTestId("calibration-open-base_station")).toBeEnabled();
+    expect(screen.getByTestId("calibration-open-yaw")).toBeEnabled();
+    // … while the live tracker_settings fields need a running control loop.
+    expect(screen.getByTestId("tracker-settings")).toBeDisabled();
+    expect(screen.getByTestId("tracker-settings-disabled").textContent).toMatch(
+      /Start a session to tune/,
+    );
+    expect(screen.getByTestId("angle-live").textContent).toBe("yaw 0°");
+  });
+
+  it("blocks every launcher while a tracker calibration run is live", async () => {
+    // The runtime 409s POST /api/session then (rest.py post_session), and both
+    // wizards are reachable from this page now — the launcher must say it.
+    await mount();
+    await ready();
+    await pushTelemetry(
+      makeTelemetry({
+        tracker: makeTracker({
+          ...live,
+          calibration: makeCalibration({ kind: "yaw", phase: "capturing" }),
+        }),
+      }),
+    );
+    await waitFor(() => expect(enabled("launch-teleop")).toBe(false));
+    expect(reasonOf("teleop")).toContain("Tracker calibration in progress");
+    // Finished and applied → the gate lifts again.
+    await pushTelemetry(
+      makeTelemetry({ seq: 2, tracker: makeTracker({ ...live, calibration: makeCalibration() }) }),
+    );
+    await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
+  });
+
+  it("degrades honestly on the shipped config (tracker.backend: fake)", async () => {
+    await mount();
+    await ready();
+    // The repo default: a scripted circle, no real controller.
+    await pushTelemetry(
+      makeTelemetry({
+        tracker: makeTracker({
+          backend: "fake",
+          status: "tracking",
+          calibration: makeCalibration(),
+        }),
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("controller-link-sim").getAttribute("data-state")).toBe("fake"),
+    );
+    expect(screen.getByTestId("controller-link-sim").textContent).toBe("Controller simulated");
+    await switchTab("setting");
+    // The yaw gesture works on the fake backend; a base-station run would 409.
+    expect(screen.getByTestId("calibration-open-yaw")).toBeEnabled();
+    expect(screen.getByTestId("calibration-open-base_station")).toBeDisabled();
+    expect(screen.getByTestId("calibration-kind-note").textContent).toContain("libsurvive");
+  });
+
+  it("opens the yaw wizard from the Setting tab", async () => {
+    await mount();
+    await ready();
+    await pushTelemetry(makeTelemetry({ tracker: live }));
+    await switchTab("setting");
+    fireEvent.click(screen.getByTestId("calibration-open-yaw"));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.getByTestId("wizard-start")).toBeInTheDocument();
   });
 });

@@ -469,15 +469,26 @@ export interface CalibrationPanelProps {
   onOpen(kind: WizardKind): void;
 }
 
-/** Why both wizard buttons are disabled (undefined = enabled). */
+/** Why a wizard button is disabled (undefined = enabled).
+ *
+ * Without `kind` this is the reason shared by BOTH kinds (what the panel prints
+ * once). With `kind` it also applies the per-kind gate: the runtime refuses
+ * `base_station start` unless the backend is libsurvive (409 "backend is not
+ * libsurvive", `devices/tracker_calibration.py`), while the yaw gesture works on
+ * the `fake` backend too — 13-tracker §5 said so from the start, but until
+ * 2026-09-07 the button was enabled and the operator met the 409 as a toast. */
 export function calibrationDisabledReason(
   tracker: TrackerTelemetry | null,
   session: SessionInfo | null,
+  kind?: WizardKind,
 ): string | undefined {
   if (!tracker) return "No tracker telemetry.";
   if (tracker.backend === "none") return "Tracker backend is none — nothing to calibrate.";
   if (tracker.calibration == null) return "Runtime reports no calibration state (upgrade it).";
   if (session) return "Stop the session first.";
+  if (kind === "base_station" && tracker.backend !== "libsurvive") {
+    return `Base-station calibration needs the libsurvive backend (this runtime runs ${tracker.backend}).`;
+  }
   return undefined;
 }
 
@@ -489,21 +500,26 @@ export function CalibrationPanel({ tracker, session, onOpen }: CalibrationPanelP
   // not-yet-finished `done` states (validated/not installed, fitted/not applied).
   const activeCal = cal && isCalibrationActive(cal) ? cal : null;
   const activeKind = activeCal ? (activeCal.kind ?? "none") : null;
-  const button = (kind: WizardKind, label: string) => (
-    <button
-      disabled={reason !== undefined || (activeKind !== null && activeKind !== kind)}
-      title={
-        activeKind !== null && activeKind !== kind
-          ? `${activeKind} calibration in progress`
-          : undefined
-      }
-      onClick={() => onOpen(kind)}
-      data-testid={`calibration-open-${kind}`}
-    >
-      {activeKind === kind ? "Resume " : ""}
-      {label}…
-    </button>
-  );
+  // Per-kind gate on top of the shared one (base_station needs libsurvive).
+  const kindReason = (kind: WizardKind) => calibrationDisabledReason(tracker, session, kind);
+  const button = (kind: WizardKind, label: string) => {
+    const own = kindReason(kind);
+    const otherActive = activeKind !== null && activeKind !== kind;
+    return (
+      <button
+        disabled={own !== undefined || otherActive}
+        title={otherActive ? `${activeKind} calibration in progress` : own}
+        onClick={() => onOpen(kind)}
+        data-testid={`calibration-open-${kind}`}
+      >
+        {activeKind === kind ? "Resume " : ""}
+        {label}…
+      </button>
+    );
+  };
+  // A reason that applies to ONE kind only is shown separately, so the shared
+  // line (`calibration-disabled`) keeps meaning "neither kind is available".
+  const perKind = reason === undefined ? kindReason("base_station") : undefined;
   return (
     <div className="panel" data-testid="calibration-panel">
       <div className="kv">
@@ -551,6 +567,11 @@ export function CalibrationPanel({ tracker, session, onOpen }: CalibrationPanelP
       {reason && (
         <div className="dim" style={{ fontSize: 12 }} data-testid="calibration-disabled">
           {reason}
+        </div>
+      )}
+      {perKind && (
+        <div className="dim" style={{ fontSize: 12 }} data-testid="calibration-kind-note">
+          {perKind}
         </div>
       )}
     </div>
