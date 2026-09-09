@@ -1,5 +1,6 @@
-/** ModeLauncher (phase-11 §4): four whole-card buttons — Teleop, Data
- * Collection, Online DAgger, Inference. A disabled card stays in the tab order
+/** ModeLauncher (phase-11 §4): five whole-card buttons — Teleop, Data
+ * Collection, Online DAgger, Inference and (phase-15, 16-gello §11) GELLO
+ * Manipulation. A disabled card stays in the tab order
  * (`aria-disabled`, never `disabled`) and shows its reason as visible text;
  * the keymap reason carries an inline Retry. Launching → 12 px spinner +
  * "Starting…" / "Planning safe path…". Cards stagger in on first mount only
@@ -16,6 +17,7 @@ export const MODE_ICONS: Readonly<Record<Mode, IconName>> = {
   collect: "record",
   dagger: "project", // a vector and its projection onto a reference line (15-online-dagger §8)
   inference: "play",
+  gello: "leader-arm", // the passive leader arm in outline (16-gello §11)
 };
 
 export interface ModeLauncherProps {
@@ -26,7 +28,7 @@ export interface ModeLauncherProps {
   launchingLabel?: string;
   onLaunch(mode: Mode): void;
   onRetryKeymap?(): void;
-  /** First-mount stagger (`--i` 2..5 after the hero and its actions). */
+  /** First-mount stagger (`--i` 2..6 after the hero and its actions). */
   reveal?: boolean;
 }
 

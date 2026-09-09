@@ -38,7 +38,10 @@ import { FrameSelector } from "./landing";
 import { ActionFilterFieldset, ReturnToStartRow } from "./recordingFields";
 import { Sheet } from "./Sheet";
 
-export type SheetMode = Exclude<Mode, "teleop">;
+/** The modes this sheet collects for: Data Collection and Inference (and the legacy
+ * in-process dagger path). Online DAgger has `OnlineDaggerSheet`, GELLO Manipulation
+ * `GelloSheet` (phase-15). */
+export type SheetMode = Exclude<Mode, "teleop" | "gello">;
 
 export interface LaunchSheetProps {
   mode: SheetMode;

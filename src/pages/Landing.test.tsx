@@ -35,6 +35,8 @@ import {
   makeDatasetLayout,
   makeDoraInfo,
   makeEpisode,
+  makeGelloInfo,
+  makeGelloPreview,
   makeOnlineDaggerSession,
   makeTelemetry,
   makeTracker,
@@ -48,6 +50,8 @@ import type {
   DatasetInfo,
   DatasetLayoutInfo,
   EpisodeInfo,
+  GelloInfo,
+  GelloPreviewResult,
   MicrophoneInfo,
   PolicyInfo,
   OnlineDaggerSessionInfo,
@@ -94,6 +98,10 @@ interface MockApi {
   layout?: DatasetLayoutInfo | 404;
   /** `GET /api/online_dagger/sessions` (phase-14). */
   onlineDaggerSessions?: OnlineDaggerSessionInfo[];
+  /** `GET /api/gello` (phase-15); default: the fake leader connected and calibrated. */
+  gello?: GelloInfo;
+  /** `POST /api/gello/preview` (phase-15); default: `clear`. */
+  gelloPreview?: GelloPreviewResult;
 }
 
 const posts: unknown[] = [];
@@ -175,6 +183,9 @@ function installFetch(api: MockApi = {}) {
           ? json({ detail: "Not Found" }, 404)
           : json(api.layout ?? makeDatasetLayout());
       if (url.includes("/api/dora")) return json(makeDoraInfo());
+      if (url.includes("/api/gello/preview")) return json(api.gelloPreview ?? makeGelloPreview());
+      if (url.includes("/api/gello/calibrate")) return json({ ok: true, detail: "offsets stored" });
+      if (url.includes("/api/gello")) return json(api.gello ?? makeGelloInfo());
       if (url.includes("/api/online_dagger/skill"))
         return new Response("# mavis-online-dagger-trainer\n\nInstall mavis-policy-node…", {
           status: 200,
@@ -251,7 +262,10 @@ async function mount(api: MockApi = {}) {
   const utils = render(
     <MemoryRouter>
       <Routes>
-        <Route path="/" element={<Landing hardwarePollMs={50} />} />
+        <Route
+          path="/"
+          element={<Landing hardwarePollMs={50} gelloInfoPollMs={30} gelloPreviewPollMs={30} />}
+        />
         <Route path="/:mode" element={<div data-testid="mode-page" />} />
       </Routes>
     </MemoryRouter>,
@@ -262,7 +276,7 @@ async function mount(api: MockApi = {}) {
 
 const enabled = (id: string) => screen.getByTestId(id).getAttribute("aria-disabled") === null;
 const reasonOf = (mode: string) => screen.queryByTestId(`launch-reason-${mode}`)?.textContent ?? "";
-const MODES = ["teleop", "collect", "dagger", "inference"] as const;
+const MODES = ["teleop", "collect", "dagger", "inference", "gello"] as const;
 
 /** Wait for the keymap + scenes to land (teleop becomes launchable on the Sim tab). */
 const ready = () => waitFor(() => expect(enabled("launch-teleop")).toBe(true));
@@ -379,7 +393,7 @@ describe("validateLaunch (matrix)", () => {
       expect(validateLaunch(m, { ...hwSel, hardwareReady: false })).toBe(REASON.hardwareTeleopOnly);
     }
     expect(REASON.hardwareTeleopOnly).toBe(
-      "Hardware sessions support teleop and data collection only for now",
+      "Hardware sessions support teleop, data collection and GELLO Manipulation only for now",
     );
     expect(
       validateLaunch("collect", {
@@ -620,7 +634,7 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-card-view").textContent).not.toContain("View ·");
   });
 
-  it("Hardware tab: five cells — black cameras + overlays and the MicTile, 'No arms detected' caption, placeholder, four modes disabled with the reason", async () => {
+  it("Hardware tab: five cells — black cameras + overlays and the MicTile, 'No arms detected' caption, placeholder, five modes disabled with the reason", async () => {
     await mount();
     await ready();
     await switchTab("hardware");
@@ -664,11 +678,12 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-card-placeholder").textContent).toContain("192.168.1.201");
     for (const m of MODES) {
       expect(screen.getByTestId(`launch-${m}`).getAttribute("aria-disabled")).toBe("true");
-      // Teleop and Data Collection report the arms; DAgger / Inference stay hardware-refused.
+      // Teleop, Data Collection and GELLO (16-gello D8) report the arms; DAgger /
+      // Inference stay hardware-refused.
       expect(reasonOf(m)).toContain(
-        m === "teleop" || m === "collect"
+        m === "teleop" || m === "collect" || m === "gello"
           ? "Requires real arms — none detected"
-          : "Hardware sessions support teleop and data collection only for now",
+          : "Hardware sessions support teleop, data collection and GELLO Manipulation only for now",
       );
     }
     // Disabled cards stay reachable by keyboard and ignore activation.
@@ -730,7 +745,9 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-session-reason-view")).toBeInTheDocument();
     for (const m of ["dagger", "inference"]) {
       expect(enabled(`launch-${m}`)).toBe(false);
-      expect(reasonOf(m)).toBe("Hardware sessions support teleop and data collection only for now");
+      expect(reasonOf(m)).toBe(
+        "Hardware sessions support teleop, data collection and GELLO Manipulation only for now",
+      );
     }
     expect(enabled("launch-collect")).toBe(false); // the same arm gates as teleop
     // The monitor reports both arms homed and clean → launchable, reason lines gone.
@@ -1443,6 +1460,89 @@ describe("Welcome page", () => {
     expect(posts).toHaveLength(0);
   });
 
+  it("GELLO Manipulation card (phase-15, 16-gello §11): fifth card → GelloSheet; preview clear → Start posts the exact SessionSpec with the kitchen scene, no task / dataset / policy", async () => {
+    await mount();
+    await ready();
+    // Five cards, GELLO last; enabled on the Sim tab like teleop (the leader / preview
+    // are judged in the sheet).
+    expect(
+      Array.from(screen.getByTestId("mode-launcher").children).map(
+        (el) => (el as HTMLElement).dataset["mode"],
+      ),
+    ).toEqual(["teleop", "collect", "dagger", "inference", "gello"]);
+    expect(enabled("launch-gello")).toBe(true);
+    const card = screen.getByTestId("launch-gello");
+    expect(card.textContent).toContain("GELLO Manipulation");
+    expect(card.textContent).toContain("Kitchen twin");
+    expect(card.querySelector("[data-icon='leader-arm']")).not.toBeNull();
+    fireEvent.click(card);
+    const panel = await screen.findByTestId("gello-panel");
+    expect(panel.dataset["view"]).toBe("leader");
+    expect(document.title).toBe("APOLLO MAVIS V2"); // still the Welcome page
+    // Leader view from GET /api/gello.
+    await waitFor(() =>
+      expect(screen.getByTestId("gello-leader-chip").textContent).toBe("LEADER connected"),
+    );
+    expect(screen.getByTestId("gello-joint-table").querySelectorAll("tbody tr")).toHaveLength(7);
+    // Start posture view: the preview PNG + verdict; Start becomes possible on `clear`.
+    fireEvent.click(screen.getByTestId("gello-step-posture"));
+    expect(panel.dataset["view"]).toBe("posture");
+    await waitFor(() =>
+      expect(screen.getByTestId("gello-verdict").dataset["status"]).toBe("clear"),
+    );
+    expect(screen.getByTestId("gello-preview-img").getAttribute("src")).toMatch(
+      /^data:image\/png;base64,/,
+    );
+    const confirm = screen.getByTestId("launch-confirm");
+    expect(confirm.textContent).toBe("Start GELLO Manipulation");
+    await waitFor(() => expect(confirm).toBeEnabled());
+    expect(screen.queryByTestId("launch-reason")).toBeNull();
+    fireEvent.click(confirm);
+    await screen.findByTestId("mode-page");
+    expect(posts[0]).toEqual({
+      mode: "gello",
+      kind: "sim",
+      arms: ["grip", "view"],
+      frames: { grip: "arm_base:grip", view: "arm_base:view" },
+      sim_scene: "mavis_v2_kitchen",
+      start_from: "keep_current",
+      gello: { viewpoint: "auto" },
+    });
+    for (const k of [
+      "task",
+      "dataset",
+      "policy",
+      "policy_source",
+      "online_dagger",
+      "action_filter",
+    ])
+      expect(posts[0]).not.toHaveProperty(k);
+  });
+
+  it("GELLO card: a colliding preview keeps Start disabled with the reason and lists the pair", async () => {
+    await mount({
+      gelloPreview: makeGelloPreview({
+        status: "collision",
+        detail: "GELLO posture collides",
+        pairs: [{ a: "fridge_body", b: "grip_link6", dist_m: 0.003 }],
+        image_png_b64: null,
+      }),
+    });
+    await ready();
+    fireEvent.click(screen.getByTestId("launch-gello"));
+    await screen.findByTestId("gello-panel");
+    fireEvent.click(screen.getByTestId("gello-step-posture"));
+    await waitFor(() =>
+      expect(screen.getByTestId("gello-verdict").dataset["status"]).toBe("collision"),
+    );
+    expect(screen.getByTestId("gello-verdict-chip").textContent).toBe("COLLISION");
+    expect(screen.getByTestId("gello-pairs").textContent).toBe("fridge_body ↔ grip_link6 at 3 mm");
+    expect(screen.queryByTestId("gello-preview-img")).toBeNull();
+    expect(screen.getByTestId("launch-confirm")).toBeDisabled();
+    expect(screen.getByTestId("launch-reason").textContent).toBe(REASON.gelloNotClear);
+    expect(posts).toHaveLength(0);
+  });
+
   it("dagger stays enabled without checkpoints (external trainer); inference still needs a promoted one", async () => {
     await mount();
     await ready();
@@ -1725,7 +1825,10 @@ describe("Welcome page", () => {
     render(
       <MemoryRouter>
         <Routes>
-          <Route path="/" element={<Landing hardwarePollMs={50} />} />
+          <Route
+            path="/"
+            element={<Landing hardwarePollMs={50} gelloInfoPollMs={30} gelloPreviewPollMs={30} />}
+          />
         </Routes>
       </MemoryRouter>,
     );

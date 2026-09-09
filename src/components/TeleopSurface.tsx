@@ -75,6 +75,11 @@ export function TeleopSurface({ enabled, mode, bindings, control, children }: Te
           Policy driving — Space = takeover (safety escape)
         </span>
       )}
+      {mode === "gello" && (
+        <span className="chip chip-blue" data-testid="gello-surface-chip">
+          GELLO drives the Manipulation Arm — ←/→ rail
+        </span>
+      )}
       {!enabled && <span className="chip chip-grey">read-only (observer)</span>}
       {children}
     </div>

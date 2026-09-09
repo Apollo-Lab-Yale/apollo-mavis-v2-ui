@@ -26,6 +26,11 @@ export interface ArmIndicatorProps {
   /** Keycap of whatever the served keymap binds to `switch_arm` ("Tab"); the hint
    * is omitted when nothing is bound, so it can never advertise a dead key. */
   shortcut?: string | null;
+  /** Why the rows cannot switch arms in this session (GELLO Manipulation, 16-gello
+   * D9: "GELLO drives the Manipulation Arm; the Perception Arm follows the viewpoint
+   * node"). Shown under the heading and as every row's `title`; the rows render
+   * inert whatever `onSelect` says. */
+  disabledReason?: string | null;
 }
 
 export function ArmIndicator({
@@ -34,8 +39,9 @@ export function ArmIndicator({
   onSelect,
   disabled = false,
   shortcut = null,
+  disabledReason = null,
 }: ArmIndicatorProps) {
-  const clickable = onSelect !== undefined && !disabled;
+  const clickable = onSelect !== undefined && !disabled && disabledReason === null;
   return (
     <div className="panel" data-testid="arm-indicator">
       <div className="dim">
@@ -52,6 +58,11 @@ export function ArmIndicator({
           </>
         )}
       </div>
+      {disabledReason !== null && (
+        <div className="dim text-small" data-testid="arm-indicator-reason">
+          {disabledReason}
+        </div>
+      )}
       {orderArms(arms, (a) => a.arm_id).map((a) => {
         const active = a.arm_id === activeArm;
         return (
@@ -62,8 +73,13 @@ export function ArmIndicator({
             data-testid={`arm-chip-${a.arm_id}`}
             aria-pressed={active}
             disabled={!clickable}
-            title={active ? `${armLabel(a.arm_id)} is active` : `Switch to ${armLabel(a.arm_id)}`}
-            onClick={() => onSelect?.(a.arm_id)}
+            title={
+              disabledReason ??
+              (active ? `${armLabel(a.arm_id)} is active` : `Switch to ${armLabel(a.arm_id)}`)
+            }
+            onClick={() => {
+              if (clickable) onSelect?.(a.arm_id);
+            }}
           >
             <span>
               <span

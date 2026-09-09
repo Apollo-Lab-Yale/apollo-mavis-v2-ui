@@ -9,7 +9,15 @@
  * "Online DAgger · <session_name>", `OnlineDaggerPanel` replaces `DaggerPanel`
  * (it owns the session's actor split), the trainer banner joins the main column
  * and `EpisodeControls` takes only the new-episode reason from the phase; a legacy
- * dagger session (no block) keeps the old panel. */
+ * dagger session (no block) keeps the old panel.
+ * Phase-15 (16-gello §11): a `gello` session is titled "GELLO Manipulation"; the
+ * ArmIndicator rows are inert with the reason (GELLO drives the Manipulation Arm, the
+ * Perception Arm follows the viewpoint node — no `switch_arm` is ever sent, the
+ * page-wide Tab shortcut is off), `GelloPanel` (state chip, Pause / Resume, leader
+ * rows, viewpoint row) joins the side column and `GelloBanner` the main column, the
+ * `ProfileActions` panel stays (R / Go to profile are planned motions that end
+ * paused) — no `JointPanel`, no `EpisodeControls`. §12.4: `EpisodeControls` renders
+ * ABOVE the clearance readout in collect / dagger so the buttons never depend on it. */
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
@@ -39,6 +47,7 @@ import { ConnectionBanner, Toasts } from "../components/ConnectionBanner";
 import { DaggerPanel } from "../components/DaggerPanel";
 import { EpisodeControls } from "../components/EpisodeControls";
 import { FaultBanner, sessionFaultDetail } from "../components/FaultBanner";
+import { GelloBanner, GelloPanel } from "../components/GelloPanel";
 import { Icon } from "../components/icons";
 import { InferencePanel } from "../components/InferencePanel";
 import { JointPanel } from "../components/JointPanel";
@@ -61,6 +70,10 @@ import { useDelayedUnmount } from "../lib/useDelayedUnmount";
 const STUDIO_HINT =
   "End the session first, then move the arms by hand from UFACTORY Studio — never " +
   "open Studio's live control while a session is running.";
+
+/** Why the ArmIndicator rows cannot switch arms in a GELLO session (16-gello D9). */
+export const GELLO_ARM_REASON =
+  "GELLO drives the Manipulation Arm; the Perception Arm follows the viewpoint node";
 
 /** True when a keystroke belongs to the element rather than to the page: a text
  * or number box, a textarea, a select, or a contenteditable region. The Cockpit's
@@ -157,7 +170,7 @@ export function Cockpit({ mode }: { mode: Mode }) {
       onAck((a) => {
         if (
           a.ok &&
-          mode === "teleop" &&
+          (mode === "teleop" || mode === "gello") &&
           (a.name === "save_profile" || a.name === "set_initial_condition")
         ) {
           getProfiles()
@@ -191,7 +204,7 @@ export function Cockpit({ mode }: { mode: Mode }) {
     }
   }, [workcell, setWorkcell]);
   useEffect(() => {
-    if (mode === "teleop") {
+    if (mode === "teleop" || mode === "gello") {
       getProfiles()
         .then(setProfiles)
         .catch(() => setProfiles([]));
@@ -226,7 +239,10 @@ export function Cockpit({ mode }: { mode: Mode }) {
    *
    * The switch itself stays server-authoritative: this only sends the action. */
   const switchCode = bindings ? codeForAction(bindings, "switch_arm") : null;
-  const canSwitchArm = !captureArmed && !controlDown && role !== "observer";
+  // GELLO (16-gello D9): the active arm is pinned to the Manipulation Arm and the
+  // runtime nacks `switch_arm` — the page never sends it.
+  const gello = mode === "gello";
+  const canSwitchArm = !captureArmed && !controlDown && role !== "observer" && !gello;
   useEffect(() => {
     if (!switchCode || !canSwitchArm) return;
     const onKey = (e: KeyboardEvent) => {
@@ -275,7 +291,9 @@ export function Cockpit({ mode }: { mode: Mode }) {
               ? "Wait for the episode to finish saving"
               : episode?.state === "returning"
                 ? "Wait for the return to start to finish"
-                : null;
+                : gello && telemetry?.gello?.state === "motion"
+                  ? "Wait for the current planned motion to finish"
+                  : null;
 
   return (
     <div className="cockpit" data-testid={`cockpit-${mode}`}>
@@ -292,6 +310,7 @@ export function Cockpit({ mode }: { mode: Mode }) {
           />
         )}
         {onlineDagger && telemetry?.dagger && <OnlineDaggerBanner dagger={telemetry.dagger} />}
+        {gello && telemetry?.gello && <GelloBanner gello={telemetry.gello} />}
         <BringupProgress />
         <TeleopSurface
           enabled={role !== "observer"}
@@ -337,11 +356,13 @@ export function Cockpit({ mode }: { mode: Mode }) {
             arms={telemetry.arms}
             activeArm={telemetry.active_arm}
             disabled={controlDown || role === "observer"}
-            shortcut={switchCode ? keycapLabel(switchCode) : null}
+            shortcut={switchCode && !gello ? keycapLabel(switchCode) : null}
+            // GELLO: the rows are inert with the reason — nothing is ever sent.
+            disabledReason={gello ? GELLO_ARM_REASON : null}
             // Explicit `arm_id`, not a cycle: a click must land on the arm that
             // was clicked whatever the session's arm order is. Re-selecting the
             // active arm is a no-op server-side (it must not drop a live clutch).
-            onSelect={(arm_id) => control.sendAction("switch_arm", { arm_id })}
+            onSelect={gello ? undefined : (arm_id) => control.sendAction("switch_arm", { arm_id })}
           />
         )}
         {frozenArms.length > 0 && (
@@ -354,7 +375,8 @@ export function Cockpit({ mode }: { mode: Mode }) {
             ))}
           </div>
         )}
-        {telemetry && <ClearanceReadout clearances={telemetry.clearances} />}
+        {/* 16-gello §12.4: the episode buttons sit ABOVE the clearance readout so
+            the (bounded, scrolling) readout can never push them out of view. */}
         {(mode === "collect" || mode === "dagger") && episode && (
           <EpisodeControls
             episode={episode}
@@ -365,6 +387,17 @@ export function Cockpit({ mode }: { mode: Mode }) {
             // runtime refuses episode_new — say so on the button instead of letting
             // the nack toast explain. The actor split lives in the panel below.
             newEpisodeReason={newRolloutReason(onlineDagger)}
+          />
+        )}
+        {telemetry && <ClearanceReadout clearances={telemetry.clearances} />}
+        {gello && telemetry?.gello && (
+          <GelloPanel
+            gello={telemetry.gello}
+            external={telemetry.external}
+            bindings={bindings}
+            disabled={controlDown}
+            readOnly={role === "observer"}
+            onAction={(n) => control.sendAction(n)}
           />
         )}
         {mode === "dagger" && telemetry?.dagger && onlineDagger && (
@@ -406,7 +439,7 @@ export function Cockpit({ mode }: { mode: Mode }) {
             }
           />
         )}
-        {mode === "teleop" && (
+        {(mode === "teleop" || gello) && (
           <ProfileActions
             profiles={profiles}
             kind={profileKind}

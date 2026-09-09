@@ -24,7 +24,8 @@ export type IconName =
   | "bookmark"
   | "trash"
   | "project"
-  | "copy";
+  | "copy"
+  | "leader-arm";
 
 const PATHS: Record<IconName, ReactNode> = {
   camera: (
@@ -144,6 +145,21 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <rect x="9" y="9" width="10.5" height="10.5" rx="2" />
       <path d="M6 15H5.5A1.5 1.5 0 0 1 4 13.5v-8A1.5 1.5 0 0 1 5.5 4h8A1.5 1.5 0 0 1 15 5.5V6" />
+    </>
+  ),
+  // GELLO Manipulation launcher (16-gello §11): the passive leader arm in outline —
+  // a base plate, two links folded at a joint, the wrist and an open two-finger
+  // gripper; the joints are hollow rings (nothing drives them).
+  "leader-arm": (
+    <>
+      <path d="M4 20h7" />
+      <path d="M7.5 20v-3" />
+      <circle cx="7.5" cy="15.5" r="1.5" />
+      <path d="M8.6 14.4L13 8.5" />
+      <circle cx="14" cy="7.3" r="1.5" />
+      <path d="M15.4 7.9L18.5 11" />
+      <path d="M17.2 12.3l2.6-2.6" />
+      <path d="M18.5 11l1.8 2.6M19.8 9.7l2.2 1" />
     </>
   ),
 };

@@ -10,7 +10,9 @@
  * frozen-arm hint for the arm it did not include; (phase-14) a dagger session
  * whose telemetry carries `dagger.online_dagger` renders the Online DAgger title,
  * panel, banner and actor split, and Take over / Hand back / Train now ride the
- * control WS (Train now with its ack toast).
+ * control WS (Train now with its ack toast); (phase-15) a gello session renders the
+ * GELLO title, inert arm rows, the GelloPanel (Pause → `gello_pause`), the leader-lost
+ * banner and the filtered keymap; the episode buttons sit above the clearance readout.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WebSocket as MockWebSocket } from "mock-socket";
@@ -26,6 +28,7 @@ import {
   makeArm,
   makeBringupRow,
   makeExternal,
+  makeGelloTelemetry,
   makeHardwareMonitor,
   makeHardwareSession,
   makeOnlineDagger,
@@ -649,6 +652,13 @@ describe("Cockpit integration smoke", () => {
     expect(screen.getByTestId("od-expert-frames").textContent).toBe("120 / 480 novice");
     expect(screen.queryByTestId("episode-actor-split")).toBeNull();
     expect(screen.getByTestId("episode-repo").textContent).toContain("online_dagger/pick_cube_v1");
+    // 16-gello §12.4: the episode buttons render ABOVE the (bounded) clearance readout.
+    expect(
+      screen
+        .getByTestId("episode-controls")
+        .compareDocumentPosition(screen.getByTestId("clearance-readout")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByTestId("online-dagger-banner")).toBeNull();
     // No episode open, policy driving: Take over is live (the runtime accepts it at
     // any time, like Space), Hand back names its no-op; Train now is live.
@@ -883,5 +893,91 @@ describe("Cockpit integration smoke", () => {
     // The next frame without it clears the banner.
     act(() => telemetry.push(makeTelemetry({ seq: 2, session: { state: "running" } })));
     await waitFor(() => expect(screen.queryByTestId("fault-banner")).toBeNull());
+  }, 15000);
+
+  it("GELLO session (phase-15): title, inert arm rows with the reason, GelloPanel Pause → gello_pause, no JointPanel / EpisodeControls, leader-lost banner, surface chip, filtered keymap", async () => {
+    useStore.getState().setSession({
+      session_id: "s-gello",
+      epoch: "epoch-1",
+      mode: "gello",
+      arms: ["grip", "view"],
+      streams: ["cam0", "cam1"],
+      state: "running",
+      kind: "sim",
+    });
+    render(
+      <MemoryRouter>
+        <Cockpit mode="gello" />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          clearances: [{ pair: ["grip_link6", "fridge_body"], dist_m: 0.041 }],
+          gello: makeGelloTelemetry(),
+          external: makeExternal(),
+        }),
+      ),
+    );
+    await screen.findByTestId("gello-panel");
+    expect(document.title).toBe("APOLLO MAVIS V2 · GELLO Manipulation");
+    expect(screen.getByTestId("cockpit-title").textContent).toBe("GELLO Manipulation");
+    expect(screen.getByTestId("cockpit-gello")).toBeInTheDocument();
+    // The arm rows are inert with the reason; a click sends nothing.
+    expect(screen.getByTestId("arm-indicator-reason").textContent).toBe(
+      "GELLO drives the Manipulation Arm; the Perception Arm follows the viewpoint node",
+    );
+    const viewRow = screen.getByTestId("arm-chip-view");
+    expect(viewRow).toBeDisabled();
+    expect(viewRow.getAttribute("title")).toBe(
+      "GELLO drives the Manipulation Arm; the Perception Arm follows the viewpoint node",
+    );
+    fireEvent.click(viewRow);
+    expect(screen.getByTestId("arm-indicator").textContent).not.toContain("press");
+    // The page-wide Tab shortcut is off in this mode too.
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "Tab", cancelable: true, bubbles: true }),
+      );
+    });
+    // No teleop / recording panels; the profile panel stays (R / Go to profile end paused).
+    expect(screen.queryByTestId("joint-panel")).toBeNull();
+    expect(screen.queryByTestId("episode-controls")).toBeNull();
+    expect(screen.queryByTestId("online-dagger-panel")).toBeNull();
+    expect(screen.getByTestId("profile-actions")).toBeInTheDocument();
+    expect(screen.getByTestId("gello-surface-chip").textContent).toBe(
+      "GELLO drives the Manipulation Arm — ←/→ rail",
+    );
+    // Keymap: rail + R only, the GELLO caption, no translate-frame caption.
+    expect(screen.getByTestId("gello-caption")).toBeInTheDocument();
+    expect(screen.queryByTestId("translate-frame-caption")).toBeNull();
+    expect(screen.queryByTestId("keyrow-Tab")).toBeNull();
+    expect(screen.getByTestId("keyrow-KeyR")).toBeInTheDocument();
+    // Clearance readout: bounded, 4 closest.
+    expect(screen.getByTestId("clearance-readout").textContent).toContain("Clearances (4 closest)");
+    expect(screen.getByTestId("clearance-readout").textContent).toContain("41 mm");
+    // Panel: TRACKING; Pause rides the control WS.
+    expect(screen.getByTestId("gello-state-chip").textContent).toBe("TRACKING");
+    fireEvent.click(screen.getByTestId("gello-pause"));
+    await waitFor(() => expect(control.actions.some((a) => a.name === "gello_pause")).toBe(true));
+    expect(control.actions.some((a) => a.name === "switch_arm")).toBe(false);
+    expect(screen.queryByTestId("gello-banner")).toBeNull();
+    // Leader lost → red banner in the main column, NO LEADER chip.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 2,
+          gello: makeGelloTelemetry({
+            state: "no_leader",
+            status: "stale",
+            state_detail: "sample 0.41 s old",
+          }),
+        }),
+      ),
+    );
+    const banner = await screen.findByTestId("gello-banner");
+    expect(banner.textContent).toContain("GELLO LEADER LOST");
+    expect(screen.getByTestId("gello-state-chip").textContent).toBe("NO LEADER");
   }, 15000);
 });

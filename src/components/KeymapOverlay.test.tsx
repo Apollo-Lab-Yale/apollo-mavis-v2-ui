@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { KEYMAP } from "../../tests/mocks/fixtures";
 import type { Mode } from "../lib/types";
-import { KeymapOverlay } from "./KeymapOverlay";
+import { GELLO_CAPTION, gelloVisible, KeymapOverlay } from "./KeymapOverlay";
 
 const mount = (mode: Mode, hasRail: boolean) =>
   render(
@@ -146,5 +146,48 @@ describe("KeymapOverlay", () => {
     );
     expect(screen.queryByTestId("keyrow-Tab")).toBeNull();
     expect(screen.getByTestId("keyrow-KeyM-ctrl").textContent).toBe("menu");
+  });
+
+  // Phase-15 (16-gello §11 / D9): the leader drives the Manipulation Arm's joints and
+  // gripper, so only the rail rows and R survive; Tab / Z / Space / the episode keys
+  // are nacked in this mode and must not be advertised; the caption replaces the
+  // translate-frame one.
+  it("gello: only the rail rows and R, the GELLO caption, no translate-frame caption", () => {
+    render(
+      <KeymapOverlay
+        entries={KEYMAP}
+        mode="gello"
+        activeArmHasRail
+        open
+        onToggle={() => undefined}
+        translateFrame="world"
+      />,
+    );
+    const rows = Array.from(document.querySelectorAll("[data-testid^='keyrow-']"))
+      .map((el) => (el as HTMLElement).dataset["testid"])
+      .filter((id) => id && !id.endsWith("-pad") && !id.endsWith("-ctrl"));
+    expect(rows).toEqual(["keyrow-ArrowLeft", "keyrow-ArrowRight", "keyrow-KeyR"]);
+    for (const code of ["KeyW", "KeyI", "KeyF", "KeyC", "Tab", "KeyZ", "Space", "KeyN", "Enter"])
+      expect(screen.queryByTestId(`keyrow-${code}`)).toBeNull();
+    expect(screen.getByTestId("keyrow-KeyR")).toHaveTextContent("return to the initial condition");
+    expect(screen.getByTestId("gello-caption").textContent).toBe(GELLO_CAPTION);
+    expect(GELLO_CAPTION).toBe(
+      "GELLO drives the Manipulation Arm's joints and gripper; ←/→ move its rail; the " +
+        "Perception Arm follows the viewpoint node.",
+    );
+    expect(screen.queryByTestId("translate-frame-caption")).toBeNull();
+    // The filter is keyed by group / action, so a re-bound keymap follows.
+    expect(KEYMAP.filter(gelloVisible).map((e) => e.action)).toEqual([
+      "rail_neg",
+      "rail_pos",
+      "reset_to_initial",
+    ]);
+  });
+
+  it("gello without a rail on the active arm keeps only R", () => {
+    mount("gello", false);
+    expect(screen.queryByTestId("keyrow-ArrowLeft")).toBeNull();
+    expect(screen.getByTestId("keyrow-KeyR")).toBeInTheDocument();
+    expect(screen.getByTestId("gello-caption")).toBeInTheDocument();
   });
 });

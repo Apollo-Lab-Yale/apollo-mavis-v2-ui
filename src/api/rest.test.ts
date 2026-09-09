@@ -1,11 +1,14 @@
 /** REST client (05-ui §4): `postArmMaintenance` URL / body / error mapping;
  * (phase-09c) the `dry_run` body key and the client deadline of `home_rail`;
  * (phase-09d) `getArmMaintenanceLast` — the asynchronous job's final result;
- * (phase-14) the dataset layout, `GET /api/dora` and the Online DAgger routes. */
+ * (phase-14) the dataset layout, `GET /api/dora` and the Online DAgger routes;
+ * (phase-15) the three session-less GELLO routes. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   makeDatasetLayout,
   makeDoraInfo,
+  makeGelloInfo,
+  makeGelloPreview,
   makeMaintenanceResult,
   makeOnlineDaggerSession,
 } from "../../tests/mocks/fixtures";
@@ -19,11 +22,15 @@ import {
   getDatasetLayout,
   getDatasets,
   getDora,
+  GELLO_POLL_TIMEOUT_MS,
+  getGello,
   getOnlineDaggerSessions,
   getOnlineDaggerSkill,
   HOME_RAIL_TIMEOUT_MS,
   ONLINE_DAGGER_SKILL_TGZ_PATH,
   postArmMaintenance,
+  postGelloCalibrate,
+  postGelloPreview,
 } from "./rest";
 
 describe("postArmMaintenance", () => {
@@ -295,5 +302,82 @@ describe("phase-14: dataset layout, dora, Online DAgger", () => {
     );
     await expect(getOnlineDaggerSkill()).rejects.toMatchObject({ name: "ApiError", status: 404 });
     expect(ONLINE_DAGGER_SKILL_TGZ_PATH).toBe("/api/online_dagger/skill.tgz");
+  });
+});
+
+describe("GELLO routes (phase-15, 16-gello §9.2)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("getGello GETs /api/gello; postGelloCalibrate / postGelloPreview POST their JSON bodies", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url === "/api/gello")
+          return new Response(JSON.stringify(makeGelloInfo()), { status: 200 });
+        if (url === "/api/gello/calibrate")
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              detail: "offsets stored",
+              joint_offsets_rad: [0, 0, 0, 0, 0, 0, 0],
+            }),
+            { status: 200 },
+          );
+        if (url === "/api/gello/preview")
+          return new Response(JSON.stringify(makeGelloPreview()), { status: 200 });
+        return new Response("{}", { status: 404 });
+      }),
+    );
+    const info = await getGello();
+    expect(info.scene_id).toBe("mavis_v2_kitchen");
+    expect(info.hardware_admitted).toBe(true);
+    const cal = await postGelloCalibrate({ op: "match_arm", kind: "sim" });
+    expect(cal.ok).toBe(true);
+    const preview = await postGelloPreview({
+      kind: "hardware",
+      scene: "mavis_v2_kitchen",
+      speed_scale: 0.5,
+    });
+    expect(preview.status).toBe("clear");
+    expect(calls.map((c) => c.url)).toEqual([
+      "/api/gello",
+      "/api/gello/calibrate",
+      "/api/gello/preview",
+    ]);
+    expect(calls[0]!.init?.method).toBeUndefined();
+    expect(calls[1]!.init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[1]!.init?.body))).toEqual({ op: "match_arm", kind: "sim" });
+    expect(calls[2]!.init?.method).toBe("POST");
+    // The two POLLS carry the 3 s deadline (2026-09-09 review: a hung request used to
+    // stop the sheet's poll chain for good); the one-shot calibrate op does not.
+    expect(GELLO_POLL_TIMEOUT_MS).toBe(3000);
+    expect(calls[0]!.init?.signal).toBeInstanceOf(AbortSignal);
+    expect(calls[2]!.init?.signal).toBeInstanceOf(AbortSignal);
+    expect(calls[1]!.init?.signal).toBeUndefined();
+    expect(JSON.parse(String(calls[2]!.init?.body))).toEqual({
+      kind: "hardware",
+      scene: "mavis_v2_kitchen",
+      speed_scale: 0.5,
+    });
+  });
+
+  it("a 409 on calibrate surfaces the runtime detail through ApiError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "GELLO leader not available (no_backend)" }), {
+            status: 409,
+          }),
+      ),
+    );
+    await expect(postGelloCalibrate({ op: "clear", kind: "hardware" })).rejects.toMatchObject({
+      name: "ApiError",
+      status: 409,
+      detail: "GELLO leader not available (no_backend)",
+    });
   });
 });

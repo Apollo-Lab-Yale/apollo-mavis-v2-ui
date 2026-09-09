@@ -5,7 +5,7 @@ import type { Mode } from "./lib/types";
 import { useStore } from "./store";
 import { Devices } from "./pages/Devices";
 import { Landing } from "./pages/Landing";
-import { Collect, Dagger, Inference, Teleop } from "./pages/modes";
+import { Collect, Dagger, Gello, Inference, Teleop } from "./pages/modes";
 
 /** Mode routes require an active session whose mode matches the route. */
 export function makeSessionLoader(mode: Mode) {
@@ -31,5 +31,6 @@ export const router = createHashRouter([
   { path: "/collect", element: <Collect />, loader: makeSessionLoader("collect") },
   { path: "/dagger", element: <Dagger />, loader: makeSessionLoader("dagger") },
   { path: "/inference", element: <Inference />, loader: makeSessionLoader("inference") },
+  { path: "/gello", element: <Gello />, loader: makeSessionLoader("gello") }, // 16-gello §11
   { path: "*", loader: () => redirect("/") },
 ]);

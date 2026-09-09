@@ -1972,15 +1972,16 @@ summary.summary::-webkit-details-marker {
   color: var(--fg-3);
 }
 
-/* Mode launcher cards */
+/* Mode launcher cards: five since phase-15 (GELLO Manipulation, 16-gello §11);
+   three columns under 1000 px. */
 .launcher-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--grid-gap);
 }
 @media (max-width: 1000px) {
   .launcher-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 .launcher-card {
@@ -3088,4 +3089,231 @@ summary.summary::-webkit-details-marker {
 }
 .od-hints .od-hint-off kbd {
   opacity: 0.55;
+}
+
+/* ---- Clearance readout (16-gello §12.4, 2026-09-09) ------------------------------
+   Bounded and compact: four one-line rows, the pair label ellipsised (full text in
+   its title), the chip never shrinks, and the panel scrolls past its own max-height
+   instead of pushing the episode buttons out of view. */
+.clearance-readout {
+  max-height: 9.5rem;
+  overflow-y: auto;
+}
+.clearance-row {
+  align-items: center;
+  min-width: 0;
+}
+.clearance-pair {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clearance-row .clearance-chip {
+  flex: none;
+}
+
+/* ---- GELLO Manipulation (phase-15, 16-gello §11) -------------------------------- */
+/* Sheet: three views behind the segmented header (Leader · Viewpoint · Start posture),
+   all mounted, one visible — the OnlineDaggerSheet shape. */
+.gello-sheet .sheet-header-extra {
+  padding: var(--space-3) var(--space-6) 0;
+}
+.gello-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.gello-view[hidden] {
+  display: none;
+}
+.gello-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.gello-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.gello-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+.gello-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.gello-fact dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+/* Joint tables (raw vs mapped; leader vs arm goal): mono, tabular, right-aligned numbers. */
+table.gello-joints {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+table.gello-joints th,
+table.gello-joints td {
+  padding: 2px var(--space-2);
+  text-align: right;
+  white-space: nowrap;
+}
+table.gello-joints th:first-child,
+table.gello-joints td:first-child {
+  text-align: left;
+}
+table.gello-joints thead th {
+  color: var(--fg-3);
+  font-weight: 500;
+}
+table.gello-joints tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+.gello-calibrate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.gello-calibrate .od-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.gello-result {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+/* Preview: the PNG at the sheet's width, the verdict line under it. */
+.gello-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.gello-preview-img {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-1);
+  border: 1px solid var(--border);
+  background: #000;
+}
+.gello-preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-1);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--fg-3);
+}
+.gello-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.gello-verdict .chip {
+  flex: none;
+}
+.gello-pairs {
+  margin: 0;
+  padding-left: 1.2em;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+/* Cockpit panel */
+.gello-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.gello-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.gello-rows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--space-3);
+  font-size: var(--text-caption);
+}
+.gello-rows dt {
+  color: var(--fg-3);
+}
+.gello-rows dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+/* The viewpoint source paused by the three-strike NaN guard (2026-09-09 review): the
+   Perception Arm is holding while `attached` stays true — amber, with the runtime's
+   detail, until Resume lifts it. */
+.gello-rows dd.gello-viewpoint-paused {
+  color: var(--warn);
+}
+/* Per-joint Δ bars while OUT OF SYNC: label, a thin track with the fill proportional
+   to |Δ| (saturating at `LAG_BAR_FULL_RAD`), the signed value. Not animated — every
+   tick repaints the width directly. */
+.gello-lag {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gello-lag-row {
+  display: grid;
+  grid-template-columns: 2.2em 1fr 5.5em;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+.gello-lag-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.gello-lag-fill {
+  height: 100%;
+  background: var(--warn);
+}
+.gello-lag-value {
+  text-align: right;
+}
+.gello-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.gello-actions .btn-reason {
+  margin: 0;
+}
+@media (prefers-contrast: more) {
+  .gello-preview-img,
+  .gello-preview-empty {
+    border-color: var(--border-strong);
+  }
 }

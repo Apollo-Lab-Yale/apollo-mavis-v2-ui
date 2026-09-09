@@ -17,7 +17,9 @@ export type Name =
   | "takeover"
   | "handback"
   | "train_now"
-  | "goto_profile";
+  | "goto_profile"
+  | "gello_pause"
+  | "gello_resume";
 export type Ok = boolean;
 export type T = "ack";
 export type Name1 =
@@ -35,7 +37,9 @@ export type Name1 =
   | "takeover"
   | "handback"
   | "train_now"
-  | "goto_profile";
+  | "goto_profile"
+  | "gello_pause"
+  | "gello_resume";
 export type T1 = "action";
 export type DryRun = boolean;
 export type Op = "clear_errors" | "apply_backstops" | "recover" | "home_rail";
@@ -133,7 +137,7 @@ export type Pairs = [string, string][];
 /**
  * Origin of the command stream a safety event refers to.
  */
-export type CommandSource = "teleop" | "joint_jog" | "policy" | "takeover" | "planner";
+export type CommandSource = "teleop" | "joint_jog" | "policy" | "takeover" | "planner" | "gello";
 export type T2 = "collision_event";
 export type Ts = number;
 export type At = string | null;
@@ -200,6 +204,56 @@ export type Open = boolean;
 export type RecordedAt = string | null;
 export type SessionId = string | null;
 export type Task1 = string | null;
+export type Kind3 = "hardware" | "sim";
+export type Op3 = "match_arm" | "gripper_open" | "gripper_closed" | "clear";
+export type Detail8 = string;
+export type GripperClosedRad = number | null;
+export type GripperOpenRad = number | null;
+export type JointOffsetsRad = number[] | null;
+export type Ok2 = boolean;
+export type AgeS1 = number | null;
+export type Backend = "dynamixel" | "fake" | "none";
+export type Baud = number | null;
+export type Calibrated = boolean;
+export type CalibrationPath = string;
+export type Detail9 = string;
+export type GripperClosedRad1 = number | null;
+export type GripperFrac = number | null;
+export type GripperOpenRad1 = number | null;
+export type HardwareAdmitted = boolean;
+export type JointOffsetsRad1 = number[] | null;
+export type JointSigns = number[];
+export type Port = string;
+export type Q1 = number[] | null;
+export type QRaw = number[] | null;
+export type RateHz = number;
+export type SceneId1 = string;
+export type SceneLabel = string;
+export type Seq1 = number;
+export type Status2 = "no_backend" | "starting" | "connected" | "stale" | "error";
+export type ViewPostureRad = number[];
+export type ViewRailM = number;
+export type A = string;
+export type B = string;
+export type DistM = number;
+export type Kind4 = "hardware" | "sim";
+export type Scene = string | null;
+export type SpeedScale = number | null;
+export type Camera = string;
+export type Detail10 = string;
+export type ImagePngB64 = string | null;
+export type LeaderQ = number[] | null;
+export type Ok3 = boolean;
+export type Pairs1 = GelloPairInfo[];
+export type Status3 =
+  | "clear"
+  | "collision"
+  | "joint_limit"
+  | "no_leader"
+  | "not_calibrated"
+  | "no_workcell"
+  | "scene_error";
+export type Viewpoint = "auto" | "external" | "hold";
 export type ProfileId = string;
 export type Epoch = string;
 export type Role = "controller" | "observer";
@@ -212,22 +266,22 @@ export type Action = string;
 export type Code = string;
 export type Gamepad = string | null;
 export type Group = "translate" | "rotate" | "gripper" | "rail" | "session" | "episode" | "tracker";
-export type Kind3 = "held" | "discrete";
+export type Kind5 = "held" | "discrete";
 export type Label1 = string;
 export type RequiresRail = boolean;
 export type Held = string[];
-export type Seq1 = number;
+export type Seq2 = number;
 export type T4 = "keys";
 export type Ts1 = number;
 export type Channels = number;
-export type Detail8 = string;
-export type Kind4 = "pulse" | "fake" | "none";
+export type Detail11 = string;
+export type Kind6 = "pulse" | "fake" | "none";
 export type Label2 = string;
 export type Live1 = boolean;
 export type MicId = string;
 export type SampleRate = number;
 export type Source1 = string | null;
-export type Status2 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
+export type Status4 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
 export type RolloutsDir = string;
 export type SessionDir = string;
 export type SessionName = string;
@@ -251,7 +305,7 @@ export type ActsTotal = number;
 export type Capabilities = string[];
 export type ChunkDtS = number | null;
 export type ChunkLen = number;
-export type Detail9 = string;
+export type Detail12 = string;
 export type Device = string;
 export type ExtrinsicsSha = string | null;
 export type Health = "ok" | "degraded" | "error";
@@ -261,7 +315,7 @@ export type MavisSchema1 = number;
 export type NodeVersion = string;
 export type PolicyId1 = string;
 export type PolicyVersion1 = number;
-export type RateHz = number;
+export type RateHz1 = number;
 export type ActionFrame1 = string;
 export type ActionNames = string[];
 export type ActionSpace1 = "delta_ee" | "abs_ee" | "joint";
@@ -278,19 +332,19 @@ export type Notes = string;
 export type ProfileId1 = string;
 export type WorkcellKind = ("hardware" | "sim") | null;
 export type Arms2 = string[];
-export type Detail10 = string;
-export type Ok2 = boolean;
+export type Detail13 = string;
+export type Ok4 = boolean;
 export type ProfileId2 = string | null;
-export type Status3 = "done" | "skipped" | "failed" | "cancelled" | "timeout" | "refused";
+export type Status5 = "done" | "skipped" | "failed" | "cancelled" | "timeout" | "refused";
 export type Name3 = string;
 export type Notes1 = string;
 export type SetInitial = boolean;
 export type Cameras1 = string[];
-export type Kind5 = "sim" | "twin";
+export type Kind7 = "sim" | "twin";
 export type Label3 = string;
 export type NumArms = number;
 export type RailFlags = boolean[];
-export type SceneId1 = string;
+export type SceneId2 = string;
 export type ActionNames1 = string[];
 export type ActionSpace2 = string | null;
 export type ArmIds1 = string[];
@@ -311,7 +365,8 @@ export type Resolution1 = [number, number];
 export type DatasetRoot = string | null;
 export type DeprecatedKeys = string[];
 export type Epoch1 = string;
-export type Kind6 = ("hardware" | "sim") | null;
+export type ExternalArms = string[];
+export type Kind8 = ("hardware" | "sim") | null;
 export type MavisSchema2 = number;
 export type PolicySource = ("checkpoint" | "external") | null;
 export type RunId = string | null;
@@ -326,13 +381,13 @@ export type Arms3 = string[];
 export type Dataset = string | null;
 export type DatasetResume = boolean;
 export type DigitalTwinScene = string | null;
-export type Kind7 = "hardware" | "sim";
-export type Mode2 = "teleop" | "collect" | "dagger" | "inference";
+export type Kind9 = "hardware" | "sim";
+export type Mode2 = "teleop" | "collect" | "dagger" | "inference" | "gello";
 export type Policy = string | null;
 export type PolicySource1 = "checkpoint" | "external";
 export type ReturnToStart = boolean;
 export type SimScene = string | null;
-export type SpeedScale = number;
+export type SpeedScale1 = number;
 export type StartFrom = string;
 export type Task3 = string | null;
 export type State3 = string;
@@ -340,11 +395,11 @@ export type StateNames1 = string[];
 export type Arms4 = string[];
 export type Epoch2 = string;
 export type FaultDetail = string;
-export type Kind8 = "hardware" | "sim";
-export type Mode3 = "teleop" | "collect" | "dagger" | "inference";
+export type Kind10 = "hardware" | "sim";
+export type Mode3 = "teleop" | "collect" | "dagger" | "inference" | "gello";
 export type PolicySource2 = "checkpoint" | "external";
 export type SessionId3 = string;
-export type SpeedScale1 = number;
+export type SpeedScale2 = number;
 export type State4 = string;
 export type Streams = string[];
 export type ProfileId3 = string | null;
@@ -353,7 +408,7 @@ export type GripperOpenFrac1 = number;
  * @minItems 7
  * @maxItems 7
  */
-export type Q1 = [number, number, number, number, number, number, number];
+export type Q2 = [number, number, number, number, number, number, number];
 export type RailPosM1 = number | null;
 export type CreatedAt2 = string;
 export type IsInitialCondition1 = boolean;
@@ -380,13 +435,13 @@ export type ErrorCode2 = number;
 export type FaultDetail1 = string;
 export type Goto = ("planning" | "executing" | "failed") | null;
 export type GripperOpenFrac2 = number;
-export type Q2 = number[];
+export type Q3 = number[];
 export type RailPosM2 = number | null;
 export type Recovering = boolean;
 export type Stale = boolean;
 export type WarnCode1 = number;
 export type Arms6 = ArmTelemetry[];
-export type DistM = number;
+export type DistM1 = number;
 /**
  * @minItems 2
  * @maxItems 2
@@ -395,7 +450,7 @@ export type Pair = [string, string];
 export type Clearances = ClearanceItem[];
 export type Blocked = boolean;
 export type MinClearanceM2 = number;
-export type Pairs1 = [string, string][];
+export type Pairs2 = [string, string][];
 export type Severity = "ok" | "warn" | "blocked";
 export type Ts2 = number;
 export type Violations = CollisionEvent[];
@@ -405,7 +460,7 @@ export type EngagedArm = string | null;
 export type EpisodesLabeled = number;
 export type FrozenArms = string[];
 export type NewLabelFrames = number;
-export type Detail11 = string;
+export type Detail14 = string;
 export type ExpertFramesSession = number;
 export type NoviceFramesSession = number;
 export type Phase1 = "waiting_trainer" | "rollout" | "training" | "error";
@@ -413,7 +468,7 @@ export type PolicyVersionActing = number | null;
 export type RolloutsSaved = number;
 export type SessionDir1 = string;
 export type SessionName3 = string;
-export type Detail12 = string;
+export type Detail15 = string;
 export type MavisSchema3 = number;
 export type NodeVersion1 = string;
 export type PolicyVersion2 = number;
@@ -435,13 +490,13 @@ export type LastCheckpointVersion = number | null;
 export type NewLabelFrames1 = number;
 export type State6 = "starting" | "idle" | "training" | "dead";
 export type StepsTotal = number;
-export type Detail13 = string;
+export type Detail16 = string;
 export type Done = number;
 export type Format2 = string;
 export type Phase2 = "scanning" | "videos" | "data" | "meta" | "validating" | "done" | "failed";
 export type RepoId1 = string;
 export type Total = number;
-export type Detail14 = string;
+export type Detail17 = string;
 export type DurationS2 = number;
 export type Frames3 = number;
 export type FramesSkipped = number;
@@ -456,7 +511,7 @@ export type ActionsLate = number;
 export type Capabilities1 = string[];
 export type DataflowId1 = string | null;
 export type DataflowRestarts1 = number;
-export type Detail15 = string;
+export type Detail18 = string;
 export type DroppedInputs = number;
 export type Enabled2 = boolean;
 export type IdleReader = "off" | "running" | "paused" | "stale";
@@ -469,61 +524,86 @@ export type ReattachCount1 = number;
 export type SpecAgeS = number | null;
 export type State8 = "disabled" | "unavailable" | "attached" | "detached" | "closed";
 export type VersionChangesMidEpisode = number;
+export type AgeS2 = number | null;
+export type Backend1 = "dynamixel" | "fake" | "none";
+export type Baud1 = number | null;
+export type Calibrated1 = boolean;
+export type Detail19 = string;
+export type EngagedArm1 = string | null;
+export type GripperFrac1 = number | null;
+export type JointOffsetsRad2 = number[] | null;
+export type JointSigns1 = number[];
+export type LagRad = number[] | null;
+export type MaxLagRad = number | null;
+export type PausedLatched = boolean | null;
+export type Port1 = string;
+export type Q4 = number[] | null;
+export type QRaw1 = number[] | null;
+export type RateHz2 = number;
+export type Seq3 = number;
+export type State9 = ("no_leader" | "out_of_sync" | "tracking" | "paused" | "motion") | null;
+export type StateDetail = string;
+export type Status6 = "no_backend" | "starting" | "connected" | "stale" | "error";
+export type Attached = boolean;
+export type Detail20 = string;
+export type Mode4 = "auto" | "external" | "hold";
+export type Paused = boolean;
+export type PolicyId3 = string | null;
 export type Arms7 = ArmMonitorTelemetry[];
 export type Enabled3 = boolean;
 export type ArmId6 = string;
 export type CameraId1 = string;
-export type Detail16 = string;
+export type Detail21 = string;
 export type Fps3 = number;
 export type Joint1OffsetRad = number;
 export type MaskFraction = number;
 export type RailFallbackM = number | null;
-export type Status4 = "off" | "waiting" | "live" | "stale" | "error";
+export type Status7 = "off" | "waiting" | "live" | "stale" | "error";
 export type StreamId = string;
 export type Overlays = TwinOverlayTelemetry[];
-export type Paused = boolean;
-export type EngagedArm1 = string | null;
+export type Paused1 = boolean;
+export type EngagedArm2 = string | null;
 export type PolicyStale1 = boolean;
 export type PolicyVersion5 = string | null;
-export type AgeS1 = number | null;
+export type AgeS3 = number | null;
 export type Clipping = boolean;
-export type Detail17 = string;
+export type Detail22 = string;
 export type EnvMax = number[];
 export type EnvMin = number[];
 export type MicId1 = string;
 export type Overruns = number;
 export type PeakDbfs = number | null;
-export type RateHz1 = number;
+export type RateHz3 = number;
 export type RmsDbfs = number | null;
 export type SampleRate1 = number;
-export type Seq2 = number;
-export type Status5 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
-export type Seq3 = number;
+export type Seq4 = number;
+export type Status8 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
+export type Seq5 = number;
 export type Bringup = ArmBringupTelemetry[] | null;
 export type ArmId7 = string;
-export type Detail18 = string;
-export type Status6 = "pending" | "ok" | "warning" | "error";
+export type Detail23 = string;
+export type Status9 = "pending" | "ok" | "warning" | "error";
 export type Step = string;
 export type FaultDetail2 = string;
 export type PlanStatus = string | null;
 export type StartFromProgress = number | null;
-export type State9 = string;
+export type State10 = string;
 export type TrainerAlive1 = boolean | null;
 export type TranslateFrame = ("camera" | "world" | "base") | null;
 export type T5 = "telemetry";
-export type AgeS2 = number | null;
-export type Backend = "libsurvive" | "fake" | "none";
+export type AgeS4 = number | null;
+export type Backend2 = "libsurvive" | "fake" | "none";
 export type AppliedYawDeg = number | null;
 export type BackupPath = string | null;
 export type BaseStationInstalledAt = number | null;
 export type ControllerStill = boolean | null;
-export type Detail19 = string;
+export type Detail24 = string;
 export type ElapsedS = number | null;
 export type FitChecks = string[];
 export type FitResidualDeg = number | null;
 export type FittedYawDeg = number | null;
 export type InstalledPath = string | null;
-export type Kind9 = "none" | "base_station" | "yaw";
+export type Kind11 = "none" | "base_station" | "yaw";
 export type Channel = number | null;
 export type Index2 = number;
 export type Reference = boolean;
@@ -570,25 +650,25 @@ export type TrackpadY = number;
 export type Trigger = number;
 export type TriggerPressed = boolean;
 export type ControllerAgeS = number | null;
-export type Detail20 = string;
+export type Detail25 = string;
 export type DeviceAction = string | null;
 export type DeviceHeld = string[];
 export type DonglePresent = boolean | null;
-export type EngagedArm2 = string | null;
+export type EngagedArm3 = string | null;
 export type ObjectName = string;
 export type Objects = string[];
-export type RateHz2 = number;
-export type Seq4 = number;
+export type RateHz4 = number;
+export type Seq6 = number;
 export type FilterBeta = number;
 export type FilterEnabled = boolean;
 export type FilterMinCutoffHz = number;
 export type FollowRotation = boolean;
 export type PosScale = number;
 export type YawDeg = number;
-export type Status7 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
+export type Status10 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
 export type Ts3 = number;
-export type Kind10 = "base_station" | "yaw";
-export type Op3 = "start" | "capture" | "validate" | "install" | "apply" | "abort";
+export type Kind12 = "base_station" | "yaw";
+export type Op4 = "start" | "capture" | "validate" | "install" | "apply" | "abort";
 export type Point = ("start" | "left" | "forward" | "right" | "back" | "up" | "down") | null;
 export type FilterBeta1 = number | null;
 export type FilterEnabled1 = boolean | null;
@@ -600,7 +680,7 @@ export type Arms8 = ArmStatusInfo[];
 export type AvailableKinds = ("hardware" | "sim")[];
 export type Cameras3 = CameraInfo[];
 export type HardwareReady = boolean;
-export type Kind11 = "hardware" | "sim";
+export type Kind13 = "hardware" | "sim";
 export type PoliciesAvailable = boolean;
 
 export interface ApolloProtocol {
@@ -618,6 +698,13 @@ export interface ApolloProtocol {
   DatasetNamespaceInfo?: DatasetNamespaceInfo;
   DoraInfo?: DoraInfo;
   EpisodeInfo?: EpisodeInfo;
+  GelloCalibrateRequest?: GelloCalibrateRequest;
+  GelloCalibrateResult?: GelloCalibrateResult;
+  GelloInfo?: GelloInfo;
+  GelloPairInfo?: GelloPairInfo;
+  GelloPreviewRequest?: GelloPreviewRequest;
+  GelloPreviewResult?: GelloPreviewResult;
+  GelloSessionConfig?: GelloSessionConfig;
   GotoProfileArgs?: GotoProfileArgs;
   HelloMsg?: HelloMsg;
   JointTargetArgs?: JointTargetArgs;
@@ -1033,6 +1120,122 @@ export interface EpisodeInfo {
   task?: Task1;
 }
 /**
+ * ``POST /api/gello/calibrate`` body (16-gello D10 / §4). Session-less; 409 while a
+ * session runs or when the leader has no fresh sample. ``kind`` picks where the
+ * Manipulation Arm's current joints come from for ``match_arm`` (the hardware monitor
+ * sample, or the parked sim posture).
+ */
+export interface GelloCalibrateRequest {
+  kind: Kind3;
+  op: Op3;
+}
+/**
+ * ``POST /api/gello/calibrate`` response: the calibration now in force (all None after
+ * ``clear``).
+ */
+export interface GelloCalibrateResult {
+  detail?: Detail8;
+  gripper_closed_rad?: GripperClosedRad;
+  gripper_open_rad?: GripperOpenRad;
+  joint_offsets_rad?: JointOffsetsRad;
+  ok: Ok2;
+}
+/**
+ * ``GET /api/gello`` (16-gello §8.4 / §9.2): the device half plus what the GELLO launch
+ * sheet needs before a session exists — the twin scene the GELLO card launches
+ * (``scene_id`` = ``gello.scene_id``, the hidden ``mavis_v2_kitchen``; ``scene_label`` its
+ * title), the Perception Arm's GELLO hold posture (``view_posture_rad`` J1-J7 rad +
+ * ``view_rail_m``), where the calibration file lives and whether the hardware tab may
+ * launch gello (16-gello D8: ``hardware_admitted`` is True on this runtime; the flag lets
+ * the UI follow a later operator decision without a code change).
+ *
+ * ``gripper_open_rad`` / ``gripper_closed_rad`` echo the two gripper-endpoint calibration
+ * ops (16-gello §4 "the result of every op is echoed in ``GET /api/gello``"); None until
+ * calibrated.
+ */
+export interface GelloInfo {
+  age_s?: AgeS1;
+  backend: Backend;
+  baud?: Baud;
+  calibrated?: Calibrated;
+  calibration_path: CalibrationPath;
+  detail?: Detail9;
+  gripper_closed_rad?: GripperClosedRad1;
+  gripper_frac?: GripperFrac;
+  gripper_open_rad?: GripperOpenRad1;
+  hardware_admitted: HardwareAdmitted;
+  joint_offsets_rad?: JointOffsetsRad1;
+  joint_signs: JointSigns;
+  port?: Port;
+  q?: Q1;
+  q_raw?: QRaw;
+  rate_hz?: RateHz;
+  scene_id: SceneId1;
+  scene_label: SceneLabel;
+  seq?: Seq1;
+  status: Status2;
+  view_posture_rad: ViewPostureRad;
+  view_rail_m: ViewRailM;
+}
+/**
+ * One violating geometry pair of a GELLO preview (``GelloPreviewResult.pairs``).
+ */
+export interface GelloPairInfo {
+  a: A;
+  b: B;
+  dist_m: DistM;
+}
+/**
+ * ``POST /api/gello/preview`` body (16-gello §5.4). ``scene`` None = the runtime's
+ * ``gello.scene_id``; ``speed_scale`` None = the kind's default (it only annotates the
+ * check — the preview never moves anything).
+ */
+export interface GelloPreviewRequest {
+  kind: Kind4;
+  scene?: Scene;
+  speed_scale?: SpeedScale;
+}
+/**
+ * ``POST /api/gello/preview`` response (16-gello §5.4): the launch check of §5.1 run
+ * session-less on a cached kitchen twin, plus a PNG of the virtual cell rendered from
+ * ``camera`` with the colliding bodies tinted red. Never a 409 for a bad posture — the
+ * ``status`` says. ``ok`` is True iff ``status == "clear"`` (the sheet enables Start on it;
+ * the invariant is validated so the two can never disagree). ``q_goal`` is the full joint
+ * goal per arm (``{grip: [8], view: [8]}``, rail slot last) the launch would plan to;
+ * ``leader_q`` the unwrapped leader joints (None without a leader).
+ */
+export interface GelloPreviewResult {
+  camera?: Camera;
+  detail?: Detail10;
+  image_png_b64?: ImagePngB64;
+  leader_q?: LeaderQ;
+  ok: Ok3;
+  pairs?: Pairs1;
+  q_goal?: QGoal;
+  status: Status3;
+}
+export interface QGoal {
+  [k: string]: number[];
+}
+/**
+ * GELLO session parameters (16-gello §8.1 / D1; phase-15, 2026-09-09).
+ *
+ * ``SessionSpec.gello`` — non-null iff ``mode == "gello"``. The block carries the ONE
+ * choice the operator makes for the Perception Arm: ``viewpoint`` says whether an
+ * external dora node may drive it (``auto`` = attach whenever a compatible
+ * ``policy_spec`` is fresh, hold otherwise — the default; ``external`` = the node must
+ * be attached at launch, 409 otherwise; ``hold`` = ignore the bus and hold the GELLO
+ * hold posture). Everything about the leader itself (port, baud, signs, offsets,
+ * tolerances) is runtime config (``RuntimeConfig.gello``, 16-gello §9.1), not a
+ * per-session field, and GELLO records nothing in v1.
+ *
+ * ``extra="forbid"`` like ``OnlineDaggerConfig``: an unknown key is a 422 at POST, never
+ * silently dropped.
+ */
+export interface GelloSessionConfig {
+  viewpoint?: Viewpoint;
+}
+/**
  * Args for ``name == "goto_profile"`` (2026-09-08).
  *
  * Move the session's arms to the SAVED profile ``profile_id`` — operator-
@@ -1075,7 +1278,7 @@ export interface KeymapEntry {
   code: Code;
   gamepad?: Gamepad;
   group: Group;
-  kind: Kind3;
+  kind: Kind5;
   label: Label1;
   requires_rail?: RequiresRail;
 }
@@ -1084,7 +1287,7 @@ export interface KeymapEntry {
  */
 export interface KeysMsg {
   held: Held;
-  seq: Seq1;
+  seq: Seq2;
   t?: T4;
   ts: Ts1;
 }
@@ -1093,14 +1296,14 @@ export interface KeysMsg {
  */
 export interface MicrophoneInfo {
   channels?: Channels;
-  detail?: Detail8;
-  kind: Kind4;
+  detail?: Detail11;
+  kind: Kind6;
   label: Label2;
   live: Live1;
   mic_id: MicId;
   sample_rate: SampleRate;
   source: Source1;
-  status: Status2;
+  status: Status4;
 }
 /**
  * ``SessionAnnounce.online_dagger`` (15-online-dagger §6): the paths the trainer node
@@ -1171,7 +1374,7 @@ export interface PolicySpecAnnounce {
   capabilities?: Capabilities;
   chunk_dt_s?: ChunkDtS;
   chunk_len?: ChunkLen;
-  detail?: Detail9;
+  detail?: Detail12;
   device?: Device;
   extrinsics_sha?: ExtrinsicsSha;
   health?: Health;
@@ -1181,7 +1384,7 @@ export interface PolicySpecAnnounce {
   node_version: NodeVersion;
   policy_id: PolicyId1;
   policy_version: PolicyVersion1;
-  rate_hz: RateHz;
+  rate_hz: RateHz1;
   spec: PolicySpecModel;
   supports_reload?: SupportsReload;
   uptime_s?: UptimeS;
@@ -1230,10 +1433,10 @@ export interface ProfileInfo {
  */
 export interface ReturnHomeResult {
   arms?: Arms2;
-  detail?: Detail10;
-  ok: Ok2;
+  detail?: Detail13;
+  ok: Ok4;
   profile_id?: ProfileId2;
-  status: Status3;
+  status: Status5;
 }
 /**
  * Args for ``name == "save_profile"``.
@@ -1256,11 +1459,11 @@ export interface SaveProfileArgs {
  */
 export interface SceneInfo {
   cameras: Cameras1;
-  kind: Kind5;
+  kind: Kind7;
   label: Label3;
   num_arms: NumArms;
   rail_flags: RailFlags;
-  scene_id: SceneId1;
+  scene_id: SceneId2;
 }
 /**
  * The ``session`` stream payload (14-dora §4.2): the contract message a late
@@ -1275,9 +1478,10 @@ export interface SessionAnnounce {
   dataset_root?: DatasetRoot;
   deprecated_keys?: DeprecatedKeys;
   epoch: Epoch1;
+  external_arms?: ExternalArms;
   frames?: Frames1;
   has_rail?: HasRail1;
-  kind?: Kind6;
+  kind?: Kind8;
   mavis_schema?: MavisSchema2;
   online_dagger?: OnlineDaggerAnnounce | null;
   policy_source?: PolicySource;
@@ -1320,14 +1524,15 @@ export interface SessionSpec {
   dataset_resume?: DatasetResume;
   digital_twin_scene?: DigitalTwinScene;
   frames: Frames2;
-  kind: Kind7;
+  gello?: GelloSessionConfig | null;
+  kind: Kind9;
   mode: Mode2;
   online_dagger?: OnlineDaggerConfig | null;
   policy?: Policy;
   policy_source?: PolicySource1;
   return_to_start?: ReturnToStart;
   sim_scene?: SimScene;
-  speed_scale?: SpeedScale;
+  speed_scale?: SpeedScale1;
   start_from?: StartFrom;
   task?: Task3;
 }
@@ -1359,12 +1564,13 @@ export interface SessionInfo {
   arms: Arms4;
   epoch: Epoch2;
   fault_detail?: FaultDetail;
-  kind?: Kind8;
+  gello?: GelloSessionConfig | null;
+  kind?: Kind10;
   mode: Mode3;
   online_dagger?: OnlineDaggerConfig | null;
   policy_source?: PolicySource2;
   session_id: SessionId3;
-  speed_scale?: SpeedScale1;
+  speed_scale?: SpeedScale2;
   state: State4;
   streams: Streams;
 }
@@ -1395,7 +1601,7 @@ export interface Arms5 {
  */
 export interface ArmPosture {
   gripper_open_frac?: GripperOpenFrac1;
-  q: Q1;
+  q: Q2;
   rail_pos_m?: RailPosM1;
 }
 /**
@@ -1429,10 +1635,11 @@ export interface TelemetryMsg {
   episode: EpisodeStatus | null;
   epoch: Epoch3;
   external?: ExternalStatus | null;
+  gello?: GelloTelemetry | null;
   hardware_monitor?: HardwareMonitorTelemetry | null;
   inference: InferenceStatus | null;
   microphone?: MicrophoneTelemetry | null;
-  seq: Seq3;
+  seq: Seq5;
   session?: SessionTelemetry | null;
   t?: T5;
   tracker?: TrackerTelemetry | null;
@@ -1449,7 +1656,7 @@ export interface ArmTelemetry {
   fault_detail?: FaultDetail1;
   goto?: Goto;
   gripper_open_frac: GripperOpenFrac2;
-  q: Q2;
+  q: Q3;
   rail_pos_m: RailPosM2;
   recovering?: Recovering;
   stale?: Stale;
@@ -1466,7 +1673,7 @@ export interface PoseMsg {
  * One monitored geometry pair at the measured config.
  */
 export interface ClearanceItem {
-  dist_m: DistM;
+  dist_m: DistM1;
   pair: Pair;
 }
 /**
@@ -1475,7 +1682,7 @@ export interface ClearanceItem {
 export interface CollisionReport {
   blocked: Blocked;
   min_clearance_m?: MinClearanceM2;
-  pairs?: Pairs1;
+  pairs?: Pairs2;
   severity: Severity;
   ts?: Ts2;
   violations?: Violations;
@@ -1512,7 +1719,7 @@ export interface DaggerStatus {
  * spec / action version (a change shows as "swapped" in the panel).
  */
 export interface OnlineDaggerStatus {
-  detail?: Detail11;
+  detail?: Detail14;
   expert_frames_session?: ExpertFramesSession;
   novice_frames_session?: NoviceFramesSession;
   phase: Phase1;
@@ -1543,7 +1750,7 @@ export interface OnlineDaggerStatus {
  * alone.
  */
 export interface TrainerStatusAnnounce {
-  detail?: Detail12;
+  detail?: Detail15;
   mavis_schema?: MavisSchema3;
   metrics?: Metrics;
   node_version: NodeVersion1;
@@ -1583,7 +1790,7 @@ export interface DatasetsTelemetry {
  * ``detail`` names the file being written or the failure.
  */
 export interface DatasetExportTelemetry {
-  detail?: Detail13;
+  detail?: Detail16;
   done?: Done;
   format: Format2;
   phase: Phase2;
@@ -1604,7 +1811,7 @@ export interface DatasetExportTelemetry {
  * §11.7), so there is no pending-deletion list.
  */
 export interface EpisodeStatus {
-  detail?: Detail14;
+  detail?: Detail17;
   duration_s: DurationS2;
   frames: Frames3;
   frames_skipped?: FramesSkipped;
@@ -1623,7 +1830,7 @@ export interface ExternalStatus {
   capabilities?: Capabilities1;
   dataflow_id?: DataflowId1;
   dataflow_restarts?: DataflowRestarts1;
-  detail?: Detail15;
+  detail?: Detail18;
   dropped_inputs?: DroppedInputs;
   enabled?: Enabled2;
   idle_reader?: IdleReader;
@@ -1643,6 +1850,58 @@ export interface PublishHz {
   [k: string]: number;
 }
 /**
+ * ``TelemetryMsg.gello`` (16-gello §8.3; phase-15, 2026-09-09), additive.
+ *
+ * The device half (``backend`` .. ``joint_signs``) is :class:`GelloDeviceTelemetry`
+ * (``protocol.gello``; shared with ``GET /api/gello``) and is populated whenever the
+ * reader runs, session or not. The session half below is ``None`` / ``""`` without a
+ * gello session: ``state`` is the engagement state machine (``GelloState``; only
+ * ``tracking`` follows the leader, everything else holds the last command),
+ * ``state_detail`` the operator-facing reason ("leader 0.31 rad from the arm - move
+ * GELLO within 0.10 rad", "paused by operator", "planned motion"), ``lag_rad`` the
+ * per-joint ``unwrap(leader) - measured`` (the OUT OF SYNC panel's bars) and
+ * ``max_lag_rad`` its Chebyshev norm, ``engaged_arm`` the Manipulation Arm's id while
+ * tracking, ``viewpoint`` the Perception Arm's source.
+ */
+export interface GelloTelemetry {
+  age_s?: AgeS2;
+  backend: Backend1;
+  baud?: Baud1;
+  calibrated?: Calibrated1;
+  detail?: Detail19;
+  engaged_arm?: EngagedArm1;
+  gripper_frac?: GripperFrac1;
+  joint_offsets_rad?: JointOffsetsRad2;
+  joint_signs: JointSigns1;
+  lag_rad?: LagRad;
+  max_lag_rad?: MaxLagRad;
+  paused_latched?: PausedLatched;
+  port?: Port1;
+  q?: Q4;
+  q_raw?: QRaw1;
+  rate_hz?: RateHz2;
+  seq?: Seq3;
+  state?: State9;
+  state_detail?: StateDetail;
+  status: Status6;
+  viewpoint?: GelloViewpointTelemetry | null;
+}
+/**
+ * ``GelloTelemetry.viewpoint`` (16-gello §7 / §8.3; phase-15): how the Perception Arm
+ * is being driven in the gello session. ``mode`` echoes ``GelloSessionConfig.viewpoint``;
+ * ``attached`` = an external viewpoint node's ``ExternalPolicySource`` is live for the
+ * view block right now (else the arm holds the GELLO hold posture); ``policy_id`` names
+ * it; ``detail`` is the operator-facing line ("external node <id> attached", "holding
+ * the GELLO posture", "waiting for a node", or why a spec was judged incompatible).
+ */
+export interface GelloViewpointTelemetry {
+  attached: Attached;
+  detail?: Detail20;
+  mode: Mode4;
+  paused?: Paused;
+  policy_id?: PolicyId3;
+}
+/**
  * ``TelemetryMsg.hardware_monitor`` block (phase-09a; 04-runtime §13.3), additive.
  *
  * Every field defaults so a runtime without the hardware package still emits
@@ -1654,7 +1913,7 @@ export interface HardwareMonitorTelemetry {
   arms?: Arms7;
   enabled?: Enabled3;
   overlays?: Overlays;
-  paused?: Paused;
+  paused?: Paused1;
 }
 /**
  * One digital-twin overlay stream (``<camera_id>_align``; 04-runtime §13.4).
@@ -1669,12 +1928,12 @@ export interface HardwareMonitorTelemetry {
 export interface TwinOverlayTelemetry {
   arm_id: ArmId6;
   camera_id: CameraId1;
-  detail?: Detail16;
+  detail?: Detail21;
   fps?: Fps3;
   joint1_offset_rad?: Joint1OffsetRad;
   mask_fraction?: MaskFraction;
   rail_fallback_m?: RailFallbackM;
-  status?: Status4;
+  status?: Status7;
   stream_id: StreamId;
 }
 /**
@@ -1682,7 +1941,7 @@ export interface TwinOverlayTelemetry {
  */
 export interface InferenceStatus {
   control_mode: ControlMode;
-  engaged_arm?: EngagedArm1;
+  engaged_arm?: EngagedArm2;
   policy_stale?: PolicyStale1;
   policy_version: PolicyVersion5;
 }
@@ -1701,19 +1960,19 @@ export interface InferenceStatus {
  * ``MicrophoneInfo`` (§12).
  */
 export interface MicrophoneTelemetry {
-  age_s?: AgeS1;
+  age_s?: AgeS3;
   clipping?: Clipping;
-  detail?: Detail17;
+  detail?: Detail22;
   env_max?: EnvMax;
   env_min?: EnvMin;
   mic_id?: MicId1;
   overruns?: Overruns;
   peak_dbfs?: PeakDbfs;
-  rate_hz?: RateHz1;
+  rate_hz?: RateHz3;
   rms_dbfs?: RmsDbfs;
   sample_rate?: SampleRate1;
-  seq?: Seq2;
-  status?: Status5;
+  seq?: Seq4;
+  status?: Status8;
 }
 /**
  * Additive session-lifecycle block (04-runtime §13.3).
@@ -1723,7 +1982,7 @@ export interface SessionTelemetry {
   fault_detail?: FaultDetail2;
   plan_status?: PlanStatus;
   start_from_progress?: StartFromProgress;
-  state: State9;
+  state: State10;
   trainer_alive?: TrainerAlive1;
   translate_frame?: TranslateFrame;
 }
@@ -1738,8 +1997,8 @@ export interface SessionTelemetry {
  */
 export interface ArmBringupTelemetry {
   arm_id: ArmId7;
-  detail?: Detail18;
-  status: Status6;
+  detail?: Detail23;
+  status: Status9;
   step: Step;
 }
 /**
@@ -1775,28 +2034,28 @@ export interface ArmBringupTelemetry {
  *   "unpaired". ``None`` when the check is unavailable (non-Linux, no sysfs).
  */
 export interface TrackerTelemetry {
-  age_s?: AgeS2;
+  age_s?: AgeS4;
   anchor_tcp?: PoseMsg | null;
-  backend: Backend;
+  backend: Backend2;
   calibration?: TrackerCalibrationStatus | null;
   charging?: Charging;
   clutch?: Clutch;
   controller?: ControllerTelemetry | null;
   controller_age_s?: ControllerAgeS;
-  detail?: Detail20;
+  detail?: Detail25;
   device_action?: DeviceAction;
   device_held?: DeviceHeld;
   dongle_present?: DonglePresent;
-  engaged_arm?: EngagedArm2;
+  engaged_arm?: EngagedArm3;
   object_name?: ObjectName;
   objects?: Objects;
   pose_filtered?: PoseMsg | null;
   pose_raw?: PoseMsg | null;
   pose_world?: PoseMsg | null;
-  rate_hz?: RateHz2;
-  seq?: Seq4;
+  rate_hz?: RateHz4;
+  seq?: Seq6;
   settings: TrackerSettingsMsg;
-  status: Status7;
+  status: Status10;
   target_tcp?: PoseMsg | null;
 }
 /**
@@ -1811,13 +2070,13 @@ export interface TrackerCalibrationStatus {
   backup_path?: BackupPath;
   base_station_installed_at?: BaseStationInstalledAt;
   controller_still?: ControllerStill;
-  detail?: Detail19;
+  detail?: Detail24;
   elapsed_s?: ElapsedS;
   fit_checks?: FitChecks;
   fit_residual_deg?: FitResidualDeg;
   fitted_yaw_deg?: FittedYawDeg;
   installed_path?: InstalledPath;
-  kind?: Kind9;
+  kind?: Kind11;
   lighthouses?: Lighthouses;
   next_point?: NextPoint;
   phase?: Phase3;
@@ -1899,8 +2158,8 @@ export interface TrackerSettingsMsg {
  * POST /api/tracker/calibration body (illegal transitions -> 409).
  */
 export interface TrackerCalibrationCommand {
-  kind: Kind10;
-  op: Op3;
+  kind: Kind12;
+  op: Op4;
   point?: Point;
 }
 /**
@@ -1927,6 +2186,6 @@ export interface WorkcellStatus {
   available_kinds: AvailableKinds;
   cameras: Cameras3;
   hardware_ready?: HardwareReady;
-  kind: Kind11;
+  kind: Kind13;
   policies_available?: PoliciesAvailable;
 }

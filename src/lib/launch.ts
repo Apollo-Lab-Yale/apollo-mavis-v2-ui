@@ -1,14 +1,16 @@
-/** Pure launch logic shared by the Welcome page, the LaunchSheet and the
- * OnlineDaggerSheet (05-ui §8.1, phase-11 §4; phase-09c hardware gating; phase-09d:
- * every hardware arm joins the session; phase-14 Online DAgger, 15-online-dagger §5 /
- * §8): the selection → blocking reason matrix, the SessionSpec serializer, the
- * Hardware-tab speed default and the Online DAgger form defaults. No React, no I/O —
- * unit-tested in Landing.test.tsx and launch.test.ts. */
+/** Pure launch logic shared by the Welcome page, the LaunchSheet, the
+ * OnlineDaggerSheet and the GelloSheet (05-ui §8.1, phase-11 §4; phase-09c hardware
+ * gating; phase-09d: every hardware arm joins the session; phase-14 Online DAgger,
+ * 15-online-dagger §5 / §8; phase-15 GELLO Manipulation, 16-gello §11): the
+ * selection → blocking reason matrix, the SessionSpec serializer, the Hardware-tab
+ * speed default and the Online DAgger form defaults. No React, no I/O — unit-tested
+ * in Landing.test.tsx and launch.test.ts. */
 import onlineDaggerSchema from "../../schemas/OnlineDaggerConfig.json";
 import sessionSpecSchema from "../../schemas/SessionSpec.json";
 import type {
   ActionFilterConfig,
   DatasetLayoutInfo,
+  GelloPreviewResult,
   OnlineDaggerConfig,
   PolicyInfo,
   SessionSpec,
@@ -178,7 +180,35 @@ export interface LandingSelection {
    * phase-14). `null` / undefined = the runtime predates the field (not judged — it
    * 409s at launch with its own reason); false = `REASON.trainerNoCapability`. */
   trainerCapability?: boolean | null;
+  // -- GELLO Manipulation (phase-15; 16-gello §11) — the GelloSheet fills this --
+  /** The sheet's state; undefined = a card-level probe (assumed satisfiable). */
+  gello?: GelloInputs;
 }
+
+/** What the GelloSheet knows when Start is judged (16-gello §11): the viewpoint
+ * choice (`SessionSpec.gello.viewpoint`), the kitchen twin's scene id from
+ * `GET /api/gello` (`sim_scene` / `digital_twin_scene`), whether the leader is
+ * connected, and the LATEST `POST /api/gello/preview` verdict — its status, the
+ * runtime's detail and whether it has gone stale (2026-09-09 review: the footer
+ * reason must name the actual blocker; "move GELLO" is wrong advice for a missing
+ * calibration, a missing workcell, a scene error or a poll that did not answer). */
+export interface GelloInputs {
+  viewpoint: "auto" | "external" | "hold";
+  /** `GelloInfo.scene_id` (`mavis_v2_kitchen`); null until `GET /api/gello` answered. */
+  sceneId: string | null;
+  /** `GelloInfo.status === "connected"`. */
+  leaderReady: boolean;
+  /** The latest preview's `status`; null = no result in hand (none yet, a transport
+   * error or a timed-out poll). */
+  previewStatus: GelloPreviewResult["status"] | null;
+  /** That result's `detail` (the runtime's sentence; shown for `no_workcell` /
+   * `scene_error`, which moving GELLO cannot fix). */
+  previewDetail?: string;
+  /** The latest result is older than the sheet's staleness bound
+   * (`GELLO_PREVIEW_STALE_FACTOR` x the poll period) — the verdict is unknown. */
+  previewStale?: boolean;
+}
+export const DEFAULT_GELLO_VIEWPOINT: GelloInputs["viewpoint"] = "auto";
 
 /** The OnlineDaggerSheet's form (15-online-dagger §5): ONLY what the shell itself
  * needs — the session directory name, whether an existing one is continued, and
@@ -258,7 +288,8 @@ export function actionFilterToSpec(inputs: ActionFilterInputs): ActionFilterConf
 export const REASON = {
   keymap: "Keymap unavailable — retry",
   hardwareNotConfigured: "Hardware workcell not configured",
-  hardwareTeleopOnly: "Hardware sessions support teleop and data collection only for now",
+  hardwareTeleopOnly:
+    "Hardware sessions support teleop, data collection and GELLO Manipulation only for now",
   noArmsDetected: "Requires real arms — none detected",
   noWorkcellArms: "No arms in the workcell",
   railNotHomed: "rail not homed — use Home rail",
@@ -287,6 +318,16 @@ export const REASON = {
     "Attach an Online DAgger trainer first (policy node with the online_dagger capability)",
   trainerNoCapability:
     "The attached policy node does not report the online_dagger capability — start it with a trainer",
+  // GELLO Manipulation (phase-15; 16-gello §11 footer reasons; the preview mapping is
+  // `gelloPreviewReason` — 2026-09-09 review)
+  gelloNoLeader: "GELLO leader not connected",
+  gelloNotClear: "GELLO posture is not clear — move GELLO and wait for the preview",
+  gelloNoScene: "GELLO scene unknown — GET /api/gello has not answered",
+  gelloNotCalibrated: "GELLO not calibrated — run Calibrate (match arm) in the Leader view",
+  gelloPreviewUnavailable: "preview unavailable — waiting for the runtime",
+  gelloPreviewStale: "preview stale — waiting for the runtime",
+  /** Fallback for `no_workcell` / `scene_error` when the runtime sent no detail. */
+  gelloPreviewFailed: "preview failed — see the Start posture view",
 } as const;
 
 /** The OnlineDaggerSheet's caption while the SESSION-LESS heartbeat
@@ -330,9 +371,36 @@ export const DEFAULT_SPEED_SCALE = 1;
 /** `0.1` → `"10%"` (Cockpit badge, launcher copy). */
 export const speedLabel = (scale: number): string => `${Math.round(scale * 100)}%`;
 
+/** Why the LATEST preview blocks Start, or null when it says `clear` and is fresh
+ * (2026-09-09 review). No result in hand (none yet / transport error / timed-out poll)
+ * → `gelloPreviewUnavailable`; a result older than the sheet's staleness bound →
+ * `gelloPreviewStale` (whatever it said); `not_calibrated` → the calibration
+ * instruction; `no_workcell` / `scene_error` → the runtime's own detail (moving GELLO
+ * cannot fix either; `gelloPreviewFailed` when the detail is empty); `collision` /
+ * `joint_limit` / `no_leader` → `gelloNotClear` (posture problems the operator fixes
+ * by moving GELLO — the Start-posture view shows which). */
+export function gelloPreviewReason(g: GelloInputs): string | null {
+  if (g.previewStatus === null) return REASON.gelloPreviewUnavailable;
+  if (g.previewStale) return REASON.gelloPreviewStale;
+  switch (g.previewStatus) {
+    case "clear":
+      return null;
+    case "not_calibrated":
+      return REASON.gelloNotCalibrated;
+    case "no_workcell":
+    case "scene_error":
+      return g.previewDetail?.trim() || REASON.gelloPreviewFailed;
+    case "collision":
+    case "joint_limit":
+    case "no_leader":
+      return REASON.gelloNotClear;
+  }
+}
+
 /** Validation matrix — returns the first blocking reason or null.
- * Hardware tab: teleop only (phase-09c), then gated on `hardwareConfigured &&
- * hardwareReady` before anything else about the workcell, then the phase-09c
+ * Hardware tab: teleop / collect / gello only (phase-09c; 16-gello D8 admits gello
+ * beside teleop under the same readiness rules), then gated on `hardwareConfigured
+ * && hardwareReady` before anything else about the workcell, then the phase-09c
  * arm rules over EVERY arm (phase-09d: rails homed, no homing in flight, every
  * arm eligible — the reason names the arm(s)); Sim tab: the classic rules. */
 export function validateLaunch(mode: Mode, sel: LandingSelection): string | null {
@@ -353,6 +421,20 @@ export function validateLaunch(mode: Mode, sel: LandingSelection): string | null
       return armReason(sel.unhomedRailArms ?? [], REASON.railNotHomed);
     if ((sel.armsNotReady?.length ?? 0) > 0)
       return armReason(sel.armsNotReady ?? [], REASON.armNotReady);
+  }
+  if (mode === "gello") {
+    // 16-gello D1 / §5.2: the launch motion IS the GELLO posture — `start_from` is
+    // always `keep_current` for this mode, so the page's Start-from choice does not
+    // gate it. The GelloSheet fills `gello` (a selection without it is a card-level
+    // probe, judged on the rest): the scene comes from GET /api/gello, the leader must
+    // be connected and the LATEST preview must say `clear` and be fresh
+    // (`gelloPreviewReason` names the actual blocker otherwise).
+    if (sel.gello !== undefined) {
+      if (!sel.gello.sceneId) return REASON.gelloNoScene;
+      if (!sel.gello.leaderReady) return REASON.gelloNoLeader;
+      return gelloPreviewReason(sel.gello);
+    }
+    return null;
   }
   if (sel.startFrom === "profile" && !sel.profileId) return REASON.noProfile;
   if ((mode === "collect" || mode === "dagger") && sel.task.trim() === "") return REASON.noTask;
@@ -389,10 +471,11 @@ export function validateLaunch(mode: Mode, sel: LandingSelection): string | null
 }
 
 /** Card-level gate for the ModeLauncher: what the sheets collect later (task,
- * policy, the Online DAgger form, the trainer attachment) is assumed satisfiable —
- * Inference only when a promoted checkpoint exists (the sheet lists promoted
- * checkpoints only). Online DAgger on the Sim tab always reads "Set up and start"
- * (15-online-dagger §8); the Hardware tab keeps its teleop / collect-only refusal (D7). */
+ * policy, the Online DAgger form, the trainer attachment, the GELLO leader / preview)
+ * is assumed satisfiable — Inference only when a promoted checkpoint exists (the
+ * sheet lists promoted checkpoints only). Online DAgger on the Sim tab always reads
+ * "Set up and start" (15-online-dagger §8); the Hardware tab keeps its teleop /
+ * collect / gello-only refusal (15-online-dagger D7, 16-gello D8). */
 export function launcherReason(
   mode: Mode,
   sel: LandingSelection,
@@ -415,11 +498,14 @@ export function launcherReason(
     ...(mode === "dagger"
       ? { onlineDagger: undefined, trainerAttached: undefined, trainerCapability: undefined }
       : {}),
+    // the GelloSheet reads the leader and polls the preview itself
+    ...(mode === "gello" ? { gello: undefined } : {}),
   };
   return validateLaunch(mode, probe);
 }
 
 export function buildSpec(mode: Mode, sel: LandingSelection): SessionSpec {
+  if (mode === "gello") return buildGelloSpec(sel);
   return {
     mode,
     kind: sel.kind,
@@ -461,6 +547,33 @@ export function buildSpec(mode: Mode, sel: LandingSelection): SessionSpec {
         }
       : {}),
     ...(mode === "inference" && sel.policyId ? { policy: sel.policyId } : {}),
+  };
+}
+
+/** `buildSpec("gello", …)` (16-gello §11 / D1): `{mode, kind, arms (both configured
+ * arms, Manipulation Arm first), frames, sim_scene | digital_twin_scene = the GELLO
+ * scene id from GET /api/gello, speed_scale on hardware, start_from: keep_current,
+ * gello: {viewpoint}}` — and NEVER `task` / `dataset` / `policy` / `online_dagger` /
+ * `policy_source` / `return_to_start` / `action_filter` (core 422s each of them for
+ * this mode). `start_from` is `keep_current` whatever the page's Start-from says:
+ * the launch motion is the GELLO posture. Without `sel.gello` (a probe) the tab's
+ * scene stands in and the viewpoint is the default. */
+function buildGelloSpec(sel: LandingSelection): SessionSpec {
+  const scene = sel.gello?.sceneId ?? (sel.kind === "sim" ? sel.simScene : sel.twinScene);
+  return {
+    mode: "gello",
+    kind: sel.kind,
+    arms: orderArms(sel.arms, (a) => a),
+    frames: Object.fromEntries(sel.arms.map((a) => [a, sel.frames[a] ?? `arm_base:${a}`])),
+    ...(sel.kind === "sim" ? { sim_scene: scene ?? undefined } : {}),
+    ...(sel.kind === "hardware"
+      ? {
+          digital_twin_scene: scene ?? undefined,
+          speed_scale: sel.speedScale ?? DEFAULT_SPEED_SCALE,
+        }
+      : {}),
+    start_from: "keep_current",
+    gello: { viewpoint: sel.gello?.viewpoint ?? DEFAULT_GELLO_VIEWPOINT },
   };
 }
 

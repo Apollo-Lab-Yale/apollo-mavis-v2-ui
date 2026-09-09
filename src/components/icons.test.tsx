@@ -30,6 +30,7 @@ describe("icons", () => {
         "chevron",
         "project", // Online DAgger launcher: a vector and its projection onto a reference line
         "copy",
+        "leader-arm", // GELLO Manipulation launcher: the passive leader arm in outline (16-gello §11)
       ]),
     );
   });
