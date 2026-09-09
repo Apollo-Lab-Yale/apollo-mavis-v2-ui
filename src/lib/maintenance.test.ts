@@ -377,7 +377,7 @@ describe("phase-09c: rail read-back, Home rail, session eligibility", () => {
       sweepSummary(makeRailSweepVerdict({ clear: false, pre_position: undefined })).headline,
     ).toBe("Sweep blocked — homing refused");
     expect(HOME_RAIL_NOTICE).toBe(
-      "The carriage drives to the operator's LEFT (+X) end at the track's homing speed (positioning cap 50 mm/s) — the only maintenance action that moves hardware.",
+      "The carriage drives to the operator's LEFT (+X) end at the track's homing speed (positioning cap 75 mm/s) — the only maintenance action that moves hardware.",
     );
     expect(frozenHint("view")).toBe(
       "Perception Arm frozen at last sample — do not move it from Studio",

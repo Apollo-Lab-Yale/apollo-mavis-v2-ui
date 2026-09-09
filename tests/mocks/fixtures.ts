@@ -7,12 +7,20 @@
  * camera rows plus the read-only `hardware_monitor` telemetry block. */
 import keymapJson from "../../schemas/keymap.json";
 import type {
+  DatasetInfo,
+  DatasetLayoutInfo,
+  DoraInfo,
+  EpisodeInfo,
+  OnlineDaggerSessionInfo,
+  OnlineDaggerStatus,
+  TrainerStatusAnnounce,
   ArmBringupTelemetry,
   ArmMaintenanceResult,
   ArmMonitorTelemetry,
   ArmStatusInfo,
   ArmTelemetry,
   CameraInfo,
+  ExternalStatus,
   HardwareMonitorTelemetry,
   KeymapEntry,
   MaintenanceProgress,
@@ -87,6 +95,58 @@ export function makeTelemetry(over: Partial<TelemetryMsg> = {}): TelemetryMsg {
     inference: null,
     ...over,
   };
+}
+
+/** `telemetry.external` (phase-12, 14-dora §13): the Dora bridge enabled and
+ * attached, with a PLAIN external policy spec attached at 10 Hz — no `online_dagger`
+ * capability and no trainer heartbeat (phase-14 session-less fields, which the
+ * runtime always fills: `capabilities: []`, `trainer_status: null`). A trainer-
+ * capable node is `makeTrainerExternal()`. */
+export function makeExternal(over: Partial<ExternalStatus> = {}): ExternalStatus {
+  return {
+    enabled: true,
+    state: "attached",
+    detail: "",
+    node_id: "mavis_runtime",
+    dataflow_id: "df-0001",
+    dataflow_restarts: 0,
+    reattach_count: 0,
+    idle_reader: "off",
+    publish_hz: { obs: 25 },
+    dropped_inputs: 0,
+    policy_attached: true,
+    policy_id: "act_pick_place",
+    policy_version: 3,
+    policy_rate_hz: 10,
+    spec_age_s: 0.2,
+    action_age_s: 0.05,
+    actions_late: 0,
+    version_changes_mid_episode: 0,
+    capabilities: [],
+    trainer_status: null,
+    ...over,
+  };
+}
+
+/** `telemetry.external` with a trainer-capable node attached BEFORE any session
+ * (15-online-dagger §6 / §8): the fresh spec lists `online_dagger` and the node's
+ * heartbeat is idle (no session picked up yet, so `session_id` is null). */
+export function makeTrainerExternal(
+  over: Partial<ExternalStatus> = {},
+  trainer: Partial<TrainerStatusAnnounce> = {},
+): ExternalStatus {
+  return makeExternal({
+    capabilities: ["online_dagger"],
+    trainer_status: makeTrainerStatus({
+      state: "idle",
+      session_id: null,
+      policy_version: 3,
+      progress: 0,
+      metrics: {},
+      ...trainer,
+    }),
+    ...over,
+  });
 }
 
 /** Tracker block (13-tracker §3.5): a tracking `fake` backend, clutch released. */
@@ -483,6 +543,7 @@ export function makeProfile(over: Partial<ProfileInfo> = {}): ProfileInfo {
     notes: "",
     created_at: "2026-01-01T00:00:00Z",
     is_initial_condition: false,
+    workcell_kind: "sim",
     ...over,
   };
 }
@@ -522,6 +583,146 @@ export function makeHardwareWorkcell(over: Partial<WorkcellStatus> = {}): Workce
     cameras: makeHardwareCameras(),
     policies_available: false,
     hardware_ready: false,
+    ...over,
+  };
+}
+
+/** `GET /api/datasets` row (2026-09-07): an episode-directory dataset recorded on the sim. */
+export function makeDataset(over: Partial<DatasetInfo> = {}): DatasetInfo {
+  return {
+    repo_id: "apollo/pick_cube",
+    root: "/home/x/apollo/var/datasets/apollo/pick_cube",
+    layout: "episode_dirs",
+    total_episodes: 2,
+    total_frames: 250,
+    fps: 25,
+    robot_type: "xarm7_2arm_rail_mujoco",
+    kind: "sim",
+    task: "pick the cube",
+    cameras: ["cam_front", "grip_wrist_cam"],
+    arms: ["grip", "view"],
+    modified_at: "2026-09-07T14:12:03.512Z",
+    in_use: false,
+    export: { state: "none", format: "lerobot_v3", path: null, at: null, episodes: 0, detail: "" },
+    ...over,
+  };
+}
+
+/** `GET /api/datasets/{ns}/{name}/episodes` row. */
+export function makeEpisode(over: Partial<EpisodeInfo> = {}): EpisodeInfo {
+  return {
+    episode_id: "20260907T141203.512Z-3f9a1c",
+    index: 0,
+    frames: 125,
+    duration_s: 5.0,
+    task: "pick the cube",
+    session_id: "s1",
+    recorded_at: "2026-09-07T14:12:03.512Z",
+    frames_dropped: 0,
+    audio: false,
+    export_ok: true,
+    export_note: null,
+    open: false,
+    ...over,
+  };
+}
+
+// -- Online DAgger (phase-14; 15-online-dagger §5-§7) ----------------------------------
+
+/** `GET /api/datasets/layout`: the lab layout — `bc_demo` demonstrations and
+ * `online_dagger` rollouts mapped under `~/data`, everything else under the generic
+ * `var/datasets/<ns>/<name>` root. */
+export function makeDatasetLayout(over: Partial<DatasetLayoutInfo> = {}): DatasetLayoutInfo {
+  return {
+    default_namespace: "bc_demo",
+    generic_root: "/home/x/apollo/var/datasets",
+    namespaces: {
+      bc_demo: { root: "/home/x/data/bc_demo", subdir: null },
+      online_dagger: { root: "/home/x/data/online_dagger", subdir: "rollouts" },
+    },
+    ...over,
+  };
+}
+
+/** `GET /api/dora`: the private control plane bound to the lab Wi-Fi, attached. */
+export function makeDoraInfo(over: Partial<DoraInfo> = {}): DoraInfo {
+  return {
+    mavis_schema: 1,
+    enabled: true,
+    state: "attached",
+    detail: "",
+    bind_host: "192.168.0.88",
+    machine_id: "mavis",
+    auth: true,
+    coordinator_addr: "192.168.0.88",
+    coordinator_port: 6113,
+    daemon_port: 53391,
+    zenoh_port: 7447,
+    zenoh_connect: "tcp/192.168.0.88:7447",
+    dataflow_name: "mavis_v2",
+    dataflow_id: "df-0001",
+    node_id: "mavis_runtime",
+    placeholders: ["policy"],
+    machines: [],
+    dataflow_restarts: 0,
+    reattach_count: 0,
+    dataflow_yaml: "/home/x/apollo/var/dora/mavis_v2.dora.yml",
+    ...over,
+  };
+}
+
+/** The trainer's generic heartbeat (`policy/trainer_status`, 15-online-dagger §6):
+ * ready between rollouts, echoing the served session id, acting on policy v4, with
+ * the free-form metrics its algorithm chose to report (a `loss` key gets the
+ * Cockpit's sparkline). */
+export function makeTrainerStatus(
+  over: Partial<TrainerStatusAnnounce> = {},
+): TrainerStatusAnnounce {
+  return {
+    mavis_schema: 1,
+    trainer_id: "act_pick_place/trainer",
+    node_version: "0.4.0",
+    state: "ready",
+    session_id: "s-od",
+    policy_version: 4,
+    progress: 0,
+    metrics: { loss: 0.0421, proj_rate: 0.115 },
+    detail: "",
+    uptime_s: 900,
+    ...over,
+  };
+}
+
+/** `telemetry.dagger.online_dagger`: in `rollout` with three rollouts kept, the
+ * trainer alive and fresh. */
+export function makeOnlineDagger(over: Partial<OnlineDaggerStatus> = {}): OnlineDaggerStatus {
+  return {
+    session_name: "pick_cube_v1",
+    phase: "rollout",
+    rollouts_saved: 3,
+    detail: "",
+    trainer_alive: true,
+    trainer_age_s: 0.4,
+    trainer: makeTrainerStatus(),
+    policy_version_acting: 4,
+    expert_frames_session: 120,
+    novice_frames_session: 480,
+    session_dir: "/home/x/data/online_dagger/pick_cube_v1",
+    ...over,
+  };
+}
+
+/** `GET /api/online_dagger/sessions` row: the same session, resumable. */
+export function makeOnlineDaggerSession(
+  over: Partial<OnlineDaggerSessionInfo> = {},
+): OnlineDaggerSessionInfo {
+  return {
+    session_name: "pick_cube_v1",
+    path: "/home/x/data/online_dagger/pick_cube_v1",
+    created_at: "2026-09-08T10:00:00Z",
+    task: "pick the cube",
+    rollouts: 6,
+    last_used_at: "2026-09-08T10:06:00Z",
     ...over,
   };
 }

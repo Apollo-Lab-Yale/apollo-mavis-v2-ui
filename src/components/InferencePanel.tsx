@@ -1,16 +1,19 @@
 /** Inference side panel — takeover = SAFETY ESCAPE, never recorded (05-ui §8.2). */
 import { useState } from "react";
-import type { InferenceStatus } from "../gen";
+import type { ExternalStatus, InferenceStatus } from "../gen";
 import { useDelayedUnmount } from "../lib/useDelayedUnmount";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ExternalPolicyChip } from "./externalPolicy";
 import { SHEET_EXIT_MS } from "./Sheet";
 
 export interface InferencePanelProps {
   inference: InferenceStatus;
+  /** `telemetry.external` (phase-12): drives the additive external-policy chip. */
+  external?: ExternalStatus | null;
   onTerminate(): void; // DELETE /api/session; emphasized during takeover
 }
 
-export function InferencePanel({ inference, onTerminate }: InferencePanelProps) {
+export function InferencePanel({ inference, external, onTerminate }: InferencePanelProps) {
   const [confirming, setConfirming] = useState(false);
   const confirmMounted = useDelayedUnmount(confirming, SHEET_EXIT_MS);
   const takeover = inference.control_mode === "human";
@@ -29,6 +32,7 @@ export function InferencePanel({ inference, onTerminate }: InferencePanelProps) 
           POLICY DRIVING
         </span>
       )}
+      <ExternalPolicyChip external={external} policyStale={inference.policy_stale} />
       <div className="kv">
         <span className="dim">policy</span>
         <span className="mono">{inference.policy_version ?? "—"}</span>

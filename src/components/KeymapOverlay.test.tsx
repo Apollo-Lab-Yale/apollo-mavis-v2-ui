@@ -16,6 +16,47 @@ const mount = (mode: Mode, hasRail: boolean) =>
   );
 
 describe("KeymapOverlay", () => {
+  // 2026-09-08: the keymap labels the KEY axes ("forward", "up"), so the live
+  // translate frame has to be spelled out or the operator cannot tell what they mean.
+  it("captions the live translate frame and says nothing without one", () => {
+    mount("teleop", true);
+    expect(screen.queryByTestId("translate-frame-caption")).toBeNull();
+    expect(screen.getByTestId("keyrow-KeyW")).toHaveTextContent("forward");
+
+    // `world` is the runtime default (operator decision 2026-09-08 evening) and the
+    // only caption allowed to say so; the other two are config options.
+    for (const [frame, phrase, isDefault] of [
+      ["world", "OPERATOR frame", true],
+      ["camera", "WRIST-CAMERA frame", false],
+      ["base", "BASE axes", false],
+    ] as const) {
+      const { unmount } = render(
+        <KeymapOverlay
+          entries={KEYMAP}
+          mode="teleop"
+          activeArmHasRail
+          open
+          onToggle={() => undefined}
+          translateFrame={frame}
+        />,
+      );
+      const caption = screen.getByTestId("translate-frame-caption");
+      expect(caption).toHaveTextContent(frame);
+      expect(caption).toHaveTextContent(phrase);
+      expect(caption.textContent?.includes("(the default)")).toBe(isDefault);
+      expect(caption).toHaveTextContent("Rotations are always about the tool (TCP) axes");
+      unmount();
+    }
+  });
+
+  it("has the return-to-initial key in the session group", () => {
+    mount("teleop", true);
+    const row = screen.getByTestId("keyrow-KeyR");
+    expect(row).toHaveTextContent("R");
+    expect(row).toHaveTextContent("return to the initial condition");
+    expect(row).toHaveTextContent("session");
+  });
+
   it("hides rail rows when the active arm lacks a rail", () => {
     mount("teleop", false);
     expect(screen.queryByTestId("keyrow-ArrowLeft")).toBeNull();

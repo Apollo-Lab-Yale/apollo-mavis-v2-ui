@@ -1,7 +1,8 @@
 /** ArmIndicator (05-ui §8.2): the controller-error chip is the red `C<code>`
- * of the Welcome arm card (phase-09b), titled with the runtime's fault_detail. */
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+ * of the Welcome arm card (phase-09b), titled with the runtime's fault_detail;
+ * every row is a button that switches the active arm (2026-09-07). */
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { makeArm } from "../../tests/mocks/fixtures";
 import { ArmIndicator } from "./ArmIndicator";
 
@@ -35,5 +36,64 @@ describe("ArmIndicator", () => {
     );
     expect(screen.getByTestId("arm-error-grip").getAttribute("title")).toBe("controller error 19");
     expect(screen.getByTestId("arm-error-grip").textContent).toBe("C19");
+  });
+
+  it("rows are buttons that report the SERVER's active arm and select explicitly", () => {
+    const onSelect = vi.fn();
+    render(
+      <ArmIndicator
+        arms={[makeArm({ arm_id: "grip" }), makeArm({ arm_id: "view" })]}
+        activeArm="grip"
+        onSelect={onSelect}
+        shortcut="Tab"
+      />,
+    );
+    const grip = screen.getByTestId("arm-chip-grip");
+    const view = screen.getByTestId("arm-chip-view");
+    expect(grip.tagName).toBe("BUTTON");
+    expect(grip.getAttribute("aria-pressed")).toBe("true");
+    expect(view.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByTestId("arm-indicator").textContent).toContain("click a row or press Tab");
+
+    fireEvent.click(view);
+    expect(onSelect).toHaveBeenCalledWith("view");
+    // No optimistic highlight — the runtime owns `active_arm`.
+    expect(grip.getAttribute("aria-pressed")).toBe("true");
+    // Clicking the active row still reports it (the runtime treats it as a no-op).
+    fireEvent.click(grip);
+    expect(onSelect).toHaveBeenLastCalledWith("grip");
+  });
+
+  it("no onSelect / disabled → inert rows that still show every arm", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <ArmIndicator arms={[makeArm({ arm_id: "grip" })]} activeArm="grip" />,
+    );
+    expect(screen.getByTestId("arm-chip-grip")).toBeDisabled();
+    expect(screen.getByTestId("arm-indicator").textContent).not.toContain("click a row");
+
+    rerender(
+      <ArmIndicator
+        arms={[makeArm({ arm_id: "grip" })]}
+        activeArm="grip"
+        onSelect={onSelect}
+        disabled
+        shortcut="Tab"
+      />,
+    );
+    const grip = screen.getByTestId("arm-chip-grip");
+    expect(grip).toBeDisabled();
+    fireEvent.click(grip);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(grip.textContent).toContain("active"); // telemetry still readable
+  });
+
+  it("no shortcut bound → the hint never advertises a dead key", () => {
+    render(
+      <ArmIndicator arms={[makeArm({ arm_id: "grip" })]} activeArm="grip" onSelect={vi.fn()} />,
+    );
+    const text = screen.getByTestId("arm-indicator").textContent!;
+    expect(text).toContain("click a row");
+    expect(text).not.toContain("press");
   });
 });

@@ -7,7 +7,10 @@
  * whose recover button exists only while `hardware_monitor.paused` says a
  * hardware session owns the boxes; (phase-09c) a hardware session shows the
  * bring-up progress list until running, the `speed <n>%` badge and the
- * frozen-arm hint for the arm it did not include.
+ * frozen-arm hint for the arm it did not include; (phase-14) a dagger session
+ * whose telemetry carries `dagger.online_dagger` renders the Online DAgger title,
+ * panel, banner and actor split, and Take over / Hand back / Train now ride the
+ * control WS (Train now with its ack toast).
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WebSocket as MockWebSocket } from "mock-socket";
@@ -22,8 +25,11 @@ import {
   KEYMAP,
   makeArm,
   makeBringupRow,
+  makeExternal,
   makeHardwareMonitor,
   makeHardwareSession,
+  makeOnlineDagger,
+  makeProfile,
   makeTelemetry,
   makeWorkcell,
 } from "./mocks/fixtures";
@@ -36,13 +42,26 @@ describe("Cockpit integration smoke", () => {
   let telemetry: MockTelemetryServer;
   let video0: MockVideoServer;
   let video1: MockVideoServer;
+  // `POST /api/session/return_home` (2026-09-08): what the runtime answers, and how
+  // many times the page asked. Reset per test.
+  let returnHomeBody: unknown;
+  let returnHomeCalls = 0;
+  // `GET /api/profiles`: what the Profiles panel's Go-to select lists. Reset per test.
+  let profilesBody: unknown;
 
   beforeEach(() => {
+    returnHomeBody = { ok: true, status: "done", detail: "", arms: ["arm0"] };
+    returnHomeCalls = 0;
+    profilesBody = [];
     vi.stubGlobal("WebSocket", MockWebSocket); // singleton clients use the default factory
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.includes("/api/session/return_home")) {
+          returnHomeCalls++;
+          return new Response(JSON.stringify(returnHomeBody), { status: 200 });
+        }
         if (url.includes("/api/session")) {
           // Hello-resync fetch: serve whatever session the test seeded.
           const s = useStore.getState().session;
@@ -50,7 +69,8 @@ describe("Cockpit integration smoke", () => {
             ? new Response(JSON.stringify(s), { status: 200 })
             : new Response(JSON.stringify({ detail: "no active session" }), { status: 404 });
         }
-        if (url.includes("/api/profiles")) return new Response("[]", { status: 200 });
+        if (url.includes("/api/profiles"))
+          return new Response(JSON.stringify(profilesBody), { status: 200 });
         return new Response("{}", { status: 200 });
       }),
     );
@@ -363,6 +383,130 @@ describe("Cockpit integration smoke", () => {
     }
   });
 
+  it("arm switching without the controller (2026-09-07): a row click sends the explicit arm_id, Tab cycles while capture is disarmed and only then", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          arms: [makeArm({ arm_id: "grip" }), makeArm({ arm_id: "view", rail_pos_m: null })],
+          active_arm: "grip",
+        }),
+      ),
+    );
+    await screen.findByTestId("arm-indicator");
+    // The hint names whatever the served keymap binds (Tab in the fixture).
+    expect(screen.getByTestId("arm-indicator").textContent).toContain("click a row or press Tab");
+
+    // Click the inactive row → explicit switch_arm {arm_id}. The row does NOT
+    // pre-highlight: `aria-pressed` follows telemetry, which the server owns.
+    fireEvent.click(screen.getByTestId("arm-chip-view"));
+    await waitFor(() => expect(control.actions).toHaveLength(1));
+    expect(control.actions[0]).toMatchObject({ name: "switch_arm", args: { arm_id: "view" } });
+    expect(screen.getByTestId("arm-chip-grip").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("arm-chip-view").getAttribute("aria-pressed")).toBe("false");
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 2,
+          arms: [makeArm({ arm_id: "grip" }), makeArm({ arm_id: "view", rail_pos_m: null })],
+          active_arm: "view",
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("arm-chip-view").getAttribute("aria-pressed")).toBe("true"),
+    );
+
+    // Tab from the page (capture disarmed) → a plain cycle, no args.
+    const tab = () =>
+      act(() => {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", { code: "Tab", cancelable: true, bubbles: true }),
+        );
+      });
+    tab();
+    await waitFor(() => expect(control.actions).toHaveLength(2));
+    expect(control.actions[1]).toMatchObject({ name: "switch_arm" });
+    expect(control.actions[1]!.args).toBeUndefined();
+
+    // Tab inside the Joint panel's number box keeps meaning "next field".
+    const numberBox = screen
+      .getByTestId("joint-panel")
+      .querySelector("input[type=number]") as HTMLInputElement;
+    act(() => {
+      numberBox.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "Tab", cancelable: true, bubbles: true }),
+      );
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(control.actions).toHaveLength(2);
+
+    // With capture armed, `useKeyCapture` owns Tab — the page listener must not
+    // double-fire it (one press, one switch).
+    fireEvent.click(screen.getByTestId("teleop-surface"));
+    await screen.findByTestId("capturing-chip");
+    tab();
+    await waitFor(() => expect(control.actions).toHaveLength(3));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(control.actions).toHaveLength(3);
+  }, 15000);
+
+  it("episode keys (phase-13): capture armed + keydown Enter → episode_save ActionMsg; disarmed → nothing", async () => {
+    useStore.getState().setSession({
+      session_id: "s1",
+      epoch: "epoch-1",
+      mode: "collect",
+      arms: ["arm0"],
+      streams: ["cam0", "cam1"],
+      state: "running",
+    });
+    render(
+      <MemoryRouter>
+        <Cockpit mode="collect" />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          episode: {
+            state: "recording",
+            index: 0,
+            frames: 12,
+            duration_s: 0.48,
+            frames_skipped: 3,
+          },
+        }),
+      ),
+    );
+    await screen.findByTestId("episode-controls");
+    expect(screen.getByTestId("rec-skipped").textContent).toContain("skipped 3");
+    // disarmed: Enter is not captured
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "Enter", cancelable: true, bubbles: true }),
+      );
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(control.actions.filter((a) => a.name === "episode_save")).toHaveLength(0);
+    // armed: the served keymap's Enter row fires episode_save, same path as the button
+    fireEvent.click(screen.getByTestId("teleop-surface"));
+    await screen.findByTestId("capturing-chip");
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "Enter", cancelable: true, bubbles: true }),
+      );
+    });
+    await waitFor(() =>
+      expect(control.actions.filter((a) => a.name === "episode_save")).toHaveLength(1),
+    );
+    fireEvent.click(screen.getByTestId("episode-save"));
+    await waitFor(() =>
+      expect(control.actions.filter((a) => a.name === "episode_save")).toHaveLength(2),
+    );
+  }, 15000);
+
   it("sim session: no speed badge, no frozen hint, no bring-up list", async () => {
     mount();
     await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
@@ -376,4 +520,368 @@ describe("Cockpit integration smoke", () => {
     expect(screen.queryByTestId("frozen-arms")).toBeNull();
     expect(screen.queryByTestId("bringup-progress")).toBeNull();
   });
+
+  // -- leaving the cockpit returns the arms first (2026-09-08 operator request) ------
+  it("End session returns the arms to the initial condition, then tears down", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    fireEvent.click(screen.getByTestId("end-session"));
+    // The button reports the motion instead of navigating straight away.
+    await screen.findByText("Returning to start…");
+    expect(screen.getByTestId("end-session")).toBeDisabled();
+    await waitFor(() => expect(returnHomeCalls).toBe(1));
+    // Arrived -> the session is dropped from the store (and the page navigates away).
+    await waitFor(() => expect(useStore.getState().session).toBeNull());
+    expect(screen.queryByTestId("confirm-dialog")).toBeNull();
+  }, 15000);
+
+  it("a return that cannot be planned holds the page with the Studio dialog", async () => {
+    returnHomeBody = {
+      ok: false,
+      status: "failed",
+      detail:
+        "the digital twin could not plan a collision-free path: blocked (arm0_link4 / table).",
+      arms: ["arm0"],
+    };
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    fireEvent.click(screen.getByTestId("end-session"));
+    const dialog = await screen.findByTestId("confirm-dialog");
+    expect(dialog).toHaveTextContent("could not plan a collision-free path");
+    expect(dialog).toHaveTextContent("UFACTORY Studio");
+    // Still in the session: nothing was torn down and the button works again.
+    expect(useStore.getState().session).not.toBeNull();
+    await waitFor(() => expect(screen.getByTestId("end-session")).not.toBeDisabled());
+    // "Stay in session" dismisses without leaving.
+    fireEvent.click(screen.getByTestId("confirm-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("confirm-dialog")).toBeNull());
+    expect(useStore.getState().session).not.toBeNull();
+    // "End session anyway" leaves without retrying the return.
+    fireEvent.click(screen.getByTestId("end-session"));
+    await screen.findByTestId("confirm-dialog");
+    fireEvent.click(screen.getByTestId("confirm-ok"));
+    await waitFor(() => expect(useStore.getState().session).toBeNull());
+    expect(returnHomeCalls).toBe(2);
+  }, 15000);
+
+  it("a workcell with no initial condition leaves straight away (skipped is a success)", async () => {
+    returnHomeBody = {
+      ok: true,
+      status: "skipped",
+      detail: "no initial condition designated for the sim workcell",
+      arms: [],
+    };
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    fireEvent.click(screen.getByTestId("end-session"));
+    await waitFor(() => expect(useStore.getState().session).toBeNull());
+    expect(screen.queryByTestId("confirm-dialog")).toBeNull();
+  }, 15000);
+
+  it("R (reset_to_initial) sends the action and toasts the ack detail", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    act(() => telemetry.push(makeTelemetry()));
+    control.ackDetail = "returning to 'home'"; // the manager's ack detail
+    fireEvent.click(screen.getByTestId("teleop-surface"));
+    await screen.findByTestId("capturing-chip");
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "KeyR", cancelable: true, bubbles: true }),
+      );
+    });
+    await waitFor(() =>
+      expect(control.actions.some((a) => a.name === "reset_to_initial")).toBe(true),
+    );
+    await waitFor(() =>
+      expect(
+        useStore.getState().toasts.some((toast) => toast.text.includes("returning to 'home'")),
+      ).toBe(true),
+    );
+  }, 15000);
+
+  it("Online DAgger session (phase-14): title, panel, actor split, Take over / Hand back / Train now → actions + ack toast, trainer banner", async () => {
+    useStore.getState().setSession({
+      session_id: "s-od",
+      epoch: "epoch-1",
+      mode: "dagger",
+      arms: ["grip", "view"],
+      streams: ["cam0", "cam1"],
+      state: "running",
+      policy_source: "external",
+    });
+    render(
+      <MemoryRouter>
+        <Cockpit mode="dagger" />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    const odDagger = (over: Partial<ReturnType<typeof makeOnlineDagger>> = {}) => ({
+      control_mode: "policy" as const,
+      engaged_arm: null,
+      policy_version: "v4",
+      policy_stale: false,
+      online_dagger: makeOnlineDagger(over),
+    });
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          episode: {
+            state: "idle",
+            index: 1,
+            frames: 0,
+            duration_s: 0,
+            repo_id: "online_dagger/pick_cube_v1",
+          },
+          dagger: odDagger(),
+          external: makeExternal(),
+        }),
+      ),
+    );
+    await screen.findByTestId("online-dagger-panel");
+    expect(document.title).toBe("APOLLO MAVIS V2 · Online DAgger");
+    expect(screen.getByTestId("cockpit-title").textContent).toBe("Online DAgger · pick_cube_v1");
+    expect(screen.queryByTestId("dagger-panel")).toBeNull(); // the legacy panel is replaced
+    expect(screen.getByTestId("od-phase").textContent).toBe("ROLLOUT");
+    expect(screen.getByTestId("od-rollouts").textContent).toBe("3 rollouts saved");
+    // The actor split renders ONCE, in the panel (15-online-dagger §8) — not in
+    // EpisodeControls, which carries only the new-episode reason.
+    expect(screen.getByTestId("od-expert-frames").textContent).toBe("120 / 480 novice");
+    expect(screen.queryByTestId("episode-actor-split")).toBeNull();
+    expect(screen.getByTestId("episode-repo").textContent).toContain("online_dagger/pick_cube_v1");
+    expect(screen.queryByTestId("online-dagger-banner")).toBeNull();
+    // No episode open, policy driving: Take over is live (the runtime accepts it at
+    // any time, like Space), Hand back names its no-op; Train now is live.
+    expect(screen.getByTestId("od-takeover")).toBeEnabled();
+    expect(screen.getByTestId("od-handback")).toBeDisabled();
+    expect(screen.getByTestId("od-gate-reason").textContent).toBe(
+      "Hand back: the policy is already driving",
+    );
+    // Train now: the ActionMsg rides the control WS; a nack toasts the runtime's reason.
+    control.ackOk = false;
+    control.ackDetail = "save or discard the episode first";
+    fireEvent.click(screen.getByTestId("od-train-now"));
+    await waitFor(() => expect(control.actions.some((a) => a.name === "train_now")).toBe(true));
+    await waitFor(() =>
+      expect(
+        useStore
+          .getState()
+          .toasts.some((t) => t.text === "Train now refused: save or discard the episode first"),
+      ).toBe(true),
+    );
+    // Only the panel's toast, not the generic nack one.
+    expect(useStore.getState().toasts.filter((t) => t.text.includes("train_now"))).toEqual([]);
+    // An ok ack toasts the runtime's own detail.
+    control.ackOk = true;
+    control.ackDetail = "train_now published (3 rollouts saved)";
+    fireEvent.click(screen.getByTestId("od-train-now"));
+    await waitFor(() =>
+      expect(
+        useStore
+          .getState()
+          .toasts.some(
+            (t) => t.text === "train_now published (3 rollouts saved)" && t.tone === "info",
+          ),
+      ).toBe(true),
+    );
+    // In `rollout` New episode is live (the runtime accepts episode_new).
+    expect(screen.getByTestId("episode-new")).toBeEnabled();
+    expect(screen.queryByTestId("episode-new-reason")).toBeNull();
+    // A recording rollout: Take over sends `takeover`; after telemetry flips the
+    // control mode, Hand back sends `handback`. No optimistic UI in between.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 2,
+          episode: { state: "recording", index: 1, frames: 40, duration_s: 1.6 },
+          dagger: odDagger(),
+          external: makeExternal(),
+        }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByTestId("od-takeover")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("od-takeover"));
+    await waitFor(() => expect(control.actions.some((a) => a.name === "takeover")).toBe(true));
+    expect(screen.getByTestId("od-handback")).toBeDisabled();
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 3,
+          episode: { state: "recording", index: 1, frames: 80, duration_s: 3.2 },
+          dagger: { ...odDagger(), control_mode: "human" },
+          external: makeExternal(),
+        }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByTestId("od-handback")).toBeEnabled());
+    expect(screen.getByTestId("dagger-mode-chip").textContent).toBe(
+      "HUMAN TAKEOVER — recording intervention",
+    );
+    fireEvent.click(screen.getByTestId("od-handback"));
+    await waitFor(() => expect(control.actions.some((a) => a.name === "handback")).toBe(true));
+    expect(screen.getByTestId("od-train-now")).toBeDisabled(); // episode open
+    // 15-online-dagger §3: while `waiting_trainer` / `training` the runtime refuses
+    // episode_new — New episode is disabled with the runtime's detail (or the phase
+    // wording) and the panel's N hint greys out; the operator never meets the nack toast.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 4,
+          episode: { state: "idle", index: 1, frames: 0, duration_s: 0 },
+          dagger: odDagger({
+            phase: "waiting_trainer",
+            detail: "waiting for the trainer to report ready (loading the offline pool)",
+          }),
+          external: makeExternal(),
+        }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByTestId("episode-new")).toBeDisabled());
+    expect(screen.getByTestId("episode-new-reason").textContent).toBe(
+      "waiting for the trainer to report ready (loading the offline pool)",
+    );
+    expect(screen.getByTestId("od-hint-new").className).toBe("od-hint-off");
+    expect(screen.getByTestId("od-phase").textContent).toBe("WAITING FOR TRAINER");
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 5,
+          episode: { state: "idle", index: 1, frames: 0, duration_s: 0 },
+          dagger: odDagger({ phase: "training", detail: "" }),
+          external: makeExternal(),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("episode-new-reason").textContent).toBe("training in progress"),
+    );
+    expect(screen.getByTestId("episode-new")).toBeDisabled();
+    expect(screen.getByTestId("od-train-now-reason").textContent).toBe("training in progress");
+    // Trainer lost → the red banner in the main column. The coordinator's phase is a
+    // function of the LAST status, so it still says `rollout` — yet `_refuse_locked`
+    // checks aliveness first: New episode must be disabled with THAT reason (the
+    // runtime ships it in `detail`) and the N hint greyed, not left live for a nack.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 6,
+          episode: { state: "idle", index: 1, frames: 0, duration_s: 0 },
+          dagger: odDagger({
+            phase: "rollout",
+            trainer_alive: false,
+            trainer_age_s: 9,
+            detail: "no Online DAgger trainer attached",
+          }),
+          external: makeExternal(),
+        }),
+      ),
+    );
+    const banner = await screen.findByTestId("online-dagger-banner");
+    expect(banner.textContent).toContain("TRAINER LOST");
+    expect(banner.closest(".cockpit-main")).not.toBeNull();
+    expect(screen.getByTestId("od-phase").textContent).toBe("ROLLOUT");
+    expect(screen.getByTestId("episode-new")).toBeDisabled();
+    expect(screen.getByTestId("episode-new-reason").textContent).toBe(
+      "no Online DAgger trainer attached",
+    );
+    expect(screen.getByTestId("od-hint-new").className).toBe("od-hint-off");
+    expect(screen.getByTestId("od-train-now-reason").textContent).toBe(
+      "no Online DAgger trainer attached",
+    );
+    // A legacy block → the old panel.
+    act(() =>
+      telemetry.push(
+        makeTelemetry({
+          seq: 7,
+          dagger: { ...odDagger(), online_dagger: null },
+        }),
+      ),
+    );
+    await screen.findByTestId("dagger-panel");
+    expect(screen.queryByTestId("online-dagger-panel")).toBeNull();
+    expect(screen.getByTestId("cockpit-title").textContent).toBe("Online DAgger");
+  }, 15000);
+
+  // -- Profiles panel: Go to profile (2026-09-08) ---------------------------------------
+  it("Go to profile sends goto_profile {profile_id} over the control WS and toasts the ack / the nack reason; link down disables it with the reason", async () => {
+    profilesBody = [
+      makeProfile({ profile_id: "p1", name: "grasp-ready" }),
+      makeProfile({ profile_id: "p0", name: "start-pose", is_initial_condition: true }),
+      // the other kind's initial condition never reaches a sim session's select
+      makeProfile({
+        profile_id: "h0",
+        name: "hw-start",
+        is_initial_condition: true,
+        workcell_kind: "hardware",
+      }),
+    ];
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    const select = (await screen.findByTestId("goto-profile-select")) as HTMLSelectElement;
+    await waitFor(() => expect(select.options.length).toBe(2));
+    expect([...select.options].map((o) => o.value)).toEqual(["p0", "p1"]); // initial first
+    expect(select.value).toBe("p0");
+
+    control.ackDetail = "going to 'start-pose' (14 waypoints)";
+    fireEvent.click(screen.getByTestId("goto-profile"));
+    await waitFor(() => expect(control.actions.some((a) => a.name === "goto_profile")).toBe(true));
+    expect(control.actions.find((a) => a.name === "goto_profile")!.args).toEqual({
+      profile_id: "p0",
+    });
+    await waitFor(() =>
+      expect(
+        useStore
+          .getState()
+          .toasts.some(
+            (t) => t.text === "going to 'start-pose' (14 waypoints)" && t.tone === "info",
+          ),
+      ).toBe(true),
+    );
+
+    // A nack toasts the runtime's reason — once, not also the generic "goto_profile: …".
+    control.ackOk = false;
+    control.ackDetail = "an episode is recording";
+    fireEvent.change(select, { target: { value: "p1" } });
+    fireEvent.click(screen.getByTestId("goto-profile"));
+    await waitFor(() =>
+      expect(control.actions.filter((a) => a.name === "goto_profile")).toHaveLength(2),
+    );
+    expect(control.actions.filter((a) => a.name === "goto_profile")[1]!.args).toEqual({
+      profile_id: "p1",
+    });
+    await waitFor(() =>
+      expect(
+        useStore
+          .getState()
+          .toasts.some(
+            (t) =>
+              t.text === "Go to profile refused: an episode is recording" && t.tone === "warning",
+          ),
+      ).toBe(true),
+    );
+    expect(useStore.getState().toasts.some((t) => t.text.startsWith("goto_profile:"))).toBe(false);
+
+    // Control link down → disabled with the reason next to it.
+    control.stop();
+    await screen.findByTestId("control-link-down");
+    await waitFor(() => expect(screen.getByTestId("goto-profile")).toBeDisabled());
+    expect(screen.getByTestId("goto-profile-reason").textContent).toBe("Control link down");
+  }, 15000);
+
+  it("a refused profile start (telemetry.session.fault_detail) is shown verbatim in the fault banner", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    const detail =
+      "start_from refused: Manipulation Arm C24 Speed Exceeds Limit — the loop did not accept the plan";
+    act(() =>
+      telemetry.push(makeTelemetry({ session: { state: "running", fault_detail: detail } })),
+    );
+    const banner = await screen.findByTestId("fault-banner");
+    expect(banner.className).toContain("banner-amber");
+    expect(screen.getByTestId("fault-row-session-detail").textContent).toBe(`SESSION — ${detail}`);
+    expect(screen.queryByTestId("fault-recover-grip")).toBeNull(); // the arms are held, not faulted
+    // The next frame without it clears the banner.
+    act(() => telemetry.push(makeTelemetry({ seq: 2, session: { state: "running" } })));
+    await waitFor(() => expect(screen.queryByTestId("fault-banner")).toBeNull());
+  }, 15000);
 });

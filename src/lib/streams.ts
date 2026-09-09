@@ -127,13 +127,13 @@ export const isOverlayStream = (id: string): boolean => overlayBase(id) !== null
 export const MODE_LABELS: Readonly<Record<Mode, string>> = {
   teleop: "Teleop",
   collect: "Data Collection",
-  dagger: "DAgger",
+  dagger: "Online DAgger",
   inference: "Inference",
 };
 export const MODE_DESCRIPTIONS: Readonly<Record<Mode, string>> = {
   teleop: "Drive both arms live",
   collect: "Record episodes for a task",
-  dagger: "Policy drives, you correct",
+  dagger: "Novice drives, you correct — your trainer learns between rollouts",
   inference: "Run a promoted checkpoint",
 };
 

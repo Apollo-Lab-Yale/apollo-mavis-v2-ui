@@ -20,6 +20,7 @@ import type {
   SceneInfo,
   WorkcellStatus,
 } from "../gen";
+import { profilesForKind, workcellPhrase } from "../lib/profiles";
 import {
   armLabel,
   armTitle,
@@ -32,6 +33,7 @@ import {
   SCENE_ID,
   SIM_CAMERA_SLOTS,
   streamLabel,
+  TAB_LABELS,
 } from "../lib/streams";
 import {
   maintenanceErrorText,
@@ -618,16 +620,29 @@ export function SceneSummary({ kind, scene }: SceneSummaryProps) {
 }
 
 // -- Start from: two option rows + the profile list -------------------------------------
+// The list shows the TAB'S profiles only (2026-09-08): `seed_initial` designates one
+// initial condition PER workcell kind, so an unfiltered list showed two identical
+// "default posture" rows and the operator could not tell the twin's from the
+// cell's. Rows without `workcell_kind` (older runtime) appear on both tabs
+// (`profilesForKind`); the empty state and the count follow the filtered rows.
 export type StartFromChoice = "keep_current" | "profile";
 
 export interface StartFromProps {
   profiles: ProfileInfo[];
+  /** The tab's workcell kind: only its profiles are listed (plus kind-less rows). */
+  kind: Kind;
   /** Arm ids of the current tab's workcell — profiles covering other arms are disabled. */
   arms: string[];
   startFrom: StartFromChoice;
   onStartFromChange(v: StartFromChoice): void;
   profileId: string | null;
   onProfileChange(id: string | null): void;
+  /** Per-row delete (2026-09-07): omitted → no delete buttons. The page owns the
+   * confirm dialog and the REST call; this only reports which row was clicked. */
+  onDelete?(profile: ProfileInfo): void;
+  /** Profile id whose DELETE is in flight — its row's button reads "…" and every
+   * delete button is disabled, so a double click cannot fire two requests. */
+  deletingId?: string | null;
 }
 
 interface OptionRowProps {
@@ -663,12 +678,19 @@ function OptionRow({ selected, icon, title, help, name, testId, onSelect }: Opti
 
 export function StartFrom({
   profiles,
+  kind,
   arms,
   startFrom,
   onStartFromChange,
   profileId,
   onProfileChange,
+  onDelete,
+  deletingId = null,
 }: StartFromProps) {
+  const rows = profilesForKind(profiles, kind);
+  // Every hidden row belongs to the other kind (kind-less rows are never hidden).
+  const hidden = profiles.length - rows.length;
+  const otherKind: Kind = kind === "sim" ? "hardware" : "sim";
   return (
     <div className="option-rows" data-testid="profile-picker">
       <div role="radiogroup" aria-label="Start from" className="option-rows">
@@ -685,7 +707,7 @@ export function StartFrom({
           selected={startFrom === "profile"}
           icon="bookmark"
           title="Load a profile"
-          help="Twin-planned safe motion to a saved pose"
+          help="Twin-planned motion to a saved posture — gated, cancelled by any input"
           name="start-from"
           testId="start-profile"
           onSelect={() => onStartFromChange("profile")}
@@ -697,13 +719,19 @@ export function StartFrom({
           role="radiogroup"
           aria-label="Profile"
           data-testid="profile-list"
+          data-kind={kind}
+          data-count={rows.length}
         >
-          {profiles.length === 0 && (
+          {rows.length === 0 && (
             <div className="profile-empty" data-testid="profile-empty">
-              No saved profiles — save one from Teleop
+              {hidden === 0
+                ? "No saved profiles — save one from Teleop"
+                : `No ${TAB_LABELS[kind]} profiles — ${hidden} saved ${
+                    hidden === 1 ? "profile belongs" : "profiles belong"
+                  } to ${workcellPhrase(otherKind)}`}
             </div>
           )}
-          {profiles.map((p) => {
+          {rows.map((p) => {
             const missing = p.arms.filter((a) => !arms.includes(a));
             const disabled = missing.length > 0;
             const selected = profileId === p.profile_id;
@@ -747,6 +775,25 @@ export function StartFrom({
                   </span>
                 )}
                 <Icon name="check" size={18} className="profile-check" />
+                {onDelete && (
+                  // Inside the <label>, so the click has to be stopped BEFORE it
+                  // bubbles there — otherwise deleting a row would also select it.
+                  <button
+                    type="button"
+                    className="btn-ghost btn-icon profile-delete"
+                    aria-label={`Delete profile ${p.name}`}
+                    title={`Delete ${p.name}`}
+                    disabled={deletingId !== null}
+                    data-testid={`profile-delete-${p.profile_id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onDelete(p);
+                    }}
+                  >
+                    <Icon name="trash" size={16} />
+                  </button>
+                )}
               </label>
             );
           })}

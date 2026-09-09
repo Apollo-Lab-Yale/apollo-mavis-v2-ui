@@ -21,7 +21,10 @@ export type IconName =
   | "error"
   | "lock"
   | "target"
-  | "bookmark";
+  | "bookmark"
+  | "trash"
+  | "project"
+  | "copy";
 
 const PATHS: Record<IconName, ReactNode> = {
   camera: (
@@ -116,6 +119,33 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   bookmark: <path d="M7 4.5h10a1 1 0 0 1 1 1V20l-6-3.5L6 20V5.5a1 1 0 0 1 1-1z" />,
+  trash: (
+    <>
+      <path d="M4.5 7h15M9.5 7V5.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7" />
+      <path d="M6.5 7l.8 11.6a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7" />
+      <path d="M10.5 10.5v6.5M13.5 10.5v6.5" />
+    </>
+  ),
+  // Online DAgger launcher (15-online-dagger §8; the glyph is kept from the
+  // interactive-learning card): a vector and its projection onto a reference line —
+  // the line, the vector with its arrowhead, the dashed perpendicular drop and the
+  // projected foot.
+  project: (
+    <>
+      <path d="M3 19L21 9" />
+      <path d="M5 17.9L12 5" />
+      <path d="M9.1 6.3L12 5l.6 3.2" />
+      <path d="M12 5l3.8 6.9" strokeDasharray="2 2" />
+      <circle cx="15.8" cy="11.9" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="17.9" r="1.2" fill="currentColor" stroke="none" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="10.5" height="10.5" rx="2" />
+      <path d="M6 15H5.5A1.5 1.5 0 0 1 4 13.5v-8A1.5 1.5 0 0 1 5.5 4h8A1.5 1.5 0 0 1 15 5.5V6" />
+    </>
+  ),
 };
 
 export const ICON_NAMES = Object.keys(PATHS) as IconName[];

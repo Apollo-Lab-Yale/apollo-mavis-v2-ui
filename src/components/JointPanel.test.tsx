@@ -2,28 +2,22 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeArm, makeArmStatus } from "../../tests/mocks/fixtures";
 import type { ArmTelemetry } from "../gen";
-import { JOG_THROTTLE_MS, JointPanel } from "./JointPanel";
+import { JOG_THROTTLE_MS, JointPanel, TYPE_COMMIT_MS } from "./JointPanel";
 
 const limits = makeArmStatus().joint_limits as [number, number][];
 
 function mount(arm: ArmTelemetry, over: Partial<Parameters<typeof JointPanel>[0]> = {}) {
   const onJog = vi.fn();
-  const onGoto = vi.fn();
   const utils = render(
-    <JointPanel
-      arm={arm}
-      limits={limits}
-      disabled={false}
-      onJog={onJog}
-      onGoto={onGoto}
-      {...over}
-    />,
+    <JointPanel arm={arm} limits={limits} disabled={false} onJog={onJog} {...over} />,
   );
-  return { onJog, onGoto, utils };
+  return { onJog, utils };
 }
 
 const slider = (i: number) =>
   screen.getByTestId(`joint-row-${i}`).querySelector("input[type=range]") as HTMLInputElement;
+const box = (i: number) =>
+  screen.getByTestId(`joint-row-${i}`).querySelector("input[type=number]") as HTMLInputElement;
 
 describe("JointPanel", () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] }));
@@ -47,12 +41,67 @@ describe("JointPanel", () => {
     expect(last[0]).toBeCloseTo(0.39);
   });
 
-  it('"Go to" emits exactly one goto with the full vector', () => {
-    const { onGoto } = mount(makeArm());
-    fireEvent.click(screen.getByTestId("goto-button"));
-    expect(onGoto).toHaveBeenCalledTimes(1);
-    const positions = onGoto.mock.calls[0]![0] as number[];
-    expect(positions.length).toBe(8);
+  it("a slider-track click sends one jog of any size (no goto threshold)", () => {
+    const { onJog } = mount(makeArm({ q: [0, 0, 0, 0, 0, 0, 0] }));
+    fireEvent.change(slider(0), { target: { value: "2.5" } }); // far past the old 0.15 rad
+    vi.advanceTimersByTime(JOG_THROTTLE_MS);
+    expect(onJog).toHaveBeenCalledTimes(1);
+    expect((onJog.mock.calls[0]![0] as number[])[0]).toBeCloseTo(2.5);
+  });
+
+  it("has no Go to button", () => {
+    mount(makeArm());
+    expect(screen.queryByTestId("goto-button")).toBeNull();
+  });
+
+  describe("number box", () => {
+    it("commits the typed value on Enter", () => {
+      const { onJog } = mount(makeArm({ q: [0, 0, 0, 0, 0, 0, 0] }));
+      fireEvent.focus(box(0));
+      fireEvent.change(box(0), { target: { value: "1.25" } });
+      expect(onJog).not.toHaveBeenCalled(); // not on the keystroke itself
+      fireEvent.keyDown(box(0), { key: "Enter" });
+      expect(onJog).toHaveBeenCalledTimes(1);
+      expect((onJog.mock.calls[0]![0] as number[])[0]).toBeCloseTo(1.25);
+    });
+
+    it("commits on its own once typing stops", () => {
+      const { onJog } = mount(makeArm({ q: [0, 0, 0, 0, 0, 0, 0] }));
+      fireEvent.focus(box(0));
+      fireEvent.change(box(0), { target: { value: "0.4" } });
+      vi.advanceTimersByTime(TYPE_COMMIT_MS - 1);
+      expect(onJog).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(onJog).toHaveBeenCalledTimes(1);
+      expect((onJog.mock.calls[0]![0] as number[])[0]).toBeCloseTo(0.4);
+    });
+
+    it("keeps the raw text while focused, so typing is not fought by rounding", () => {
+      mount(makeArm({ q: [0, 0, 0, 0, 0, 0, 0] }));
+      fireEvent.focus(box(0));
+      fireEvent.change(box(0), { target: { value: "0.1234567" } });
+      expect(box(0).value).toBe("0.1234567");
+      fireEvent.blur(box(0));
+      expect(box(0).value).toBe("0.123"); // rounded again once released
+    });
+
+    it("ignores a partially typed value instead of commanding NaN", () => {
+      const { onJog } = mount(makeArm({ q: [0.5, 0, 0, 0, 0, 0, 0] }));
+      fireEvent.focus(box(0));
+      fireEvent.change(box(0), { target: { value: "-" } });
+      vi.advanceTimersByTime(TYPE_COMMIT_MS * 2);
+      expect(onJog).not.toHaveBeenCalled();
+      fireEvent.keyDown(box(0), { key: "Enter" }); // Enter still commits the row as-is
+      expect((onJog.mock.calls[0]![0] as number[])[0]).toBeCloseTo(0.5);
+    });
+
+    it("clamps a typed value into the row's limits", () => {
+      const { onJog } = mount(makeArm({ q: [0, 0, 0, 0, 0, 0, 0] }));
+      fireEvent.focus(box(1)); // J2 limits [-2.06, 2.09]
+      fireEvent.change(box(1), { target: { value: "99" } });
+      fireEvent.keyDown(box(1), { key: "Enter" });
+      expect((onJog.mock.calls[0]![0] as number[])[1]).toBeCloseTo(limits[1]![1]);
+    });
   });
 
   it("renders no rail row when rail_pos_m === null", () => {
@@ -82,17 +131,6 @@ describe("JointPanel", () => {
     expect(screen.getByTestId("joint-row-0").className).not.toContain("row-amber");
   });
 
-  it('shows error UI on goto:"failed"', () => {
-    mount(makeArm({ goto: "failed" }));
-    expect(screen.getByTestId("goto-failed")).toBeInTheDocument();
-  });
-
-  it("shows lifecycle states on the goto button", () => {
-    mount(makeArm({ goto: "planning" }));
-    expect(screen.getByTestId("goto-button")).toHaveTextContent("Planning…");
-    expect(screen.getByTestId("goto-button")).toBeDisabled();
-  });
-
   it("idle values track telemetry; a dragged row is user-owned", () => {
     const { utils } = mount(makeArm({ q: [0, -0.5, 0, 0.7, 0, 1.2, 0] }));
     const s0 = slider(0);
@@ -111,7 +149,6 @@ describe("JointPanel", () => {
         limits={limits}
         disabled={false}
         onJog={vi.fn()}
-        onGoto={vi.fn()}
       />,
     );
     expect(Number(slider(0).value)).toBeCloseTo(1.5); // owned — does not follow
@@ -125,7 +162,6 @@ describe("JointPanel", () => {
         limits={limits}
         disabled={false}
         onJog={vi.fn()}
-        onGoto={vi.fn()}
       />,
     );
     expect(Number(slider(0).value)).toBeCloseTo(0.8);

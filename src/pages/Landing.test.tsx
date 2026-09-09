@@ -31,20 +31,31 @@ import {
   makeScene,
   makeSimCameras,
   makeCalibration,
+  makeDataset,
+  makeDatasetLayout,
+  makeDoraInfo,
+  makeEpisode,
+  makeOnlineDaggerSession,
   makeTelemetry,
   makeTracker,
+  makeTrainerExternal,
   makeWorkcell,
   SIM_CAMERA_IDS,
 } from "../../tests/mocks/fixtures";
 import { MockTelemetryServer, MockVideoServer } from "../../tests/mocks/mockWs";
 import type {
   CameraInfo,
+  DatasetInfo,
+  DatasetLayoutInfo,
+  EpisodeInfo,
   MicrophoneInfo,
   PolicyInfo,
+  OnlineDaggerSessionInfo,
   ProfileInfo,
   SceneInfo,
   WorkcellStatus,
 } from "../gen";
+import { DEFAULT_SPEED_SCALE, DEFAULT_SPEED_VALUE, SPEED_OPTIONS } from "../lib/launch";
 import { REVEAL_FLAG } from "../lib/useRevealOnce";
 import { useStore } from "../store";
 import {
@@ -70,15 +81,41 @@ interface MockApi {
   keymapFails?: boolean;
   /** POST /api/session answers 409 with this detail. */
   session409?: string;
+  /** DELETE /api/profiles/{id} answers 409 with this detail (the runtime refuses
+   * to delete the designated initial-condition profile). */
+  profileDelete409?: string;
+  /** `GET /api/datasets` (2026-09-07); default: none recorded. */
+  datasets?: DatasetInfo[];
+  /** `GET /api/datasets/{ns}/{name}/episodes` per repo id. */
+  episodes?: Record<string, EpisodeInfo[]>;
+  /** DELETE / POST export on a dataset answer 409 with this detail. */
+  dataset409?: string;
+  /** `GET /api/datasets/layout` (phase-14); `404` → an older runtime (no preview folder). */
+  layout?: DatasetLayoutInfo | 404;
+  /** `GET /api/online_dagger/sessions` (phase-14). */
+  onlineDaggerSessions?: OnlineDaggerSessionInfo[];
 }
 
 const posts: unknown[] = [];
+const deletes: string[] = [];
+const exports: string[] = [];
 let hardwarePolls = 0;
 const base = `ws://${location.host}`;
 
 function installFetch(api: MockApi = {}) {
   posts.length = 0;
+  deletes.length = 0;
+  exports.length = 0;
   hardwarePolls = 0;
+  let datasets: DatasetInfo[] = api.datasets ?? [];
+  const episodes: Record<string, EpisodeInfo[]> = { ...(api.episodes ?? {}) };
+  // Server-side profile list: DELETE mutates it, so the page's re-read after a
+  // delete sees what the runtime would actually serve.
+  let profiles: ProfileInfo[] = api.profiles ?? [
+    makeProfile({ profile_id: "p0", name: "start", is_initial_condition: true }),
+    makeProfile({ profile_id: "p1", name: "alt", notes: "left of bin" }),
+    makeProfile({ profile_id: "p2", name: "third-arm", arms: ["grip", "view", "aux"] }),
+  ];
   const json = (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
   vi.stubGlobal(
@@ -125,14 +162,58 @@ function installFetch(api: MockApi = {}) {
         );
       if (url.includes("/api/scenes?kind=twin"))
         return json(api.twinScenes ?? [makeScene({ kind: "twin" })]);
-      if (url.includes("/api/profiles"))
-        return json(
-          api.profiles ?? [
-            makeProfile({ profile_id: "p0", name: "start", is_initial_condition: true }),
-            makeProfile({ profile_id: "p1", name: "alt", notes: "left of bin" }),
-            makeProfile({ profile_id: "p2", name: "third-arm", arms: ["grip", "view", "aux"] }),
-          ],
-        );
+      if (url.includes("/api/profiles/") && init?.method === "DELETE") {
+        const id = url.split("/api/profiles/")[1]!;
+        deletes.push(id);
+        if (api.profileDelete409) return json({ detail: api.profileDelete409 }, 409);
+        profiles = profiles.filter((p) => p.profile_id !== id);
+        return new Response(null, { status: 204 });
+      }
+      if (url.includes("/api/profiles")) return json(profiles);
+      if (url.includes("/api/datasets/layout"))
+        return api.layout === 404
+          ? json({ detail: "Not Found" }, 404)
+          : json(api.layout ?? makeDatasetLayout());
+      if (url.includes("/api/dora")) return json(makeDoraInfo());
+      if (url.includes("/api/online_dagger/skill"))
+        return new Response("# mavis-online-dagger-trainer\n\nInstall mavis-policy-node…", {
+          status: 200,
+          headers: { "content-type": "text/markdown" },
+        });
+      if (url.includes("/api/online_dagger/sessions")) return json(api.onlineDaggerSessions ?? []);
+      if (url.includes("/api/datasets")) {
+        const rest = url.split("/api/datasets")[1] ?? "";
+        const m = /^\/([^/]+)\/([^/]+)(\/.*)?$/.exec(rest);
+        if (!m) return json(datasets);
+        const repoId = `${m[1]}/${m[2]}`;
+        const tail = m[3] ?? "";
+        if (tail.startsWith("/episodes/") && init?.method === "DELETE") {
+          const epId = decodeURIComponent(tail.slice("/episodes/".length));
+          deletes.push(`${repoId}#${epId}`);
+          if (api.dataset409) return json({ detail: api.dataset409 }, 409);
+          episodes[repoId] = (episodes[repoId] ?? []).filter((e) => e.episode_id !== epId);
+          datasets = datasets.map((d) =>
+            d.repo_id === repoId
+              ? { ...d, total_episodes: d.total_episodes - 1, export: { state: "stale" } }
+              : d,
+          );
+          return new Response(null, { status: 204 });
+        }
+        if (tail === "/episodes") return json(episodes[repoId] ?? []);
+        if (tail === "/export" && init?.method === "POST") {
+          exports.push(repoId);
+          if (api.dataset409) return json({ detail: api.dataset409 }, 409);
+          return json({ repo_id: repoId, format: "lerobot_v3", started_at: "now" }, 202);
+        }
+        if (tail === "" && init?.method === "DELETE") {
+          deletes.push(repoId);
+          if (api.dataset409) return json({ detail: api.dataset409 }, 409);
+          datasets = datasets.filter((d) => d.repo_id !== repoId);
+          return new Response(null, { status: 204 });
+        }
+        const one = datasets.find((d) => d.repo_id === repoId);
+        return one ? json(one) : json({ detail: "unknown dataset" }, 404);
+      }
       if (url.includes("/api/policies")) return json(api.policies ?? []);
       if (url.includes("/api/keymap")) return api.keymapFails ? json("boom", 500) : json(KEYMAP);
       throw new Error(`unmocked fetch ${url}`);
@@ -267,13 +348,14 @@ describe("validateLaunch (matrix)", () => {
   });
   it("blocks collect/dagger with an empty task", () => {
     expect(validateLaunch("collect", simSel)).toBe("Task is required");
-    expect(validateLaunch("dagger", { ...simSel, policiesAvailable: true })).toBe(
-      "Task is required",
-    );
+    expect(validateLaunch("dagger", simSel)).toBe("Task is required");
     expect(validateLaunch("collect", { ...simSel, task: "stack cubes" })).toBeNull();
   });
-  it("blocks dagger without policies and inference without a promoted checkpoint", () => {
-    expect(validateLaunch("dagger", { ...simSel, task: "t" })).toBe("No policies available");
+  it("dagger (Online DAgger) ignores the checkpoint registry; inference needs a promoted checkpoint", () => {
+    // 15-online-dagger D1: the external policy node drives — `policies_available` gates
+    // nothing here any more (the sheet gates on the trainer attachment instead).
+    expect(validateLaunch("dagger", { ...simSel, task: "t" })).toBeNull();
+    expect(validateLaunch("dagger", { ...simSel, task: "t", policiesAvailable: true })).toBeNull();
     expect(validateLaunch("inference", simSel)).toBe("No promoted checkpoint");
     expect(validateLaunch("inference", { ...simSel, policiesAvailable: true })).toBe(
       "No promoted checkpoint",
@@ -287,15 +369,78 @@ describe("validateLaunch (matrix)", () => {
       "Keymap unavailable — retry",
     );
   });
-  it("phase-09c Hardware gating: teleop only, arm subset, rail homed, homing in flight, eligibility", () => {
-    // The three non-teleop modes are blocked on the Hardware tab before anything else.
-    for (const m of ["collect", "dagger", "inference"] as const) {
+  it("phase-09c Hardware gating: teleop + collect only, arm subset, rail homed, homing in flight, eligibility", () => {
+    // DAgger / Inference are blocked on the Hardware tab before anything else;
+    // Data Collection is admitted since 2026-09-07 (04-runtime §10.5).
+    for (const m of ["dagger", "inference"] as const) {
       expect(validateLaunch(m, { ...hwSel, task: "t", policiesAvailable: true })).toBe(
         REASON.hardwareTeleopOnly,
       );
       expect(validateLaunch(m, { ...hwSel, hardwareReady: false })).toBe(REASON.hardwareTeleopOnly);
     }
-    expect(REASON.hardwareTeleopOnly).toBe("Hardware sessions support teleop only for now");
+    expect(REASON.hardwareTeleopOnly).toBe(
+      "Hardware sessions support teleop and data collection only for now",
+    );
+    expect(
+      validateLaunch("collect", {
+        ...hwSel,
+        task: "t",
+        datasetMode: "new",
+        datasetName: "pick",
+        returnToStart: false,
+      }),
+    ).toBeNull();
+    // Data Collection's own rules (2026-09-07), judged once the sheet filled the fields
+    const collect = {
+      ...simSel,
+      task: "t",
+      datasetMode: "new" as const,
+      hasInitialCondition: true,
+    };
+    expect(validateLaunch("collect", { ...collect, datasetName: "" })).toBe(REASON.datasetName);
+    expect(validateLaunch("collect", { ...collect, datasetName: "!!" })).toBe(REASON.datasetName);
+    expect(validateLaunch("collect", { ...collect, datasetName: "Pick Cube" })).toBeNull();
+    expect(
+      validateLaunch("collect", { ...collect, datasetMode: "existing", datasetRepoId: null }),
+    ).toBe(REASON.datasetPick);
+    expect(
+      validateLaunch("collect", { ...collect, datasetMode: "existing", datasetRepoId: "apollo/x" }),
+    ).toBeNull();
+    expect(
+      validateLaunch("collect", { ...collect, datasetName: "x", hasInitialCondition: false }),
+    ).toBe(REASON.returnNeedsProfile);
+    expect(
+      validateLaunch("collect", {
+        ...collect,
+        datasetName: "x",
+        hasInitialCondition: false,
+        returnToStart: false,
+      }),
+    ).toBeNull();
+    expect(
+      validateLaunch("collect", {
+        ...collect,
+        datasetName: "x",
+        hasInitialCondition: false,
+        startFrom: "profile",
+        profileId: "p1",
+      }),
+    ).toBeNull();
+    // buildSpec never emits an empty `dataset` (omitted = the task-derived name)
+    const spec = buildSpec("collect", { ...collect, datasetName: "" });
+    expect(spec).not.toHaveProperty("dataset");
+    expect(spec.dataset_resume).toBe(false);
+    expect(buildSpec("collect", { ...collect, datasetName: "Pick Cube" }).dataset).toBe(
+      "pick_cube",
+    );
+    expect(buildSpec("dagger", { ...simSel, task: "t" })).toHaveProperty(
+      "action_filter.enabled",
+      true,
+    );
+    expect(buildSpec("teleop", simSel)).not.toHaveProperty("action_filter");
+    expect(validateLaunch("collect", { ...hwSel, task: "t", hardwareReady: false })).toBe(
+      REASON.noArmsDetected,
+    );
     // A workcell without arms (phase-09d: there is no "nothing selected" any more —
     // every hardware arm joins the session).
     expect(validateLaunch("teleop", { ...hwSel, arms: [] })).toBe(REASON.noWorkcellArms);
@@ -371,29 +516,41 @@ describe("buildSpec", () => {
       sim_scene: "mavis_v2",
       start_from: "profile:p0",
     });
-    // Hardware: `speed_scale` always travels (the runtime default is 1.0 = full speed;
-    // the UI default is 10 %), sim specs never carry it.
+    // Hardware: `speed_scale` always travels; an unset one falls back to the
+    // pre-selected segment (100 % since 2026-09-08 — the operator found 50 %
+    // too slow on the real cell). Sim specs never carry it.
+    // Segments and the pre-selected one must not drift apart (2026-09-07).
+    expect(SPEED_OPTIONS.map((o) => o.label)).toEqual(["10%", "50%", "100%"]);
+    expect(SPEED_OPTIONS.find((o) => o.value === DEFAULT_SPEED_VALUE)?.scale).toBe(
+      DEFAULT_SPEED_SCALE,
+    );
+    expect(DEFAULT_SPEED_SCALE).toBe(1);
     expect(buildSpec("teleop", hwSel)).toEqual({
       mode: "teleop",
       kind: "hardware",
       arms: ["grip", "view"],
       frames: { grip: "arm_base:grip", view: "arm_base:view" },
       digital_twin_scene: "mavis_v2",
-      speed_scale: 0.1,
+      speed_scale: DEFAULT_SPEED_SCALE,
       start_from: "keep_current",
     });
-    expect(buildSpec("teleop", { ...hwSel, arms: ["grip"], speedScale: 0.3 })).toMatchObject({
+    expect(buildSpec("teleop", { ...hwSel, arms: ["grip"], speedScale: 0.1 })).toMatchObject({
       arms: ["grip"],
       frames: { grip: "arm_base:grip" },
-      speed_scale: 0.3,
+      speed_scale: 0.1,
     });
     expect(buildSpec("teleop", simSel)).not.toHaveProperty("speed_scale");
   });
-  it("task only for collect/dagger; policy only when chosen (DAgger 'Latest' omits it)", () => {
+  it("task only for collect/dagger; policy only for inference (dagger = external policy node)", () => {
     expect(buildSpec("collect", { ...simSel, task: " stack " }).task).toBe("stack");
-    expect(buildSpec("dagger", { ...simSel, task: "t", policyId: null })).not.toHaveProperty(
+    // Online DAgger never names a checkpoint — even a stale `policyId` is dropped.
+    expect(buildSpec("dagger", { ...simSel, task: "t", policyId: "ckpt-8" })).not.toHaveProperty(
       "policy",
     );
+    expect(buildSpec("dagger", { ...simSel, task: "t" })).toMatchObject({
+      policy_source: "external",
+      return_to_start: true,
+    });
     expect(buildSpec("inference", { ...simSel, policyId: "ckpt-9" })).toMatchObject({
       policy: "ckpt-9",
     });
@@ -507,11 +664,11 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-card-placeholder").textContent).toContain("192.168.1.201");
     for (const m of MODES) {
       expect(screen.getByTestId(`launch-${m}`).getAttribute("aria-disabled")).toBe("true");
-      // Teleop reports the arms; the other three are teleop-only on hardware (phase-09c).
+      // Teleop and Data Collection report the arms; DAgger / Inference stay hardware-refused.
       expect(reasonOf(m)).toContain(
-        m === "teleop"
+        m === "teleop" || m === "collect"
           ? "Requires real arms — none detected"
-          : "Hardware sessions support teleop only for now",
+          : "Hardware sessions support teleop and data collection only for now",
       );
     }
     // Disabled cards stay reachable by keyboard and ignore activation.
@@ -550,11 +707,15 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("scene-picker-twin").textContent).toContain(
       "Scene·APOLLO MAVIS V2 Digital Twin·2 arms · rails · 4 cameras",
     );
-    // Phase-09d: no Include switch — every hardware arm joins the session; Speed 10 %.
+    // Phase-09d: no Include switch — every hardware arm joins the session.
+    // Speed segments are 10 / 50 / 100 % with 100 % pre-selected (2026-09-08).
     expect(screen.queryByTestId("arm-include-grip")).toBeNull();
     expect(screen.queryByTestId("arm-include-view")).toBeNull();
     expect(screen.queryByText("Include in session")).toBeNull();
-    expect(screen.getByTestId("speed-10").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("speed-100").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("speed-50").getAttribute("aria-selected")).toBe("false");
+    expect(screen.queryByTestId("speed-30")).toBeNull();
+    expect(screen.getByTestId("speed-10")).toBeInTheDocument();
     // No monitor sample yet → the twin cannot be posed → teleop waits (the runtime
     // would 409 too), naming both arms; each card explains why it is not ready;
     // the other three launchers are teleop-only on hardware.
@@ -567,10 +728,11 @@ describe("Welcome page", () => {
     );
     expect(screen.getByTestId("arm-session-reason-grip").dataset["gate"]).toBe("monitor_off");
     expect(screen.getByTestId("arm-session-reason-view")).toBeInTheDocument();
-    for (const m of ["collect", "dagger", "inference"]) {
+    for (const m of ["dagger", "inference"]) {
       expect(enabled(`launch-${m}`)).toBe(false);
-      expect(reasonOf(m)).toBe("Hardware sessions support teleop only for now");
+      expect(reasonOf(m)).toBe("Hardware sessions support teleop and data collection only for now");
     }
+    expect(enabled("launch-collect")).toBe(false); // the same arm gates as teleop
     // The monitor reports both arms homed and clean → launchable, reason lines gone.
     await pushTelemetry(makeTelemetry({ hardware_monitor: eligibleMonitor() }));
     await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
@@ -586,12 +748,12 @@ describe("Welcome page", () => {
       arms: ["grip", "view"],
       frames: { grip: "arm_base:grip", view: "arm_base:view" },
       digital_twin_scene: "mavis_v2",
-      speed_scale: 0.1,
+      speed_scale: 1,
       start_from: "keep_current",
     });
   });
 
-  it("phase-09c speed: pick 30 % → speed_scale 0.3 with both arms (phase-09d)", async () => {
+  it("phase-09c speed: pick 10 % → speed_scale 0.1 with both arms (phase-09d)", async () => {
     await mount({
       hardware: makeHardwareWorkcell({ hardware_ready: true, arms: makeHardwareArms("open") }),
       cameras: [...makeSimCameras(), ...makeHardwareCameras(true)],
@@ -601,15 +763,15 @@ describe("Welcome page", () => {
     await screen.findByTestId("arm-card-view");
     await pushTelemetry(makeTelemetry({ hardware_monitor: eligibleMonitor() }));
     await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
-    fireEvent.click(screen.getByTestId("speed-30"));
-    expect(screen.getByTestId("speed-30").getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByTestId("speed-10"));
+    expect(screen.getByTestId("speed-10").getAttribute("aria-selected")).toBe("true");
     fireEvent.click(screen.getByTestId("launch-teleop"));
     await screen.findByTestId("mode-page");
-    // Manipulation Arm first; both frames; 30 %.
+    // Manipulation Arm first; both frames; 10 % (a first run in a new posture).
     expect(posts[0]).toMatchObject({
       arms: ["grip", "view"],
       frames: { grip: "arm_base:grip", view: "arm_base:view" },
-      speed_scale: 0.3,
+      speed_scale: 0.1,
     });
   });
 
@@ -892,8 +1054,23 @@ describe("Welcome page", () => {
     expect(input.getAttribute("aria-invalid")).toBe("true");
     fireEvent.change(input, { target: { value: "stack the cube" } });
     expect(screen.queryByTestId("task-error")).toBeNull();
-    expect(confirm).toBeEnabled();
     expect(screen.queryByTestId("policy-select")).toBeNull(); // no policy field for collect
+    // Dataset (2026-09-07): a new name is required, slugged live to DATASET_RE
+    expect(confirm).toBeDisabled();
+    expect(screen.getByTestId("launch-reason").textContent).toBe("Dataset name is required");
+    const name = screen.getByTestId("dataset-name") as HTMLInputElement;
+    fireEvent.change(name, { target: { value: "Stack the Cube!" } });
+    // 15-online-dagger §8: the preview is the REAL folder from GET /api/datasets/layout.
+    await waitFor(() =>
+      expect(screen.getByTestId("dataset-preview").textContent).toBe(
+        "/home/x/data/bc_demo/stack_the_cube",
+      ),
+    );
+    // Return to start is ON by default and needs a profile: the fixture designates an
+    // initial condition (p0), so Start is allowed; untick -> still allowed.
+    const rts = screen.getByTestId("return-to-start") as HTMLInputElement;
+    expect(rts.checked).toBe(true);
+    expect(confirm).toBeEnabled();
     fireEvent.click(confirm);
     await screen.findByTestId("mode-page");
     expect(posts[0]).toEqual({
@@ -904,7 +1081,232 @@ describe("Welcome page", () => {
       sim_scene: "mavis_v2",
       start_from: "keep_current",
       task: "stack the cube",
+      dataset: "stack_the_cube",
+      dataset_resume: false,
+      return_to_start: true,
+      action_filter: {
+        enabled: true,
+        pos_eps_m: 0.001,
+        rot_eps_rad: 0.001,
+        gripper_eps_frac: 0.01,
+        rail_eps_m: 0.001,
+        gripper_context_s: 1.6,
+      },
     });
+  });
+
+  it("Data Collection: the idle-frame filter is checked by default; unticking disables the inputs; edited values reach action_filter in SI", async () => {
+    await mount();
+    await ready();
+    fireEvent.click(screen.getByTestId("launch-collect"));
+    await screen.findByTestId("launch-sheet-panel");
+    fireEvent.change(screen.getByTestId("task-input"), { target: { value: "sort" } });
+    fireEvent.change(screen.getByTestId("dataset-name"), { target: { value: "sort" } });
+    const box = screen.getByTestId("action-filter") as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    const pos = screen.getByTestId("action-filter-posMm") as HTMLInputElement;
+    expect(pos.value).toBe("1");
+    expect((screen.getByTestId("action-filter-gripperContextS") as HTMLInputElement).value).toBe(
+      "1.6",
+    );
+    fireEvent.change(pos, { target: { value: "2.5" } });
+    fireEvent.change(screen.getByTestId("action-filter-gripperPct"), { target: { value: "3" } });
+    fireEvent.click(box); // untick → inputs disabled, enabled: false travels
+    expect(pos).toBeDisabled();
+    fireEvent.click(screen.getByTestId("launch-confirm"));
+    await screen.findByTestId("mode-page");
+    expect((posts[0] as { action_filter: unknown }).action_filter).toEqual({
+      enabled: false,
+      pos_eps_m: 0.0025,
+      rot_eps_rad: 0.001,
+      gripper_eps_frac: 0.03,
+      rail_eps_m: 0.001,
+      gripper_context_s: 1.6,
+    });
+  });
+
+  it("Data Collection: the return-to-start gate uses the initial condition of the SELECTED kind", async () => {
+    // only a HARDWARE initial condition exists: on the Sim tab Start must wait for an untick
+    await mount({
+      profiles: [
+        makeProfile({
+          profile_id: "h0",
+          name: "hw-start",
+          is_initial_condition: true,
+          workcell_kind: "hardware",
+        }),
+      ],
+    });
+    await ready();
+    fireEvent.click(screen.getByTestId("launch-collect"));
+    await screen.findByTestId("launch-sheet-panel");
+    fireEvent.change(screen.getByTestId("task-input"), { target: { value: "sort" } });
+    fireEvent.change(screen.getByTestId("dataset-name"), { target: { value: "sort" } });
+    expect(screen.getByTestId("launch-confirm")).toBeDisabled();
+    expect(screen.getByTestId("return-to-start-reason")).toBeInTheDocument();
+  });
+
+  it("Data Collection: no start profile and no initial condition → Start disabled until untick", async () => {
+    await mount({ profiles: [makeProfile({ profile_id: "p1", name: "alt" })] });
+    await ready();
+    fireEvent.click(screen.getByTestId("launch-collect"));
+    await screen.findByTestId("launch-sheet-panel");
+    fireEvent.change(screen.getByTestId("task-input"), { target: { value: "sort" } });
+    fireEvent.change(screen.getByTestId("dataset-name"), { target: { value: "sort" } });
+    const confirm = screen.getByTestId("launch-confirm");
+    expect(confirm).toBeDisabled();
+    expect(screen.getByTestId("launch-reason").textContent).toBe(
+      "Return to start needs a start profile or an initial condition — pick one or untick",
+    );
+    expect(screen.getByTestId("return-to-start-reason")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("return-to-start"));
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    await screen.findByTestId("mode-page");
+    expect(posts[0]).toMatchObject({
+      dataset: "sort",
+      dataset_resume: false,
+      return_to_start: false,
+    });
+  });
+
+  it("Data Collection: 'Continue existing' lists this tab's episode-directory datasets and posts dataset_resume", async () => {
+    await mount({
+      datasets: [
+        makeDataset(),
+        makeDataset({ repo_id: "apollo/hw_only", kind: "hardware" }),
+        makeDataset({ repo_id: "apollo/old", layout: "lerobot_v3" }),
+      ],
+    });
+    await ready();
+    fireEvent.click(screen.getByTestId("launch-collect"));
+    await screen.findByTestId("launch-sheet-panel");
+    fireEvent.change(screen.getByTestId("task-input"), { target: { value: "pick" } });
+    fireEvent.click(screen.getByTestId("dataset-mode-existing"));
+    const pick = screen.getByTestId("dataset-pick");
+    expect(within(pick).getByTestId("dataset-pick-apollo/pick_cube")).toBeInTheDocument();
+    expect(within(pick).queryByTestId("dataset-pick-apollo/hw_only")).toBeNull(); // other kind
+    expect(within(pick).queryByTestId("dataset-pick-apollo/old")).toBeNull(); // legacy: read-only
+    const confirm = screen.getByTestId("launch-confirm");
+    expect(confirm).toBeDisabled();
+    expect(screen.getByTestId("launch-reason").textContent).toContain("Pick a dataset");
+    fireEvent.click(within(pick).getByTestId("dataset-pick-apollo/pick_cube"));
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    await screen.findByTestId("mode-page");
+    expect(posts[0]).toMatchObject({
+      dataset: "apollo/pick_cube",
+      dataset_resume: true,
+      return_to_start: true,
+    });
+  });
+
+  it("DatasetsPanel (2026-09-07): rows per tab kind, expand → episodes, delete episode (confirm), export (202), delete dataset (typed name)", async () => {
+    const ep0 = makeEpisode();
+    const ep1 = makeEpisode({ episode_id: "20260907T141419.008Z-a71e02", index: 1, open: true });
+    await mount({
+      datasets: [
+        makeDataset(),
+        makeDataset({ repo_id: "apollo/hw_only", kind: "hardware" }),
+        makeDataset({ repo_id: "apollo/old", layout: "lerobot_v3", kind: "sim" }),
+      ],
+      episodes: { "apollo/pick_cube": [ep0, ep1] },
+    });
+    await ready();
+    const panel = await screen.findByTestId("datasets-panel");
+    expect(panel.dataset["kind"]).toBe("sim");
+    expect(within(panel).getByTestId("dataset-row-apollo/pick_cube")).toBeInTheDocument();
+    expect(within(panel).queryByTestId("dataset-row-apollo/hw_only")).toBeNull(); // hardware tab only
+    const legacy = within(panel).getByTestId("dataset-row-apollo/old");
+    expect(within(legacy).getByTestId("dataset-legacy-apollo/old")).toBeInTheDocument();
+    expect(within(legacy).getByTestId("dataset-export-apollo/old")).toBeDisabled();
+    expect(within(legacy).getByTestId("dataset-delete-apollo/old")).toBeDisabled();
+    expect(
+      within(panel).getByTestId("dataset-export-state-apollo/pick_cube").dataset["state"],
+    ).toBe("none");
+    // expand → episodes; the open episode cannot be deleted
+    fireEvent.click(within(panel).getByTestId("dataset-expand-apollo/pick_cube"));
+    await screen.findByTestId(`episode-row-${ep0.episode_id}`);
+    expect(screen.getByTestId(`episode-open-${ep1.episode_id}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`episode-delete-${ep1.episode_id}`)).toBeDisabled();
+    fireEvent.click(screen.getByTestId(`episode-delete-${ep0.episode_id}`));
+    const dialog = await screen.findByTestId("confirm-dialog");
+    expect(dialog.textContent).toContain("no undo");
+    fireEvent.click(screen.getByTestId("confirm-ok"));
+    await waitFor(() => expect(deletes).toContain(`apollo/pick_cube#${ep0.episode_id}`));
+    await waitFor(() => expect(screen.queryByTestId(`episode-row-${ep0.episode_id}`)).toBeNull());
+    await waitFor(() =>
+      expect(
+        within(panel).getByTestId("dataset-export-state-apollo/pick_cube").dataset["state"],
+      ).toBe("stale"),
+    );
+    // export → 202 + a toast; the live progress rides telemetry
+    fireEvent.click(within(panel).getByTestId("dataset-export-apollo/pick_cube"));
+    await waitFor(() => expect(exports).toEqual(["apollo/pick_cube"]));
+    await pushTelemetry(
+      makeTelemetry({
+        datasets: {
+          export: {
+            repo_id: "apollo/pick_cube",
+            format: "lerobot_v3",
+            phase: "videos",
+            done: 1,
+            total: 2,
+            detail: "file-000.mp4",
+          },
+        },
+      }),
+    );
+    await screen.findByTestId("dataset-export-progress-apollo/pick_cube");
+    expect(
+      within(panel).getByTestId("dataset-export-state-apollo/pick_cube").dataset["state"],
+    ).toBe("running");
+    expect(within(panel).getByTestId("dataset-delete-apollo/pick_cube")).toBeDisabled(); // while running
+    await pushTelemetry(
+      makeTelemetry({
+        seq: 2, // the telemetry client drops a repeated seq as stale
+        datasets: {
+          export: {
+            repo_id: "apollo/pick_cube",
+            format: "lerobot_v3",
+            phase: "done",
+            done: 1,
+            total: 1,
+            detail: "1 episodes",
+          },
+        },
+      }),
+    );
+    await waitFor(() => {
+      const btn = within(panel).getByTestId("dataset-delete-apollo/pick_cube");
+      expect([btn.dataset["busy"], btn.dataset["running"], btn.dataset["inuse"]]).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
+      expect(btn).toBeEnabled();
+    });
+    // delete dataset: typed name required
+    fireEvent.click(within(panel).getByTestId("dataset-delete-apollo/pick_cube"));
+    await screen.findByTestId("dataset-delete-panel");
+    const confirmBtn = screen.getByTestId("dataset-delete-confirm");
+    expect(confirmBtn).toBeDisabled();
+    fireEvent.change(screen.getByTestId("dataset-delete-name"), { target: { value: "pick_cube" } });
+    expect(confirmBtn).toBeEnabled();
+    fireEvent.click(confirmBtn);
+    await waitFor(() => expect(deletes).toContain("apollo/pick_cube"));
+    await waitFor(() =>
+      expect(within(panel).queryByTestId("dataset-row-apollo/pick_cube")).toBeNull(),
+    );
+  });
+
+  it("DatasetsPanel: in-use lock disables export / delete; a 409 surfaces as a toast", async () => {
+    await mount({ datasets: [makeDataset({ in_use: true })], dataset409: "dataset is in use" });
+    await ready();
+    const panel = await screen.findByTestId("datasets-panel");
+    expect(within(panel).getByTestId("dataset-inuse-apollo/pick_cube")).toBeInTheDocument();
+    expect(within(panel).getByTestId("dataset-export-apollo/pick_cube")).toBeDisabled();
+    expect(within(panel).getByTestId("dataset-delete-apollo/pick_cube")).toBeDisabled();
   });
 
   it("Inference sheet lists promoted checkpoints only (default = last promoted) and posts the policy", async () => {
@@ -953,33 +1355,99 @@ describe("Welcome page", () => {
     expect(reasonOf("inference")).toContain("No promoted checkpoint");
   });
 
-  it("DAgger sheet: task + 'Latest' (default, no policy key) or an explicit checkpoint", async () => {
+  it("Online DAgger sheet (phase-14): Connect view → Configure; the exact SessionSpec with policy_source external + online_dagger, no dataset / policy / hyper-parameter", async () => {
     await mount({
-      workcell: makeWorkcell({ policies_available: true }),
-      policies: [
-        makePolicy({ policy_id: "ckpt-8", policy_version: 8, promoted: false }),
-        makePolicy({ policy_id: "ckpt-9" }),
+      datasets: [
+        makeDataset({ repo_id: "bc_demo/pick_cube", namespace: "bc_demo", task: "pick the cube" }),
       ],
     });
     await ready();
-    await waitFor(() => expect(enabled("launch-dagger")).toBe(true));
+    // Enabled on the Sim tab without any checkpoint in the registry (D1).
+    expect(enabled("launch-dagger")).toBe(true);
+    expect(screen.getByTestId("launch-dagger").textContent).toContain("Online DAgger");
+    expect(screen.getByTestId("launch-dagger").textContent).toContain(
+      "Novice drives, you correct — your trainer learns between rollouts",
+    );
+    // The trainer is attached (telemetry.external) so Start will be possible.
+    await pushTelemetry(makeTelemetry({ external: makeTrainerExternal() }));
     fireEvent.click(screen.getByTestId("launch-dagger"));
-    const group = await screen.findByTestId("policy-select");
-    const latest = within(group).getByTestId("policy-latest") as HTMLInputElement;
-    expect(latest.checked).toBe(true);
-    expect(within(group).getByTestId("policy-ckpt-8")).toBeInTheDocument(); // DAgger lists every checkpoint
-    fireEvent.change(screen.getByTestId("task-input"), { target: { value: "sort" } });
-    fireEvent.click(within(group).getByTestId("policy-ckpt-8"));
-    fireEvent.click(screen.getByTestId("launch-confirm"));
+    const panel = await screen.findByTestId("online-dagger-panel");
+    expect(panel.dataset["view"]).toBe("connect");
+    expect(screen.getByTestId("online-dagger-step-1").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("skill-oneliner").textContent).toContain(
+      "/api/online_dagger/skill.tgz | tar xz -C ~/.claude/skills/",
+    );
+    expect((await screen.findByTestId("od-fact-bind_host")).textContent).toContain("192.168.0.88");
+    expect(screen.getByTestId("od-start-caption").dataset["attached"]).toBe("true");
+    fireEvent.click(screen.getByTestId("od-continue"));
+    expect(panel.dataset["view"]).toBe("configure");
+    // Form: name + task; the recorded demonstrations are NOT offered (the trainer
+    // configures its own anchor — operator decision 2026-09-08).
+    fireEvent.change(screen.getByTestId("od-session-name"), { target: { value: "Pick Cube v1" } });
+    expect(screen.getByTestId("od-path-preview").textContent).toBe(
+      "/home/x/data/online_dagger/Pick_Cube_v1",
+    );
+    expect(panel.querySelector("input[type=radio]")).toBeNull();
+    expect(panel.textContent).not.toContain("bc_demo/pick_cube");
+    fireEvent.change(screen.getByTestId("od-task"), { target: { value: "pick the cube" } });
+    const confirm = screen.getByTestId("launch-confirm");
+    expect(confirm.textContent).toBe("Start Online DAgger");
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
     await screen.findByTestId("mode-page");
-    expect(posts[0]).toMatchObject({ mode: "dagger", task: "sort", policy: "ckpt-8" });
+    expect(posts[0]).toEqual({
+      mode: "dagger",
+      kind: "sim",
+      arms: ["grip", "view"],
+      frames: { grip: "arm_base:grip", view: "arm_base:view" },
+      sim_scene: "mavis_v2",
+      start_from: "keep_current",
+      task: "pick the cube",
+      action_filter: {
+        enabled: true,
+        pos_eps_m: 0.001,
+        rot_eps_rad: 0.001,
+        gripper_eps_frac: 0.01,
+        rail_eps_m: 0.001,
+        gripper_context_s: 1.6,
+      },
+      policy_source: "external",
+      online_dagger: {
+        session_name: "Pick_Cube_v1",
+        resume: false,
+        pause_while_training: true,
+        wait_for_trainer_ready: true,
+      },
+      return_to_start: true,
+    });
+    expect(posts[0]).not.toHaveProperty("dataset");
+    expect(posts[0]).not.toHaveProperty("policy");
   });
 
-  it("dagger/inference stay disabled when policies_available is false", async () => {
+  it("Online DAgger sheet: Start is disabled with the trainer reason until a policy node attaches; resume pill from /api/online_dagger/sessions", async () => {
+    await mount({ onlineDaggerSessions: [makeOnlineDaggerSession()] });
+    await ready();
+    fireEvent.click(screen.getByTestId("launch-dagger"));
+    await screen.findByTestId("online-dagger-panel");
+    expect(screen.getByTestId("od-start-caption").dataset["attached"]).toBe("false");
+    fireEvent.click(screen.getByTestId("online-dagger-step-2"));
+    fireEvent.change(screen.getByTestId("od-session-name"), { target: { value: "pick_cube_v1" } });
+    // The name matches a recorded session → resume pill, its task carried over.
+    const pill = await screen.findByTestId("od-resume");
+    expect(pill.textContent).toBe("Resume (6 rollouts saved)");
+    await waitFor(() =>
+      expect((screen.getByTestId("od-task") as HTMLInputElement).value).toBe("pick the cube"),
+    );
+    expect(screen.getByTestId("launch-confirm")).toBeDisabled();
+    expect(screen.getByTestId("launch-reason").textContent).toBe(REASON.noTrainer);
+    expect(posts).toHaveLength(0);
+  });
+
+  it("dagger stays enabled without checkpoints (external trainer); inference still needs a promoted one", async () => {
     await mount();
     await ready();
-    expect(enabled("launch-dagger")).toBe(false);
-    expect(reasonOf("dagger")).toContain("No policies available");
+    expect(enabled("launch-dagger")).toBe(true);
+    expect(reasonOf("dagger")).toBe("");
     expect(enabled("launch-inference")).toBe(false);
     expect(reasonOf("inference")).toContain("No promoted checkpoint");
   });
@@ -991,6 +1459,7 @@ describe("Welcome page", () => {
     fireEvent.change(await screen.findByTestId("task-input"), {
       target: { value: "stack the cube" },
     });
+    fireEvent.change(screen.getByTestId("dataset-name"), { target: { value: "stack" } });
     fireEvent.click(screen.getByTestId("launch-confirm"));
     const err = await screen.findByTestId("launch-error");
     expect(err.textContent).toContain("a session already exists");
@@ -1048,6 +1517,105 @@ describe("Welcome page", () => {
     expect((posts[0] as { start_from: string }).start_from).toBe("profile:p0");
   });
 
+  it("profile delete (2026-09-07): confirm dialog first, then DELETE + re-read; the click never selects the row", async () => {
+    await mount();
+    await ready();
+    fireEvent.click(screen.getByTestId("start-profile"));
+    await waitFor(() =>
+      expect((screen.getByTestId("profile-p0") as HTMLInputElement).checked).toBe(true),
+    );
+    // Clicking delete inside the row's <label> must not move the radio.
+    fireEvent.click(screen.getByTestId("profile-delete-p1"));
+    expect((screen.getByTestId("profile-p1") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("profile-p0") as HTMLInputElement).checked).toBe(true);
+    expect(deletes).toHaveLength(0); // dialog open, nothing sent yet
+    expect(screen.getByTestId("confirm-dialog").textContent).toContain("alt");
+    // Cancel sends nothing.
+    fireEvent.click(screen.getByTestId("confirm-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("confirm-dialog")).toBeNull());
+    expect(deletes).toHaveLength(0);
+    expect(screen.getByTestId("profile-row-p1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("profile-delete-p1"));
+    fireEvent.click(screen.getByTestId("confirm-ok"));
+    await waitFor(() => expect(screen.queryByTestId("profile-row-p1")).toBeNull());
+    expect(deletes).toEqual(["p1"]);
+    expect(screen.getByTestId("profile-row-p0")).toBeInTheDocument();
+    expect(screen.getByTestId("toasts").textContent).toContain("Deleted profile 'alt'");
+  });
+
+  it("deleting the SELECTED profile clears the selection; a 409 keeps the row and says why in the operator's words", async () => {
+    // The runtime's own text names an id the operator never sees.
+    await mount({
+      profileDelete409:
+        "refusing to delete initial-condition profile 'p0'; designate another profile first",
+    });
+    await ready();
+    fireEvent.click(screen.getByTestId("start-profile"));
+    await waitFor(() =>
+      expect((screen.getByTestId("profile-p0") as HTMLInputElement).checked).toBe(true),
+    );
+    // The initial-condition row warns about what it is before deleting it.
+    fireEvent.click(screen.getByTestId("profile-delete-p0"));
+    expect(screen.getByTestId("confirm-dialog").textContent).toContain("initial condition");
+    fireEvent.click(screen.getByTestId("confirm-ok"));
+    await waitFor(() =>
+      expect(screen.getByTestId("toasts").textContent).toContain(
+        "'start' is the initial condition of the Sim workcell — designate another profile as the initial condition first",
+      ),
+    );
+    expect(screen.getByTestId("toasts").textContent).not.toContain("refusing to delete");
+    expect(screen.getByTestId("profile-row-p0")).toBeInTheDocument(); // refused → still there
+    expect(enabled("launch-teleop")).toBe(true); // still selected, still launchable
+  });
+
+  it("the profile list shows the TAB's profiles only (2026-09-08): one initial condition per kind, kind-less rows on both, the selection follows the tab", async () => {
+    await mount({
+      profiles: [
+        makeProfile({
+          profile_id: "s0",
+          name: "default posture (2026-09-08)",
+          is_initial_condition: true,
+          workcell_kind: "sim",
+        }),
+        makeProfile({
+          profile_id: "h0",
+          name: "default posture (2026-09-08)",
+          is_initial_condition: true,
+          workcell_kind: "hardware",
+        }),
+        makeProfile({ profile_id: "l0", name: "legacy", workcell_kind: undefined }),
+      ],
+    });
+    await ready();
+    fireEvent.click(screen.getByTestId("start-profile"));
+    const list = screen.getByTestId("profile-list");
+    expect(list.dataset["kind"]).toBe("sim");
+    expect(list.dataset["count"]).toBe("2");
+    expect(screen.getByTestId("profile-row-s0")).toBeInTheDocument();
+    expect(screen.queryByTestId("profile-row-h0")).toBeNull();
+    expect(screen.getByTestId("profile-row-l0")).toBeInTheDocument();
+    expect(screen.getByTestId("initial-badge-s0")).toBeInTheDocument();
+    // The SIM initial condition is preselected — never the hidden hardware one.
+    await waitFor(() =>
+      expect((screen.getByTestId("profile-s0") as HTMLInputElement).checked).toBe(true),
+    );
+
+    await switchTab("hardware");
+    const hwList = screen.getByTestId("profile-list");
+    expect(hwList.dataset["kind"]).toBe("hardware");
+    expect(hwList.dataset["count"]).toBe("2");
+    expect(screen.getByTestId("profile-row-h0")).toBeInTheDocument();
+    expect(screen.queryByTestId("profile-row-s0")).toBeNull();
+    expect(screen.getByTestId("profile-row-l0")).toBeInTheDocument();
+    expect(screen.getByTestId("initial-badge-h0")).toBeInTheDocument();
+    // The Sim selection is dropped (its row is not on this tab) and the Hardware
+    // initial condition takes its place.
+    await waitFor(() =>
+      expect((screen.getByTestId("profile-h0") as HTMLInputElement).checked).toBe(true),
+    );
+  });
+
   it("empty profile list shows the Teleop hint and blocks a profile start", async () => {
     await mount({ profiles: [] });
     await ready();
@@ -1080,6 +1648,7 @@ describe("Welcome page", () => {
     fireEvent.click(screen.getByTestId("launch-collect"));
     await screen.findByTestId("launch-sheet");
     fireEvent.change(screen.getByTestId("task-input"), { target: { value: "stack" } });
+    fireEvent.change(screen.getByTestId("dataset-name"), { target: { value: "stack" } });
     fireEvent.change(screen.getByTestId("frame-selector-grip"), {
       target: { value: "camera:grip_wrist_cam" },
     });

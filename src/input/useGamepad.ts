@@ -6,6 +6,7 @@
  */
 import { useEffect } from "react";
 import { getControl, registerHeldSource, setArmedSource } from "../api/clients";
+import { getModalHost } from "../lib/modalHost";
 import { useStore } from "../store";
 import { GamepadAdapter, type GamepadLike } from "./gamepad";
 
@@ -23,6 +24,13 @@ export function useGamepad(opts: UseGamepadOpts = {}): void {
       pollMs,
       getBindings: () => useStore.getState().bindings,
       canArm: () => {
+        // An open modal freezes browser-driven input (2026-09-07): keyboard
+        // capture disarms itself when the dialog takes focus, and the gamepad
+        // has no focus to lose, so it is gated here. `canArm() === false` makes
+        // the adapter latch a release-all, so a button held across the dialog
+        // opening must be physically released before it can inject again — the
+        // operator cannot leave a jog running under a dialog.
+        if (getModalHost() !== null) return false;
         const c = useStore.getState().conn;
         return c.control === "open" && c.role === "controller";
       },

@@ -165,7 +165,7 @@ describe("Devices page", () => {
     pushTracker({ settings: { yaw_deg: 0, pos_scale: 1, follow_rotation: true } }, 2);
     await waitFor(() =>
       expect(screen.getByTestId("tracker-settings-echo").textContent).toContain(
-        "filter on (cutoff 1 Hz, beta 0.05)",
+        "filter on (cutoff 1 Hz, beta 10)",
       ),
     );
     expect((screen.getByTestId("tracker-filter-enabled") as HTMLInputElement).checked).toBe(true);
@@ -301,7 +301,7 @@ describe("Devices page", () => {
       name: "tracker_settings",
       args: { filter_beta: 0.5 },
     });
-    fireEvent.change(beta, { target: { value: "7" } }); // > 5 → dropped on blur
+    fireEvent.change(beta, { target: { value: "500" } }); // > 200 → dropped on blur
     fireEvent.blur(beta);
     await waitFor(() => expect(beta.value).toBe("0.2"));
     fireEvent.click(screen.getByTestId("tracker-filter-enabled"));
@@ -383,7 +383,12 @@ describe("Devices page", () => {
     const keysBefore = control.keys.length;
     await new Promise((r) => setTimeout(r, 120));
     expect(control.lastHeld).toEqual([]);
-    expect(control.keys.length).toBe(keysBefore); // heartbeat off
+    // The heartbeat keeps running (it is the socket's liveness deadman since
+    // 2026-09-07) but every beat while latched must carry an EMPTY held set —
+    // A is still physically down and must not reach the server.
+    for (const m of control.keys.slice(keysBefore)) {
+      expect((m as unknown as { held: string[] }).held).toEqual([]);
+    }
     expect(useStore.getState().gamepad.armed).toBe(false);
     // Release → latch lifts; press again → works.
     buttons[0] = { pressed: false, value: 0 };

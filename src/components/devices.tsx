@@ -301,11 +301,11 @@ export const TRACKER_NUMERIC_FIELDS: readonly NumericField[] = [
   },
   {
     key: "filter_beta",
-    label: "filter_beta (0–5)",
+    label: "filter_beta (0–200)",
     testId: "tracker-filter-beta",
-    step: 0.01,
+    step: 0.5,
     min: 0,
-    max: 5,
+    max: 200,
   },
 ];
 
@@ -317,7 +317,7 @@ export function effectiveSettings(s: TrackerSettingsMsg): Required<TrackerSettin
     follow_rotation: s.follow_rotation,
     filter_enabled: s.filter_enabled ?? true,
     filter_min_cutoff_hz: s.filter_min_cutoff_hz ?? 1.0,
-    filter_beta: s.filter_beta ?? 0.05,
+    filter_beta: s.filter_beta ?? 10.0,
   };
 }
 
@@ -325,7 +325,7 @@ const DEFAULT_DRAFT: Record<NumericKey, string> = {
   yaw_deg: "0",
   pos_scale: "1",
   filter_min_cutoff_hz: "1",
-  filter_beta: "0.05",
+  filter_beta: "10",
 };
 
 export interface TrackerSettingsFormProps {

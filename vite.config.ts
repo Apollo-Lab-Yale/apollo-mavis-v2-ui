@@ -27,8 +27,17 @@ const wsProxy: ProxyOptions = {
   },
 };
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
+  // The Online DAgger sheet prints the skill-install one-liner with the RUNTIME's
+  // address. In production the runtime serves the page (same origin); under this
+  // dev server the runtime sits behind the proxy, so the sheet needs to know the
+  // proxy target (`lib/runtimeOrigin.ts`). DEV SERVER ONLY (`vite` / `command ===
+  // "serve"`): a production build defines it as `undefined`, so the bundle carries
+  // neither the proxy address (wrong whenever RUNTIME_PORT ≠ 8765) nor the dev-proxy
+  // note — `scripts/check-dist.ts` asserts that after every build. Vitest leaves it
+  // undefined too.
+  define: { __APOLLO_RUNTIME_PROXY__: command === "serve" ? JSON.stringify(runtime) : "undefined" },
   server: {
     proxy: {
       "/api": { target: runtime },
@@ -36,4 +45,4 @@ export default defineConfig({
       "/video": { target: runtime },
     },
   },
-});
+}));

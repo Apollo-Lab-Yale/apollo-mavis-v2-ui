@@ -63,10 +63,48 @@ describe("ControlClient", () => {
     const beats = keysOf(s).slice(before);
     expect(beats.length).toBe(5);
     expect(beats.every((m) => JSON.stringify(m["held"]) === '["KeyW"]')).toBe(true);
+  });
+
+  it("keeps heartbeating after disarm — the watchdog reads it as browser liveness", () => {
+    // Regression, 2026-09-07: the heartbeat used to stop on disarm, so clicking
+    // off the capture surface (e.g. onto the Joint-control panel) let the
+    // server's InputWatchdog latch AWAIT_EMPTY 0.3 s later and silently zero
+    // every WS-sourced motion — including joint jog, which is not a held key.
+    const { client, held, sockets } = setup();
+    const s = sockets[0]!;
+    s.open();
+    s.message(hello());
+    held.add("KeyW");
+    client.setArmed(true);
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    held.clear();
     client.setArmed(false);
     const afterDisarm = keysOf(s).length;
-    vi.advanceTimersByTime(HEARTBEAT_MS * 10);
-    expect(keysOf(s).length).toBe(afterDisarm); // heartbeat stopped
+    vi.advanceTimersByTime(HEARTBEAT_MS * 10 + 5);
+    const beats = keysOf(s).slice(afterDisarm);
+    expect(beats.length).toBe(10);
+    expect(beats.every((m) => JSON.stringify(m["held"]) === "[]")).toBe(true);
+  });
+
+  it("heartbeats from hello even if capture is never armed", () => {
+    const { sockets } = setup();
+    const s = sockets[0]!;
+    s.open();
+    s.message(hello());
+    vi.advanceTimersByTime(HEARTBEAT_MS * 3 + 5);
+    expect(keysOf(s).length).toBe(4); // post-hello empty set + 3 beats
+  });
+
+  it("stops heartbeating once the socket drops, so the deadman still trips", () => {
+    const { sockets } = setup();
+    const s = sockets[0]!;
+    s.open();
+    s.message(hello());
+    vi.advanceTimersByTime(HEARTBEAT_MS * 2);
+    const before = keysOf(s).length;
+    s.serverClose();
+    vi.advanceTimersByTime(HEARTBEAT_MS * 20);
+    expect(keysOf(s).length).toBe(before);
   });
 
   it("keeps seq strictly increasing across transitions and heartbeats", () => {

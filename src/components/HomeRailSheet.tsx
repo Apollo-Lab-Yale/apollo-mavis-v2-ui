@@ -11,7 +11,7 @@
  * writes. The sheet renders the verdict (clear / first blocked position + pair
  * / min clearance / the other arm's pose / assumptions) under the fixed notice
  * that the carriage drives to the operator's LEFT (+X) end at the track's own
- * homing speed (50 mm/s is the post-homing positioning cap).
+ * homing speed (75 mm/s is the post-homing positioning cap; 50 until 2026-09-09).
  *
  * Three outcomes (phase-09d, `rail_sweep.pre_position`):
  * - the posture is sweep-clear (`pre_position` absent or `needed: false`) →
@@ -62,7 +62,7 @@ import {
   sweepSummary,
   type PrePositionKind,
 } from "../lib/maintenance";
-import { armLabel, armTitle, SCENE_DISPLAY_NAME } from "../lib/streams";
+import { ARM_LABELS, armLabel, armTitle, SCENE_DISPLAY_NAME } from "../lib/streams";
 import { selectMaintenanceProgress, useStore } from "../store";
 import { Icon } from "./icons";
 import { Sheet } from "./Sheet";
@@ -87,6 +87,32 @@ export const HOME_RAIL_HOMING =
   "Homing… the carriage is moving to the operator's LEFT end. Keep clear of the rail.";
 export const HOME_RAIL_BLOCKED_HINT =
   "Fold the arm to a tighter posture in xArm Studio, then open Home rail again.";
+/** Dead-end guidance (2026-09-08, operator request): the runtime only ever moves
+ * the arm being homed (D1), and without a homed rail no session can open, so a
+ * blocked sweep with no pre-positioning path leaves exactly one way out — the
+ * vendor's desktop app. Spell it out, and name the arm to fold (the OTHER arm
+ * when the blocking pair belongs to it). */
+export const HOME_RAIL_STUDIO_HEADLINE =
+  "The web UI cannot move an arm out of this posture — fold it with UFACTORY Studio (the desktop app), then come back:";
+export const HOME_RAIL_STUDIO_STEPS = [
+  "Open UFACTORY Studio for that arm's control box (the IP on its card) → Live control → Joint motion, speed ≤ 10 %.",
+  "Bring joints 2–7 to about 0° (the folded factory-zero posture); leave joint 1 where it is.",
+  "Close Live control in Studio — the runtime refuses sessions while Studio holds the arm.",
+  "Click Home rail again here: the digital twin re-sweeps the rail at the new posture.",
+] as const;
+
+/** Which arm the operator must fold, from the first blocked pair: the OTHER arm
+ * when a pair element belongs to it (`view_link3`, `view/link3`), else this arm. */
+export function studioFoldTarget(
+  armId: string,
+  pair: readonly string[] | null | undefined,
+): { armId: string; other: boolean } {
+  for (const name of pair ?? []) {
+    const id = /^([A-Za-z0-9]+)[/_]/.exec(name)?.[1];
+    if (id !== undefined && id !== armId && id in ARM_LABELS) return { armId: id, other: true };
+  }
+  return { armId, other: false };
+}
 /** Progress-view headline while a `RailHomingJob` runs (phase-09d). */
 export const HOME_RAIL_JOB_HEADLINE =
   "Rail homing job running — the arm moves first, then the carriage. Keep clear of the cell.";
@@ -298,6 +324,7 @@ export function HomeRailSheet({
     verdict?.pre_position && planKind === "planned"
       ? prePositionSummary(verdict.pre_position)
       : null;
+  const fold = studioFoldTarget(armId, verdict?.first_blocked_pair);
 
   const close = () => {
     if (running) return; // nothing in the UI stops the carriage / the arm; keep the progress visible
@@ -478,6 +505,26 @@ export function HomeRailSheet({
             <p className="text-callout fg-2 home-rail-hint" data-testid="home-rail-hint">
               {HOME_RAIL_BLOCKED_HINT}
             </p>
+          )}
+          {!clear && phase.kind === "verdict" && planKind !== "planned" && (
+            <div
+              className="home-rail-plan home-rail-studio"
+              role="note"
+              data-testid="home-rail-studio-steps"
+              data-fold-arm={fold.armId}
+            >
+              <p className="text-body-strong">{HOME_RAIL_STUDIO_HEADLINE}</p>
+              <p className="text-callout" data-testid="home-rail-studio-target">
+                {fold.other
+                  ? `The ${armLabel(fold.armId)} is in the way: fold the ${armLabel(fold.armId)} first (or both arms).`
+                  : `Fold the ${armLabel(armId)}.`}
+              </p>
+              <ol className="text-callout home-rail-studio-steps">
+                {HOME_RAIL_STUDIO_STEPS.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </div>
           )}
         </>
       )}

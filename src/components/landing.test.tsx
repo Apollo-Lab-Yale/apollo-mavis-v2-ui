@@ -25,6 +25,7 @@ import {
   makeOverlayCameras,
   makePlannedSweepVerdict,
   makePrePositionPlan,
+  makeProfile,
   makeRailSweepVerdict,
   makeTelemetry,
   makeTwinOverlay,
@@ -37,6 +38,7 @@ import {
   hardwareCaption,
   ObservationGrid,
   overlayNote,
+  StartFrom,
   twinCaption,
 } from "./landing";
 
@@ -583,7 +585,7 @@ describe("ArmStatusCard rail homing + session eligibility (phase-09c)", () => {
     expect(panel.textContent).toContain("Manipulation Arm (grip) · APOLLO MAVIS V2 Digital Twin");
     // The notice is there from the first frame, before the verdict.
     expect(screen.getByTestId("home-rail-notice").textContent).toBe(
-      "The carriage drives to the operator's LEFT (+X) end at the track's homing speed (positioning cap 50 mm/s) — the only maintenance action that moves hardware.",
+      "The carriage drives to the operator's LEFT (+X) end at the track's homing speed (positioning cap 75 mm/s) — the only maintenance action that moves hardware.",
     );
     expect(screen.getByTestId("home-rail-checking")).toBeInTheDocument();
     expect(screen.queryByTestId("home-rail-confirm")).toBeNull();
@@ -658,6 +660,32 @@ describe("ArmStatusCard rail homing + session eligibility (phase-09c)", () => {
     expect(cardButton.getAttribute("aria-busy")).toBeNull();
   });
 
+  it("blocked by the OTHER arm: the Studio steps name the Perception Arm as the one to fold", async () => {
+    answer = () =>
+      dryRunAnswer(
+        makeRailSweepVerdict({
+          clear: false,
+          first_blocked_m: 0.005,
+          first_blocked_pair: ["grip_link4", "view_link3"],
+          min_clearance_m: -0.083,
+          min_clearance_at_m: 0.225,
+          min_clearance_pair: ["grip_link6", "view_link5"],
+          assumptions: ["view rail unknown - used fallback 0.00 m"],
+        }),
+      );
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    fireEvent.click(screen.getByTestId("arm-home-rail-grip"));
+    await screen.findByTestId("home-rail-verdict");
+    const steps = screen.getByTestId("home-rail-studio-steps");
+    expect(steps.dataset["foldArm"]).toBe("view");
+    expect(screen.getByTestId("home-rail-studio-target").textContent).toBe(
+      "The Perception Arm is in the way: fold the Perception Arm first (or both arms).",
+    );
+    expect(steps.textContent).toContain("Close Live control in Studio");
+    expect(screen.queryByTestId("home-rail-confirm")).toBeNull();
+  });
+
   it("blocked verdict: danger pill, first blocked position + pair, hint, NO confirm button; Cancel closes", async () => {
     answer = () =>
       dryRunAnswer(
@@ -687,6 +715,14 @@ describe("ArmStatusCard rail homing + session eligibility (phase-09c)", () => {
     expect(screen.getByTestId("home-rail-hint").textContent).toBe(
       "Fold the arm to a tighter posture in xArm Studio, then open Home rail again.",
     );
+    // Dead end ⇒ the UFACTORY Studio steps, naming the arm to fold (this one: the pair is arm↔table).
+    const steps = screen.getByTestId("home-rail-studio-steps");
+    expect(steps.dataset["foldArm"]).toBe("grip");
+    expect(steps.textContent).toContain("UFACTORY Studio");
+    expect(screen.getByTestId("home-rail-studio-target").textContent).toBe(
+      "Fold the Manipulation Arm.",
+    );
+    expect(steps.querySelectorAll("li")).toHaveLength(4);
     // The runtime detail is shown too; no confirm anywhere.
     expect(screen.getByTestId("home-rail-error").textContent).toContain(
       "rail sweep blocked at 0.120 m",
@@ -916,8 +952,9 @@ describe("HomeRailSheet pre-positioning job (phase-09d)", () => {
     expect(screen.getByTestId("home-rail-plan-check").textContent).toBe(
       "path checked at 131 rail positions · posture from the scene keyframe",
     );
-    // No Studio hint (the runtime plans the fold), no error, the destructive confirm.
+    // No Studio hint / steps (the runtime plans the fold), no error, the destructive confirm.
     expect(screen.queryByTestId("home-rail-hint")).toBeNull();
+    expect(screen.queryByTestId("home-rail-studio-steps")).toBeNull();
     expect(screen.queryByTestId("home-rail-error")).toBeNull();
     const confirm = screen.getByTestId("home-rail-confirm");
     expect(confirm.className).toBe("btn-destructive");
@@ -1414,5 +1451,87 @@ describe("Welcome page arm cards during a RailHomingJob (monitor paused, no sess
     );
     expect(screen.getByTestId("arm-actions-reason-view").textContent).toBe(HOMING);
     expect(screen.getByTestId("arm-actions-busy-grip")).toBeInTheDocument();
+  });
+});
+
+// -- StartFrom (2026-09-08): the tab's profiles only -------------------------------------
+// `seed_initial` designates one initial condition PER kind, both named alike; the
+// unfiltered list showed two identical rows. Rows without `workcell_kind` (older
+// runtime) stay on both tabs; the empty state and the count follow the filtered rows.
+describe("StartFrom: the tab's profiles only (2026-09-08)", () => {
+  const sim = makeProfile({
+    profile_id: "s0",
+    name: "default posture (2026-09-08)",
+    is_initial_condition: true,
+    workcell_kind: "sim",
+  });
+  const hw = makeProfile({
+    profile_id: "h0",
+    name: "default posture (2026-09-08)",
+    is_initial_condition: true,
+    workcell_kind: "hardware",
+  });
+  const legacy = makeProfile({ profile_id: "l0", name: "legacy", workcell_kind: undefined });
+  const props = {
+    arms: ["grip", "view"],
+    startFrom: "profile" as const,
+    onStartFromChange: vi.fn(),
+    profileId: null,
+    onProfileChange: vi.fn(),
+  };
+
+  it("one row per tab for the two identically named initial conditions; a kind-less row on both; badge kept", () => {
+    const { rerender } = render(<StartFrom {...props} profiles={[sim, hw, legacy]} kind="sim" />);
+    const list = screen.getByTestId("profile-list");
+    expect(list.dataset["kind"]).toBe("sim");
+    expect(list.dataset["count"]).toBe("2");
+    expect(screen.getByTestId("profile-row-s0")).toBeInTheDocument();
+    expect(screen.queryByTestId("profile-row-h0")).toBeNull();
+    expect(screen.getByTestId("profile-row-l0")).toBeInTheDocument();
+    expect(screen.getByTestId("initial-badge-s0")).toBeInTheDocument();
+    expect(screen.queryByTestId("profile-empty")).toBeNull();
+
+    rerender(<StartFrom {...props} profiles={[sim, hw, legacy]} kind="hardware" />);
+    expect(screen.getByTestId("profile-list").dataset["kind"]).toBe("hardware");
+    expect(screen.getByTestId("profile-list").dataset["count"]).toBe("2");
+    expect(screen.getByTestId("profile-row-h0")).toBeInTheDocument();
+    expect(screen.queryByTestId("profile-row-s0")).toBeNull();
+    expect(screen.getByTestId("profile-row-l0")).toBeInTheDocument();
+    expect(screen.getByTestId("initial-badge-h0")).toBeInTheDocument();
+  });
+
+  it("the empty state follows the filtered rows and counts the hidden ones", () => {
+    const { rerender } = render(<StartFrom {...props} profiles={[hw]} kind="sim" />);
+    expect(screen.getByTestId("profile-list").dataset["count"]).toBe("0");
+    expect(screen.getByTestId("profile-empty").textContent).toBe(
+      "No Sim profiles — 1 saved profile belongs to the Hardware workcell",
+    );
+    rerender(
+      <StartFrom
+        {...props}
+        profiles={[
+          hw,
+          makeProfile({ profile_id: "h1", name: "hw-alt", workcell_kind: "hardware" }),
+        ]}
+        kind="sim"
+      />,
+    );
+    expect(screen.getByTestId("profile-empty").textContent).toBe(
+      "No Sim profiles — 2 saved profiles belong to the Hardware workcell",
+    );
+    rerender(<StartFrom {...props} profiles={[sim]} kind="hardware" />);
+    expect(screen.getByTestId("profile-empty").textContent).toBe(
+      "No Hardware profiles — 1 saved profile belongs to the Sim workcell",
+    );
+    // nothing saved at all: the doc-pinned hint
+    rerender(<StartFrom {...props} profiles={[]} kind="sim" />);
+    expect(screen.getByTestId("profile-empty").textContent).toBe(
+      "No saved profiles — save one from Teleop",
+    );
+  });
+
+  it("promises no 'safe path' anywhere in the Start-from copy", () => {
+    render(<StartFrom {...props} profiles={[sim]} kind="sim" />);
+    expect(screen.getByTestId("profile-picker").textContent).not.toMatch(/safe/i);
   });
 });

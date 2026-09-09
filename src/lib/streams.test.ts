@@ -33,7 +33,7 @@ describe("streams", () => {
     expect(MODE_LABELS).toEqual({
       teleop: "Teleop",
       collect: "Data Collection",
-      dagger: "DAgger",
+      dagger: "Online DAgger", // 15-online-dagger §8: the middle mode is Online DAgger
       inference: "Inference",
     });
     expect(pageTitle()).toBe("APOLLO MAVIS V2");

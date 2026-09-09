@@ -1,20 +1,41 @@
 /** LaunchSheet (phase-11 §4): the in-page modal that collects what a mode
- * needs before `POST /api/session` — Task (Data Collection / DAgger, validated
- * on blur), Policy (Inference: promoted checkpoints only; DAgger: a "Latest"
- * row first, selected by default) and, under "Advanced", the per-arm recording
- * frame. The primary button reads "Start <mode>"; when disabled its reason sits
- * underneath. A rejected POST (409 "a session already exists", "no promoted
- * deploy checkpoint", "tracker calibration in progress", …) shows its detail
- * inside the sheet, which stays open. Escape / × / Cancel / backdrop close it
- * (the owner flips `open` and unmounts after `SHEET_EXIT_MS`). */
+ * needs before `POST /api/session` — Task (Data Collection, validated on blur),
+ * **Dataset** (Data Collection, 2026-09-07; 04-runtime §10.5): "New dataset"
+ * (name slugged live to the core `DATASET_RE`; the preview under it is the REAL
+ * folder from `GET /api/datasets/layout` — `~/data/bc_demo/<slug>` — and a
+ * namespace-free `…/<slug>` until the layout loaded: the UI never hard-codes the
+ * runtime's default namespace, 15-online-dagger §8) or
+ * "Continue existing" (radio rows from `GET /api/datasets` filtered to the tab's
+ * kind and `layout: episode_dirs`) plus the shared **Return to start after save /
+ * discard** row (checked by default — operator decision; Start is disabled with
+ * the reason while neither a start profile nor an initial condition exists) and
+ * idle-frame filter fieldset (`recordingFields.tsx`), Policy (Inference: promoted
+ * checkpoints only) and, under "Advanced", the per-arm recording frame. The
+ * primary button reads "Start <mode>"; when disabled its reason sits underneath. A
+ * rejected POST (409 "a session already exists", "no promoted deploy checkpoint",
+ * "tracker calibration in progress", …) shows its detail inside the sheet, which
+ * stays open. Escape / × / Cancel / backdrop close it (the owner flips `open` and
+ * unmounts after `SHEET_EXIT_MS`). The `dagger` mode is still accepted for the
+ * legacy in-process path, but the Welcome page routes Online DAgger to
+ * `OnlineDaggerSheet` instead (15-online-dagger D1). */
 import { useId, useMemo, useState, type FormEvent } from "react";
 import { ApiError, createSession } from "../api/rest";
-import type { CameraInfo, PolicyInfo, SessionInfo } from "../gen";
-import { buildSpec, validateLaunch, type LandingSelection } from "../lib/launch";
+import type { CameraInfo, DatasetInfo, DatasetLayoutInfo, PolicyInfo, SessionInfo } from "../gen";
+import {
+  buildSpec,
+  datasetFolderPreview,
+  DEFAULT_ACTION_FILTER,
+  namespaceRoot,
+  slugDataset,
+  validateLaunch,
+  type ActionFilterInputs,
+  type LandingSelection,
+} from "../lib/launch";
 import { armLabel, MODE_LABELS, SCENE_DISPLAY_NAME, TAB_LABELS } from "../lib/streams";
 import type { FrameRef, Mode } from "../lib/types";
 import { Icon } from "./icons";
 import { FrameSelector } from "./landing";
+import { ActionFilterFieldset, ReturnToStartRow } from "./recordingFields";
 import { Sheet } from "./Sheet";
 
 export type SheetMode = Exclude<Mode, "teleop">;
@@ -28,6 +49,14 @@ export interface LaunchSheetProps {
   cameras: CameraInfo[];
   /** Name of the selected profile (subtitle), when `sel.startFrom === "profile"`. */
   profileName?: string | null;
+  /** `GET /api/datasets` (Data Collection: the "Continue existing" rows; filtered
+   * here to the tab's kind and the episode-directory layout). */
+  datasets?: DatasetInfo[];
+  /** A designated initial-condition profile exists for the tab's kind. */
+  hasInitialCondition?: boolean;
+  /** `GET /api/datasets/layout` (15-online-dagger §7): the real dataset folders for the
+   * preview; null while loading / on an older runtime (falls back to `<ns>/<slug>`). */
+  layout?: DatasetLayoutInfo | null;
   onLaunched(info: SessionInfo): void;
   onClose(): void;
   /** Default true; `false` runs the Sheet exit while the owner keeps it mounted. */
@@ -84,6 +113,9 @@ export function LaunchSheet({
   policies,
   cameras,
   profileName,
+  datasets = [],
+  hasInitialCondition = false,
+  layout = null,
   onLaunched,
   onClose,
   open = true,
@@ -105,8 +137,33 @@ export function LaunchSheet({
   const [frames, setFrames] = useState<Record<string, FrameRef>>(sel.frames);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Data Collection: dataset naming + the return-to-start flag (04-runtime §10.5).
+  const existing = useMemo(
+    () =>
+      datasets.filter((d) => d.layout !== "lerobot_v3" && (d.kind == null || d.kind === sel.kind)),
+    [datasets, sel.kind],
+  );
+  const [datasetMode, setDatasetMode] = useState<"new" | "existing">("new");
+  const [datasetName, setDatasetName] = useState(sel.datasetName ?? "");
+  const [datasetRepoId, setDatasetRepoId] = useState<string | null>(null);
+  const [returnToStart, setReturnToStart] = useState(true); // DEFAULT ON (operator 2026-09-07)
+  const slug = slugDataset(datasetName);
+  // Idle-frame filter (2026-09-07 addendum): checked by default, operator units.
+  const [filter, setFilter] = useState<ActionFilterInputs>(DEFAULT_ACTION_FILTER);
+  // Where a new dataset lands: the REAL folder of the runtime's default namespace
+  // once `GET /api/datasets/layout` answered; never a hard-coded namespace before.
+  const newDatasetFolder = layout ? namespaceRoot(layout, layout.default_namespace) : null;
 
-  const full: LandingSelection = { ...sel, task, policyId, frames };
+  const full: LandingSelection = {
+    ...sel,
+    task,
+    policyId,
+    frames,
+    ...(mode === "collect"
+      ? { datasetMode, datasetName, datasetRepoId, returnToStart, hasInitialCondition }
+      : {}),
+    ...(mode === "collect" || mode === "dagger" ? { actionFilter: filter } : {}),
+  };
   const reason = validateLaunch(mode, full);
   const taskMissing = needsTask && task.trim() === "";
   const planning = sel.startFrom === "profile";
@@ -209,6 +266,111 @@ export function LaunchSheet({
             )}
           </label>
         )}
+        {mode === "collect" && (
+          <fieldset className="field radio-rows" aria-label="Dataset" data-testid="dataset-select">
+            <legend className="field-label">Dataset</legend>
+            <div role="radiogroup" aria-label="Dataset mode" className="radio-rows">
+              <label className="radio-row" data-selected={datasetMode === "new" ? "true" : "false"}>
+                <input
+                  type="radio"
+                  name="dataset-mode"
+                  className="visually-hidden"
+                  checked={datasetMode === "new"}
+                  onChange={() => setDatasetMode("new")}
+                  data-testid="dataset-mode-new"
+                />
+                <span className="option-radio" aria-hidden="true" />
+                <span className="radio-row-text">
+                  <span className="text-body-strong">New dataset</span>
+                  <span className="text-caption fg-3" data-testid="dataset-new-help">
+                    {newDatasetFolder
+                      ? `One directory per episode under ${newDatasetFolder}/<name>`
+                      : "One directory per episode under the runtime's default dataset folder"}
+                  </span>
+                </span>
+              </label>
+              <label
+                className="radio-row"
+                data-selected={datasetMode === "existing" ? "true" : "false"}
+                aria-disabled={existing.length === 0 ? "true" : undefined}
+              >
+                <input
+                  type="radio"
+                  name="dataset-mode"
+                  className="visually-hidden"
+                  checked={datasetMode === "existing"}
+                  disabled={existing.length === 0}
+                  onChange={() => setDatasetMode("existing")}
+                  data-testid="dataset-mode-existing"
+                />
+                <span className="option-radio" aria-hidden="true" />
+                <span className="radio-row-text">
+                  <span className="text-body-strong">Continue existing</span>
+                  <span className="text-caption fg-3">
+                    {existing.length === 0
+                      ? "No dataset recorded on this workcell yet"
+                      : "Append episodes to a dataset with the same schema"}
+                  </span>
+                </span>
+              </label>
+            </div>
+            {datasetMode === "new" ? (
+              <label className="field">
+                <span className="field-label">Name</span>
+                <input
+                  value={datasetName}
+                  onChange={(e) => setDatasetName(e.target.value)}
+                  placeholder="e.g. pick red cube"
+                  aria-required="true"
+                  autoComplete="off"
+                  data-testid="dataset-name"
+                />
+                <span
+                  className="text-caption fg-3 text-mono"
+                  data-testid="dataset-preview"
+                  data-layout={layout ? "loaded" : "pending"}
+                >
+                  {datasetFolderPreview(layout, slug)}
+                </span>
+              </label>
+            ) : (
+              <div
+                className="radio-rows"
+                role="radiogroup"
+                aria-label="Existing dataset"
+                data-testid="dataset-pick"
+              >
+                {existing.map((d) => (
+                  <label
+                    key={d.repo_id}
+                    className="radio-row"
+                    data-selected={datasetRepoId === d.repo_id ? "true" : "false"}
+                  >
+                    <input
+                      type="radio"
+                      name="dataset-existing"
+                      className="visually-hidden"
+                      checked={datasetRepoId === d.repo_id}
+                      onChange={() => setDatasetRepoId(d.repo_id)}
+                      data-testid={`dataset-pick-${d.repo_id}`}
+                    />
+                    <span className="option-radio" aria-hidden="true" />
+                    <span className="radio-row-text">
+                      <span className="text-body-strong text-mono">{d.repo_id}</span>
+                      <span className="text-caption fg-3">
+                        {d.total_episodes} episodes · {d.fps} fps
+                        {d.task ? ` · ${d.task}` : ""}
+                        {d.in_use ? " · in use" : ""}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <ReturnToStartRow checked={returnToStart} onChange={setReturnToStart} reason={reason} />
+          </fieldset>
+        )}
+        {needsTask && <ActionFilterFieldset filter={filter} onChange={setFilter} />}
         {needsPolicy && (
           <fieldset
             className="field radio-rows"

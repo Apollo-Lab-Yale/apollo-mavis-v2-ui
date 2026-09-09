@@ -41,10 +41,11 @@ export const REGRIP_HINT = "re-grip the clutch to continue";
 /** The one sentence every homing surface repeats (phase-09c rule 1): homing IS
  * motion, and this is where the carriage goes. The homing travel runs at the
  * track's OWN homing speed (its register has no public SDK setter; duration
- * unmeasured, 02-hardware §8.6) — 50 mm/s is the hardware `rail_speed_mm_s`
- * POSITIONING cap at scale 1.0 (D2), written after homing for later moves. */
+ * unmeasured, 02-hardware §8.6) — 75 mm/s is the hardware `rail_speed_mm_s`
+ * POSITIONING cap at scale 1.0 (D2; 50 until 2026-09-09), written after homing for
+ * later moves. */
 export const HOME_RAIL_NOTICE =
-  "The carriage drives to the operator's LEFT (+X) end at the track's homing speed (positioning cap 50 mm/s) — the only maintenance action that moves hardware.";
+  "The carriage drives to the operator's LEFT (+X) end at the track's homing speed (positioning cap 75 mm/s) — the only maintenance action that moves hardware.";
 /** Arm-card pill while the track is present but not (homed AND enabled). */
 export const RAIL_NOT_HOMED = "rail not homed";
 /** Cockpit hint for a hardware arm the session did not include (phase-09c D1):

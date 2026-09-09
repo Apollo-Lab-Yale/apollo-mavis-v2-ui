@@ -12,11 +12,16 @@
  * faults, if any, are display-only. A lingering `StudioConflictWarning`
  * (`fault_detail` = `warning: …`, `error_code` 0, not recovering — the arm was
  * NOT stopped) is an amber display-only `WARNING` row without a button and
- * does not count toward the red/amber decision. Renders null when nothing is
- * wrong. */
+ * does not count toward the red/amber decision. A SESSION-level detail
+ * (`sessionDetail`, 2026-09-08: the manager's `start_from refused: …` /
+ * `start_from plan failed: …` after a profile start the loop would not run —
+ * the arms are HELD where they were, the state goes back to running and nothing
+ * else on the page says so) is an amber `SESSION — <detail>` row, the runtime's
+ * text verbatim, shown while no arm row carries the fault. Renders null when
+ * nothing is wrong. */
 import { useState } from "react";
 import { postArmMaintenance } from "../api/rest";
-import type { ArmTelemetry } from "../gen";
+import type { ArmTelemetry, SessionTelemetry } from "../gen";
 import {
   faultLabel,
   isWarningDetail,
@@ -35,9 +40,24 @@ export interface FaultBannerProps {
   /** A hardware session owns the boxes → the recover button; sim = display only. */
   hardware: boolean;
   stale?: boolean;
+  /** The runtime's session-level notice (`sessionFaultDetail`), shown verbatim as a
+   * `SESSION — …` row: amber on its own, under the arm rows when there are any. */
+  sessionDetail?: string | null;
 }
 
 export const RECOVER_LABEL = "Clear errors & resume";
+
+/** `telemetry.session.fault_detail` — the runtime's session-level notice the arm
+ * rows do not already carry (core `SessionTelemetry.fault_detail`, additive
+ * 2026-09-08; 04-runtime §13.3): a refused / unplannable profile start
+ * ("start_from refused: Manipulation Arm faulted (…) - use Clear errors & resume,
+ * then Go to profile"), the outcome of a `R` / Go-to-profile motion that did not
+ * arrive ("Go to profile 'shelf': the digital twin could not plan …"), or the
+ * fault text while no arm row shows one. Trimmed; a pre-field runtime yields "". */
+export function sessionFaultDetail(session: SessionTelemetry | null | undefined): string {
+  const v: unknown = session?.fault_detail;
+  return typeof v === "string" ? v.trim() : "";
+}
 
 /** Arms the banner lists: a non-empty `fault_detail` or `recovering`, Manipulation Arm first. */
 export const faultedArms = (arms: readonly ArmTelemetry[]): ArmTelemetry[] =>
@@ -55,11 +75,18 @@ export const sessionFaulted = (state: string | null | undefined): boolean =>
 export const isWarningRow = (a: ArmTelemetry): boolean =>
   a.recovering !== true && (a.error_code ?? 0) === 0 && isWarningDetail(a.fault_detail);
 
-export function FaultBanner({ arms, sessionState, hardware, stale = false }: FaultBannerProps) {
+export function FaultBanner({
+  arms,
+  sessionState,
+  hardware,
+  stale = false,
+  sessionDetail = null,
+}: FaultBannerProps) {
   const addToast = useStore((s) => s.addToast);
   const [pending, setPending] = useState<string | null>(null);
   const rows = faultedArms(arms);
-  if (rows.length === 0 && !sessionFaulted(sessionState)) return null;
+  const detail = (sessionDetail ?? "").trim();
+  if (rows.length === 0 && !sessionFaulted(sessionState) && detail === "") return null;
 
   // Only real fault rows decide red vs amber; warning rows never make it red.
   const faults = rows.filter((a) => !isWarningRow(a));
@@ -137,7 +164,22 @@ export function FaultBanner({ arms, sessionState, hardware, stale = false }: Fau
           <span>
             {sessionState === "recovering"
               ? `RECOVERING — ${REGRIP_HINT}`
-              : "CONTROLLER FAULT — session halted"}
+              : `CONTROLLER FAULT — ${detail || "session halted"}`}
+            {stale && " (stale)"}
+          </span>
+        </div>
+      )}
+      {/* The runtime never puts the arm rows' own text here, so the notice is shown
+          under them too (a refused start names the faulted arm AND what to do next);
+          only the halted-session row above already carries it. */}
+      {!(faults.length === 0 && sessionFaulted(sessionState)) && detail !== "" && (
+        <div
+          className="banner-fault-row"
+          data-testid="fault-row-session-detail"
+          data-kind="session"
+        >
+          <span>
+            SESSION — {detail}
             {stale && " (stale)"}
           </span>
         </div>

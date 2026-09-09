@@ -16,6 +16,10 @@ export interface SegmentedOption<T extends string> {
   testId?: string;
   /** `id` of the controlled pane (`aria-controls`). */
   panelId?: string;
+  /** `id` of the tab button itself, so the pane can point back with
+   * `aria-labelledby` (the tab ↔ panel relation is then two-way). Defaults to
+   * `<testId>-tab-<value>` when the control has a `testId`. */
+  tabId?: string;
 }
 
 export type SegmentedOrigin = "pointer" | "keyboard";
@@ -108,6 +112,7 @@ export function SegmentedControl<T extends string>({
             }}
             type="button"
             role="tab"
+            id={opt.tabId ?? (testId ? `${testId}-tab-${opt.value}` : undefined)}
             className="seg-tab"
             aria-selected={selected}
             aria-controls={opt.panelId}

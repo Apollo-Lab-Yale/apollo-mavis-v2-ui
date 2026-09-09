@@ -39,6 +39,16 @@ export function actionFor(bindings: Bindings, code: string): ActionName | null {
   return bindings.discrete.get(code) ?? null;
 }
 
+/** First key code bound to a discrete action ("switch_arm" → "Tab"), or null.
+ * The Cockpit's page-wide arm-switch shortcut resolves its key through this
+ * instead of hardcoding one: the served keymap is the OPERATOR'S and they may
+ * have rebound it, so both the handler and the hint beside the arm rows have to
+ * follow it. */
+export function codeForAction(bindings: Bindings, action: ActionName): string | null {
+  for (const [code, a] of bindings.discrete) if (a === action) return code;
+  return null;
+}
+
 /** Physical keycap hint from a KeyboardEvent.code ("KeyW" → "W", "ArrowLeft" → "←"). */
 export function keycapLabel(code: string): string {
   if (code.startsWith("Key")) return code.slice(3);

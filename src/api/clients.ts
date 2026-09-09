@@ -54,6 +54,16 @@ export function onAck(fn: AckListener): () => void {
   return () => ackListeners.delete(fn);
 }
 
+/** Fan one ack out to the listeners; a nack that none of them claimed toasts
+ * `<name>: <detail>`. Exported so a component test can feed acks without a
+ * socket (the ControlClient calls it for every ack it receives). */
+export function handleAck(a: AckMsg): void {
+  let handled = false;
+  for (const fn of ackListeners) if (fn(a) === true) handled = true;
+  if (!handled && !a.ok && a.detail)
+    useStore.getState().addToast(`${a.name}: ${a.detail}`, "error");
+}
+
 let control: ControlClient | null = null;
 let telemetry: TelemetryClient | null = null;
 
@@ -89,12 +99,7 @@ export function getControl(): ControlClient {
     control = new ControlClient({
       getHeld: heldUnion,
       onHello: handleHello,
-      onAck: (a) => {
-        let handled = false;
-        for (const fn of ackListeners) if (fn(a) === true) handled = true;
-        if (!handled && !a.ok && a.detail)
-          useStore.getState().addToast(`${a.name}: ${a.detail}`, "error");
-      },
+      onAck: handleAck,
       onStatus: (s) => {
         useStore.getState().setConn("control", s);
       },

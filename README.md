@@ -14,7 +14,7 @@ and `OffscreenCanvas` are all Baseline there.
 npm install
 npm run dev         # Vite dev server; proxies /api /ws /video to
                     # $APOLLO_RUNTIME_URL (default http://localhost:8765)
-npm run build       # typecheck + production build → dist/
+npm run build       # typecheck + production build → dist/ + scripts/check-dist.ts (no dev-proxy leak)
 npm test            # vitest (jsdom; no runtime or hardware needed)
 npm run lint        # eslint (flat config)
 npm run format      # prettier
@@ -57,10 +57,11 @@ served keymap; "controller: none" when the backend reports no controller). The
 gamepad panel is collapsed by default (still functional) and the keymap overlay
 has a third "controller" glyph column. The served keymap has no controller
 field, so the controller glyphs come from one static per-action table,
-`CONTROLLER_GLYPHS` in `src/input/bindings.ts` (13-tracker §1.1 mapping:
-`tracker_clutch` → trigger, `gripper_close` → pad ◀, `gripper_open` → pad ▶,
-`switch_arm` → pad ▲, `switch_arm_prev` → pad ▼; trackpad clicks are
-classified by position at the press edge). Device-sourced discrete actions
+`CONTROLLER_GLYPHS` in `src/input/bindings.ts` (13-tracker §1.1 mapping — the
+OPERATOR'S map, matching the runtime's `tracker.controller_map`: `tracker_clutch`
+→ trigger click, `gripper_open` → pad ▲, `gripper_close` → pad ▼, `rail_neg` /
+`rail_pos` → pad ◀ / ▶, `switch_arm` → menu; `switch_arm_prev` has no controller
+input; trackpad clicks are classified by position at the press edge). Device-sourced discrete actions
 arrive as `telemetry.tracker.device_action` (cleared by the runtime ~1 s after
 firing) and render as a flash chip; `telemetry.tracker.pose_filtered` (the
 One Euro-filtered pose the anchor/delta math consumes) is shown next to
@@ -68,7 +69,7 @@ One Euro-filtered pose the anchor/delta math consumes) is shown next to
 
 The tracker settings form (`yaw_deg`, `pos_scale`, `follow_rotation`, and the
 pose-filter fields `filter_enabled`, `filter_min_cutoff_hz` 0.05–50,
-`filter_beta` 0–5) sends one `tracker_settings` action per COMMIT (Enter or
+`filter_beta` 0–200) sends one `tracker_settings` action per COMMIT (Enter or
 blur; checkboxes on click), never per keystroke; out-of-range values are never
 sent (the field snaps back to the echoed value). Nacks (`ok: false`) surface as
 toasts and the form is disabled without a running session.
@@ -108,7 +109,15 @@ etc.) so deep links never 404 against the static mount.
   caption (Hardware polls `GET /api/workcell?kind=hardware` every 2 s while visible), arm cards
   with a "Searching for arms…" placeholder, Start-from option rows + profile list, the read-only
   `mavis_v2` scene row, and `ModeLauncher` cards with visible disabled reasons. Teleop launches
-  directly; Data Collection / DAgger / Inference open `LaunchSheet` (task, promoted-only policy
-  rows, Advanced → per-arm `FrameSelector`; a 409 detail shows inside the sheet). Pure
+  directly; Data Collection / Inference open `LaunchSheet` (task, promoted-only policy
+  rows, Advanced → per-arm `FrameSelector`; a 409 detail shows inside the sheet); Online DAgger
+  opens the two-view `OnlineDaggerSheet` (Connect a trainer: the trainer pill from the
+  session-less `telemetry.external.capabilities` / `trainer_status`, Dora facts + skill
+  install → Configure: session name, task, recording rows, the two Advanced gates — no
+  dataset picker and no hyper-parameters: the runtime is the algorithm-agnostic shell,
+  the DAgger variant lives in the trainer node; 15-online-dagger §8). The dagger Cockpit
+  shows `OnlineDaggerPanel` (phase pill, trainer state + generic metrics, Take over /
+  Hand back / Train now) and the `DatasetsPanel` groups Demonstrations · Online DAgger
+  rollouts · Other. Pure
   `validateLaunch` / `buildSpec` / `launcherReason` live in `src/lib/launch.ts`; the first-mount
   hero reveal is gated by `lib/useRevealOnce.ts` (sessionStorage).

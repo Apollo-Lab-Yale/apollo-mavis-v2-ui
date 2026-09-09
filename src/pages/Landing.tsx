@@ -1,20 +1,27 @@
 /** Welcome page (05-ui §8.1, phase-11 §4): hero "APOLLO MAVIS V2", the
  * Hardware | Sim tabs (each with its observation grid, status caption and arm
  * cards), Start-from, the single read-only scene, and the four ModeLauncher
- * cards. Teleop launches directly; Data Collection / DAgger / Inference collect
- * task / policy in a LaunchSheet (held mounted for its 160 ms exit after
- * closing). The Hardware tab is always openable: while it
+ * cards. Teleop launches directly; Data Collection / Inference collect task /
+ * policy in a LaunchSheet, Online DAgger opens the two-view `OnlineDaggerSheet`
+ * (phase-14; 15-online-dagger §8) — both held mounted for their 160 ms exit after
+ * closing. `GET /api/datasets/layout` is read once so the sheets preview the REAL
+ * dataset folders. The Hardware tab is always openable: while it
  * is visible `GET /api/workcell?kind=hardware` is polled every 2 s and the four
  * modes are gated on `hardware_ready`. Phase-09c: the Hardware tab owns the
- * **Speed** 10 % / 30 % / 100 % control (default 10 %) →
+ * **Speed** 10 % / 50 % / 100 % control (default 100 % since 2026-09-08) →
  * `SessionSpec.speed_scale`; the launchers add the rail-homed /
  * homing-in-progress / arm-eligibility reasons from the read-only monitor
  * (phase-09d: for ANY arm, named — `SessionSpec.arms` is every arm of the
- * hardware workcell, the "Include in session" switch is gone), the three
- * non-teleop modes read "teleop only for now", and the bring-up progress list
- * appears under the launchers while the POST is pending. The hero's quiet
- * **Debug** link opens `#/devices` (gamepad + tracker). Pure launch logic
- * lives in ../lib/launch (re-exported here for the tests). */
+ * hardware workcell, the "Include in session" switch is gone), Online DAgger and
+ * Inference read "teleop and data collection only for now" (collect is admitted
+ * on hardware since 2026-09-07), and the bring-up progress list appears under
+ * the launchers while the POST is pending. Below the mode cards the
+ * **DatasetsPanel** (2026-09-07; 05-ui §8.1 item 7) lists the recorded datasets
+ * of the tab's kind with per-episode deletion, the LeRobot v3 export and the
+ * dataset delete; it re-reads after every action and whenever
+ * `telemetry.episode.total_episodes` changes. The hero's quiet **Debug** link
+ * opens `#/devices` (gamepad + tracker). Pure launch logic lives in
+ * ../lib/launch (re-exported here for the tests). */
 import {
   useCallback,
   useEffect,
@@ -28,7 +35,13 @@ import { useShallow } from "zustand/react/shallow";
 import { getControl, getTelemetry } from "../api/clients";
 import {
   createSession,
+  deleteDataset,
+  deleteEpisode,
+  deleteProfile,
+  exportDataset,
   getCameras,
+  getDatasetLayout,
+  getDatasets,
   getKeymap,
   getMicrophones,
   getPolicies,
@@ -38,6 +51,8 @@ import {
 } from "../api/rest";
 import type {
   CameraInfo,
+  DatasetInfo,
+  DatasetLayoutInfo,
   MicrophoneInfo,
   PolicyInfo,
   ProfileInfo,
@@ -50,12 +65,18 @@ import { buildBindings } from "../input/bindings";
 import {
   buildSpec,
   DEFAULT_SPEED_SCALE,
+  DEFAULT_SPEED_VALUE,
   launcherReason,
   SPEED_OPTIONS,
   type LandingSelection,
   type SpeedValue,
 } from "../lib/launch";
 import { sessionGate, type SessionGate } from "../lib/maintenance";
+import {
+  hasInitialCondition as hasInitialConditionFor,
+  profileDeleteErrorText,
+  profilesForKind,
+} from "../lib/profiles";
 import {
   APP_EYEBROW,
   APP_SUBTITLE,
@@ -99,6 +120,9 @@ import {
   type StartFromChoice,
 } from "../components/landing";
 import { LaunchSheet, type SheetMode } from "../components/LaunchSheet";
+import { OnlineDaggerSheet } from "../components/OnlineDaggerSheet";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { DatasetsPanel } from "../components/DatasetsPanel";
 import { ModeLauncher } from "../components/ModeLauncher";
 import { SegmentedControl, type SegmentedOrigin } from "../components/SegmentedControl";
 import { SettingPane } from "../components/setting";
@@ -142,7 +166,7 @@ const TAB_OPTIONS = [
   },
 ] as const satisfies readonly { value: TabKey; label: string; testId: string; panelId: string }[];
 
-/** Hardware-tab Speed segments (phase-09c D2), testids `speed-10` / `speed-30` / `speed-100`. */
+/** Hardware-tab Speed segments (phase-09c D2), testids `speed-10` / `speed-50` / `speed-100`. */
 const SPEED_TAB_OPTIONS = SPEED_OPTIONS.map((o) => ({
   value: o.value,
   label: o.label,
@@ -198,12 +222,20 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   const [twinScenes, setTwinScenes] = useState<SceneInfo[]>([]);
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [policies, setPolicies] = useState<PolicyInfo[]>([]);
+  const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
+  // Where the namespaces live (15-online-dagger §7): null until answered / on an older runtime.
+  const [layout, setLayout] = useState<DatasetLayoutInfo | null>(null);
   const [startFrom, setStartFrom] = useState<StartFromChoice>("keep_current");
   const [profileId, setProfileId] = useState<string | null>(null);
+  // Profile deletion (2026-09-07): the row clicked, held while its confirm Sheet
+  // runs the 160 ms exit, plus the id whose DELETE is in flight.
+  const [deleting, setDeleting] = useState<ProfileInfo | null>(null);
+  const deletingShown = useLingeringValue(deleting, SHEET_EXIT_MS);
+  const [deleteBusy, setDeleteBusy] = useState<string | null>(null);
   const [keymapOk, setKeymapOk] = useState(false);
   // Phase-09c Hardware-tab session shape: the Speed segment (phase-09d: the
   // arm set is not a choice any more — every hardware arm joins the session).
-  const [speed, setSpeed] = useState<SpeedValue>("0.1");
+  const [speed, setSpeed] = useState<SpeedValue>(DEFAULT_SPEED_VALUE);
   const [launching, setLaunching] = useState<Mode | null>(null);
   const [sheet, setSheet] = useState<SheetMode | null>(null);
   // The sheet's mode lingers for the exit transition once `sheet` is cleared.
@@ -212,6 +244,39 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   // same flows as the Debug page; the flow state itself lives in telemetry.
   const [wizard, setWizard] = useState<WizardKind | null>(null);
   const wizardShown = useLingeringValue(wizard, SHEET_EXIT_MS);
+
+  /** The profile list is server state: re-read it after a delete instead of
+   * splicing locally, so a failed DELETE cannot leave a phantom row. */
+  const loadProfiles = useCallback(() => {
+    getProfiles()
+      .then(setProfiles)
+      .catch(() => setProfiles([]));
+  }, []);
+
+  /** The dataset list is server state too (04-runtime §10.6): re-read after every
+   * dataset action and whenever the running session saved / discarded an episode. */
+  const loadDatasets = useCallback(() => {
+    getDatasets()
+      .then(setDatasets)
+      .catch(() => setDatasets([]));
+  }, []);
+  useEffect(() => {
+    getDatasetLayout()
+      // Shape-checked: a runtime without the route may answer the list instead.
+      .then((l) => setLayout(l && typeof l === "object" && "namespaces" in l ? l : null))
+      .catch(() => setLayout(null));
+  }, []);
+  // Online DAgger sheet (phase-14): the Dora bridge / policy-node attachment and, for
+  // the rare "an Online DAgger session is running" case, its trainer status.
+  const external = useStore((s) => s.telemetry?.external ?? null);
+  const onlineDaggerStatus = useStore((s) => s.telemetry?.dagger?.online_dagger ?? null);
+  const totalEpisodes = useStore((s) => s.telemetry?.episode?.total_episodes ?? null);
+  const exportProgress = useStore((s) => s.telemetry?.datasets?.export ?? null);
+  const exportPhase = exportProgress?.phase ?? null;
+  const inUseRepoId = useStore((s) => s.telemetry?.episode?.repo_id ?? null);
+  useEffect(() => {
+    loadDatasets();
+  }, [loadDatasets, totalEpisodes, exportPhase]);
 
   const loadKeymap = useCallback(() => {
     getKeymap()
@@ -249,14 +314,12 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     getScenes("twin")
       .then(setTwinScenes)
       .catch(() => setTwinScenes([]));
-    getProfiles()
-      .then(setProfiles)
-      .catch(() => setProfiles([]));
+    loadProfiles();
     getPolicies()
       .then(setPolicies)
       .catch(() => setPolicies([]));
     loadKeymap();
-  }, [setWorkcell, addToast, loadKeymap]);
+  }, [setWorkcell, addToast, loadKeymap, loadProfiles]);
 
   // Hardware tab: poll the probe-backed status (and camera liveness) every 2 s
   // while the tab is visible; paused while the document is hidden.
@@ -306,14 +369,6 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   useEffect(() => {
     getTelemetry();
   }, []);
-
-  // Preselect the designated initial-condition profile when switching to "profile".
-  useEffect(() => {
-    if (startFrom === "profile" && profileId === null) {
-      const initial = profiles.find((p) => p.is_initial_condition);
-      if (initial) setProfileId(initial.profile_id);
-    }
-  }, [startFrom, profiles, profileId]);
 
   // Tab switch: pointer → 120 ms crossfade (outgoing pane kept briefly);
   // keyboard → instant, no leaving pane.
@@ -409,6 +464,23 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   // are not rendered), so the selection falls back to the Sim shape: it is only
   // read by the launchers.
   const selKind: Kind = kind ?? "sim";
+  // The Start-from list shows the tab's profiles only (`StartFrom` filters with the
+  // same helper), so the selection must be one of them: a selected row that the
+  // current tab hides (the other kind's initial condition, say) is dropped, and the
+  // designated initial condition OF THIS TAB'S KIND is preselected when "Load a
+  // profile" is chosen (or the selection was just cleared).
+  const visibleProfiles = useMemo(() => profilesForKind(profiles, selKind), [profiles, selKind]);
+  useEffect(() => {
+    if (profileId !== null && !visibleProfiles.some((p) => p.profile_id === profileId)) {
+      setProfileId(null);
+    }
+  }, [profileId, visibleProfiles]);
+  useEffect(() => {
+    if (startFrom === "profile" && profileId === null) {
+      const initial = visibleProfiles.find((p) => p.is_initial_condition);
+      if (initial) setProfileId(initial.profile_id);
+    }
+  }, [startFrom, visibleProfiles, profileId]);
   const sel: LandingSelection = {
     tab: selKind,
     kind: selKind,
@@ -546,7 +618,7 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
             testId="speed-control"
           />
           <span className="text-caption fg-3 session-controls-help">
-            Scales every velocity cap of the session · first runs at 10%
+            Scales every velocity cap of the session · 10% for a first run in a new posture
           </span>
         </div>
       )}
@@ -570,7 +642,74 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   const pane = (k: TabKey, state: "enter" | "leave") =>
     paneShell(k, state, k === SETTING_TAB ? settingPane() : workcellPane(k));
 
+  /** Confirmed delete: DELETE, then re-read the list and clear the selection if
+   * the deleted profile was the one selected. The runtime refuses (409) to delete
+   * the designated initial-condition profile — the toast says so in the operator's
+   * words (`profileDeleteErrorText`; the runtime's text is the fallback). */
+  const confirmDelete = useCallback(
+    (p: ProfileInfo) => {
+      setDeleteBusy(p.profile_id);
+      deleteProfile(p.profile_id)
+        .then(() => {
+          setDeleting(null);
+          setProfileId((cur) => (cur === p.profile_id ? null : cur));
+          addToast(`Deleted profile '${p.name}'`, "info");
+          loadProfiles();
+        })
+        .catch((e) => addToast(profileDeleteErrorText(p, e), "error"))
+        .finally(() => setDeleteBusy(null));
+    },
+    [addToast, loadProfiles],
+  );
+
   const profileName = profiles.find((p) => p.profile_id === profileId)?.name ?? null;
+  // The return target falls back to the initial condition OF THE SELECTED KIND
+  // (ProfileInfo.workcell_kind, 2026-09-07). A kind-less designated row (older
+  // runtime) counts like the list badges it: `profilesForKind` shows it on both tabs.
+  const hasInitialCondition = useMemo(
+    () => hasInitialConditionFor(profiles, selKind),
+    [profiles, selKind],
+  );
+
+  const onDeleteEpisode = useCallback(
+    async (repoId: string, episodeId: string) => {
+      try {
+        await deleteEpisode(repoId, episodeId);
+        addToast(`Deleted episode ${episodeId} of ${repoId}`, "info");
+      } catch (e) {
+        addToast(`delete episode: ${e instanceof Error ? e.message : String(e)}`, "error");
+      } finally {
+        loadDatasets();
+      }
+    },
+    [addToast, loadDatasets],
+  );
+  const onDeleteDataset = useCallback(
+    async (repoId: string) => {
+      try {
+        await deleteDataset(repoId);
+        addToast(`Deleted dataset ${repoId}`, "info");
+      } catch (e) {
+        addToast(`delete dataset: ${e instanceof Error ? e.message : String(e)}`, "error");
+      } finally {
+        loadDatasets();
+      }
+    },
+    [addToast, loadDatasets],
+  );
+  const onExport = useCallback(
+    async (repoId: string) => {
+      try {
+        await exportDataset(repoId);
+        addToast(`Export of ${repoId} started — progress in the datasets list`, "info");
+      } catch (e) {
+        addToast(`export: ${e instanceof Error ? e.message : String(e)}`, "error");
+      } finally {
+        loadDatasets();
+      }
+    },
+    [addToast, loadDatasets],
+  );
 
   return (
     <div className="landing welcome" data-testid="landing">
@@ -612,11 +751,14 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
             </h2>
             <StartFrom
               profiles={profiles}
+              kind={selKind}
               arms={armIds}
               startFrom={startFrom}
               onStartFromChange={setStartFrom}
               profileId={profileId}
               onProfileChange={setProfileId}
+              onDelete={setDeleting}
+              deletingId={deleteBusy}
             />
           </section>
 
@@ -641,10 +783,41 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
             />
             {hardwareTab && <BringupProgress />}
           </section>
+
+          <section className="section" aria-labelledby="datasets-title">
+            <h2 id="datasets-title" className="text-label fg-3 section-title">
+              Datasets
+            </h2>
+            <DatasetsPanel
+              kind={selKind}
+              datasets={datasets}
+              exportProgress={exportProgress}
+              inUseRepoId={inUseRepoId}
+              layout={layout}
+              onDeleteEpisode={onDeleteEpisode}
+              onDeleteDataset={onDeleteDataset}
+              onExport={onExport}
+            />
+          </section>
         </>
       )}
 
-      {sheetShown !== null && (
+      {sheetShown === "dagger" && (
+        <OnlineDaggerSheet
+          key="dagger"
+          open={sheet !== null}
+          sel={sel}
+          cameras={tabCameras}
+          profileName={profileName}
+          hasInitialCondition={hasInitialCondition}
+          layout={layout}
+          external={external}
+          onlineDaggerStatus={onlineDaggerStatus}
+          onLaunched={onLaunched}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheetShown !== null && sheetShown !== "dagger" && (
         <LaunchSheet
           key={sheetShown}
           mode={sheetShown}
@@ -653,6 +826,9 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
           policies={policies}
           cameras={tabCameras}
           profileName={profileName}
+          datasets={datasets}
+          hasInitialCondition={hasInitialCondition}
+          layout={layout}
           onLaunched={onLaunched}
           onClose={() => setSheet(null)}
         />
@@ -663,6 +839,24 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
           open={wizard !== null}
           onClose={() => setWizard(null)}
           onSwitchKind={setWizard}
+        />
+      )}
+      {deletingShown !== null && (
+        <ConfirmDialog
+          open={deleting !== null}
+          title="Delete profile"
+          text={
+            deletingShown.is_initial_condition
+              ? `'${deletingShown.name}' is the workcell initial condition. Deleting it is permanent — recorded episodes that name it keep the name, not the pose.`
+              : `Delete '${deletingShown.name}'? This is permanent — the saved joint state is gone.`
+          }
+          confirmLabel={deleteBusy !== null ? "Deleting…" : "Delete"}
+          onConfirm={() => {
+            if (deleteBusy === null) confirmDelete(deletingShown);
+          }}
+          onCancel={() => {
+            if (deleteBusy === null) setDeleting(null);
+          }}
         />
       )}
       <Toasts />

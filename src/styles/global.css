@@ -1060,6 +1060,22 @@ dialog.sheet-host[data-instant]::backdrop {
   font-size: var(--text-caption);
   color: var(--danger-text);
 }
+/* Cockpit Profiles panel — "Go to profile" (2026-09-08): the select fills the row,
+   the button sits on its baseline; the reason / hint line lives under the row. */
+.goto-profile {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.goto-profile-field {
+  flex: 1;
+  min-width: 0;
+}
+.goto-profile-field select {
+  width: 100%;
+  min-width: 0;
+}
 
 /* ---- Toasts (glass, four tones, transitions not keyframes) ----------------------- */
 /* The stack's movable mount point: under <body>, or under the open <dialog> so it
@@ -1210,6 +1226,39 @@ dialog.sheet-host[data-instant]::backdrop {
   justify-content: space-between;
   gap: 8px;
   padding: 2px 0;
+}
+
+/* Cockpit arm rows are BUTTONS (2026-09-07): a click switches the active arm, so
+   arm switching never depends on the Vive controller or on an armed capture
+   surface. They must read as rows first and controls second — no fill at rest,
+   a hairline + tint on hover, and the active row keeps its accent ring so the
+   server-confirmed selection stays the loudest thing in the panel. */
+button.arm-row {
+  width: 100%;
+  align-items: center;
+  padding: 3px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-hover) ease,
+    border-color var(--dur-hover) ease;
+}
+button.arm-row:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+button.arm-row[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+button.arm-row:disabled {
+  cursor: default;
+  opacity: 1; /* inert rows still report state — never dim the telemetry */
 }
 table.keymap {
   width: 100%;
@@ -1806,10 +1855,10 @@ summary.summary::-webkit-details-marker {
 .profile-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas:
-    "main check"
-    "notes check";
+    "main check del"
+    "notes check del";
   align-items: center;
   column-gap: var(--space-3);
   row-gap: 2px;
@@ -1864,6 +1913,32 @@ summary.summary::-webkit-details-marker {
 }
 .profile-row.is-selected .profile-check {
   opacity: 1;
+}
+/* Per-row delete (2026-09-07): a ghost icon button that only surfaces on hover /
+   focus, so a list of profiles does not read as a row of destructive buttons.
+   It stays reachable by keyboard at all times (`:focus-visible`). */
+.profile-delete {
+  grid-area: del;
+  color: var(--fg-3);
+  opacity: 0;
+  transition:
+    opacity var(--dur-hover) ease,
+    color var(--dur-hover) ease;
+}
+.profile-row:hover .profile-delete,
+.profile-delete:focus-visible {
+  opacity: 1;
+}
+.profile-delete:hover:not(:disabled) {
+  color: var(--danger-text);
+}
+.profile-delete:disabled {
+  opacity: 0.4;
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-delete {
+    opacity: 1;
+  }
 }
 .profile-empty {
   padding: var(--space-2) var(--space-3);
@@ -2049,6 +2124,107 @@ summary.summary::-webkit-details-marker {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* Data Collection sheet: the return-to-start checkbox row */
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+  cursor: pointer;
+}
+.check-row input {
+  margin-top: 3px;
+}
+
+/* Idle-frame filter inputs (LaunchSheet, 2026-09-07 addendum) */
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-2);
+}
+.filter-field input {
+  width: 100%;
+}
+
+/* DatasetsPanel (05-ui §8.1 item 7, 2026-09-07) */
+.datasets-panel .dataset-list,
+.datasets-panel .episode-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.dataset-row {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+}
+.dataset-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.dataset-expand .icon {
+  transition: transform var(--dur-hover) ease;
+}
+.dataset-expand .icon.is-open {
+  transform: rotate(90deg);
+}
+.dataset-name {
+  font-weight: 600;
+}
+.dataset-meta {
+  flex: 1;
+  min-width: 0;
+}
+.dataset-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dataset-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.dataset-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2) 0 0 28px;
+}
+.dataset-export-error {
+  padding: var(--space-1) 0 0 28px;
+}
+.episode-list {
+  padding: var(--space-2) 0 0 28px !important;
+}
+.episode-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.episode-row .episode-id {
+  font-size: var(--text-caption);
+}
+.episode-row > button {
+  margin-left: auto;
+}
+.episode-dataset,
+.episode-detail {
+  margin-bottom: 4px;
 }
 
 /* ---- Accessibility preferences ------------------------------------------------------ */
@@ -2525,7 +2701,9 @@ summary.summary::-webkit-details-marker {
   border-radius: 50%;
   background: var(--warn);
   box-shadow: 0 0 8px rgba(245, 166, 35, 0.7);
-  transition: background var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+  transition:
+    background var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
 }
 .proximity-frame[data-tone="close"] .proximity-dot,
 .proximity-frame[data-tone="blocked"] .proximity-dot {
@@ -2562,4 +2740,352 @@ summary.summary::-webkit-details-marker {
   .proximity-chip {
     border: 1px solid var(--border-strong);
   }
+}
+
+/* HomeRailSheet dead-end guidance (2026-09-08): the UFACTORY Studio steps */
+.home-rail-studio {
+  border-left: 3px solid var(--danger, #c0392b);
+}
+.home-rail-studio-steps {
+  margin: 6px 0 0 0;
+  padding-left: 1.2em;
+}
+.home-rail-studio-steps li {
+  margin: 2px 0;
+}
+
+/* ---- Phase-14: Online DAgger (15-online-dagger §8) ----------------------------------
+ * Sheet (two views, segmented step header), Cockpit panel (phase pill, trainer row,
+ * generic metric list, sparkline, gate buttons), copy buttons, dataset groups.
+ * Existing tokens only; every transition is opacity / colour over --ease-out,
+ * ≤ 240 ms; nothing animates height, nothing bounces, the sparkline is a canvas
+ * repainted from telemetry. */
+.chip-accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.od-sheet .sheet-header-extra {
+  padding: var(--space-3) var(--space-6) 0;
+}
+.od-steps-control {
+  width: max-content;
+}
+.od-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.od-view[hidden] {
+  display: none; /* both views stay mounted; the switch never animates height */
+}
+.od-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+.od-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.od-facts,
+.od-install {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.od-fact {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-1);
+}
+.od-fact-value {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.od-oneliner-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
+}
+.od-oneliner {
+  color: var(--fg);
+  font-family: var(--font-mono);
+  user-select: all;
+}
+.od-skill-preview {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.od-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--fg-2);
+  font-size: var(--text-callout);
+  line-height: 1.5;
+}
+.od-steps code {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  color: var(--fg);
+}
+.od-start-caption {
+  max-width: 360px;
+  text-align: right;
+}
+.od-path-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.od-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.od-session-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.od-session-chip {
+  gap: var(--space-1);
+  border: 1px solid var(--border);
+}
+.od-session-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+/* Copy button: the label swaps Copy → Copied for 1.2 s; fixed width so the row
+   never shifts, a colour change (no transform) says it happened. */
+.copy-btn {
+  min-width: 92px;
+  justify-content: flex-start;
+  transition:
+    color var(--dur-hover) var(--ease-out),
+    background-color var(--dur-hover) var(--ease-out);
+}
+.copy-btn[data-state="copied"] {
+  color: var(--ok);
+}
+.copy-btn[data-state="failed"] {
+  color: var(--warn);
+}
+
+/* Cockpit panel */
+.od-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.od-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.od-rollouts {
+  font-size: var(--text-body);
+}
+.od-phase {
+  white-space: nowrap;
+}
+.od-progress {
+  height: 3px;
+}
+.od-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+/* Trainer row: state (+ id) and its free-form detail; the state word carries the
+   meaning, no colour is added for it. */
+.od-trainer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-1);
+}
+.od-trainer-state {
+  overflow-wrap: anywhere;
+}
+/* Generic metric list: whatever keys the trainer reports, two columns, tabular. */
+.od-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-1);
+}
+.od-metric-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1) var(--space-3);
+}
+.od-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.od-metric dt {
+  overflow-wrap: anywhere;
+}
+.od-metric dd {
+  margin: 0;
+  font-size: var(--text-title-3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.od-meters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.od-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-1);
+}
+.od-meter-value {
+  font-size: var(--text-title-3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.od-sparkline {
+  width: 100%;
+  height: 36px;
+  display: block;
+}
+/* Version swap: the note enters on opacity only (240 ms, no bounce) and the value
+   background tints for the same time — colour + word, never colour alone. */
+.od-version {
+  border-radius: var(--radius-1);
+  transition: background-color var(--dur-enter) var(--ease-out);
+}
+.od-version.is-swapped {
+  background: var(--accent-soft);
+}
+.od-swapped {
+  opacity: 1;
+  transition: opacity var(--dur-enter) var(--ease-out);
+}
+@starting-style {
+  .od-swapped {
+    opacity: 0;
+  }
+}
+/* Actions: the Take over / Hand back pair, then Train now, each row with its
+   reason underneath (a disabled control always says why). */
+.od-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.od-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.od-buttons + .od-buttons,
+.od-actions .btn-reason + .od-buttons {
+  margin-top: var(--space-1);
+}
+.od-actions .btn-reason {
+  margin: 0;
+}
+.od-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-caption);
+}
+/* DatasetsPanel groups (Demonstrations · Online DAgger rollouts · Other) */
+.dataset-group + .dataset-group {
+  margin-top: var(--space-4);
+}
+.dataset-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+.dataset-path {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .od-version,
+  .od-swapped,
+  .copy-btn {
+    transition: none;
+  }
+  .od-progress .home-rail-progress-fill {
+    transition: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .chip-accent,
+  .od-version.is-swapped,
+  .od-session-chip[aria-pressed="true"] {
+    background: var(--surface-2);
+  }
+}
+@media (prefers-contrast: more) {
+  .od-fact,
+  .od-meter,
+  .od-metrics,
+  .od-trainer,
+  .od-status,
+  .od-session-chip {
+    border-color: var(--border-strong);
+  }
+  .chip-accent {
+    border-color: var(--accent);
+  }
+}
+
+/* Online DAgger key hint whose action the runtime would refuse right now (the N hint
+ * outside the `rollout` phase): quieter, never hidden — the key still exists. */
+.od-hints .od-hint-off {
+  color: var(--fg-3);
+}
+.od-hints .od-hint-off kbd {
+  opacity: 0.55;
 }

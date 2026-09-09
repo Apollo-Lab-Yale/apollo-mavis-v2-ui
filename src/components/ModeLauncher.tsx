@@ -1,5 +1,5 @@
 /** ModeLauncher (phase-11 §4): four whole-card buttons — Teleop, Data
- * Collection, DAgger, Inference. A disabled card stays in the tab order
+ * Collection, Online DAgger, Inference. A disabled card stays in the tab order
  * (`aria-disabled`, never `disabled`) and shows its reason as visible text;
  * the keymap reason carries an inline Retry. Launching → 12 px spinner +
  * "Starting…" / "Planning safe path…". Cards stagger in on first mount only
@@ -14,7 +14,7 @@ import { Icon, type IconName } from "./icons";
 export const MODE_ICONS: Readonly<Record<Mode, IconName>> = {
   teleop: "joystick",
   collect: "record",
-  dagger: "branch",
+  dagger: "project", // a vector and its projection onto a reference line (15-online-dagger §8)
   inference: "play",
 };
 

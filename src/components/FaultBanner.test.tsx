@@ -6,12 +6,14 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeArm, makeMaintenanceResult } from "../../tests/mocks/fixtures";
+import type { SessionTelemetry } from "../gen";
 import { useStore } from "../store";
 import {
   FaultBanner,
   faultedArms,
   isWarningRow,
   RECOVER_LABEL,
+  sessionFaultDetail,
   sessionFaulted,
 } from "./FaultBanner";
 
@@ -352,5 +354,90 @@ describe("FaultBanner", () => {
       tone: "error",
     });
     expect(posts.map((p) => p.body)).toEqual([{ op: "recover" }, { op: "recover" }]);
+  });
+
+  // -- session-level detail (2026-09-08): a refused / unplannable profile start ---------
+  it("'start_from refused: …' is an amber SESSION row, the runtime's text verbatim, while no arm is faulted", () => {
+    const detail =
+      "start_from refused: Manipulation Arm C24 Speed Exceeds Limit — the loop did not accept the plan";
+    const { rerender } = render(
+      <FaultBanner
+        arms={[makeArm()]}
+        sessionState="running"
+        hardware={false}
+        sessionDetail={detail}
+      />,
+    );
+    const banner = screen.getByTestId("fault-banner");
+    expect(banner.className).toContain("banner-amber");
+    expect(banner.dataset["state"]).toBe("warning");
+    expect(screen.getByTestId("fault-row-session-detail").textContent).toBe(`SESSION — ${detail}`);
+    expect(screen.queryByTestId("fault-row-session")).toBeNull();
+    expect(screen.queryByTestId("fault-recover-grip")).toBeNull(); // nothing to recover
+    // stale telemetry is marked like every other row
+    rerender(
+      <FaultBanner
+        arms={[makeArm()]}
+        sessionState="running"
+        hardware={true}
+        stale={true}
+        sessionDetail={detail}
+      />,
+    );
+    expect(screen.getByTestId("fault-row-session-detail").textContent).toBe(
+      `SESSION — ${detail} (stale)`,
+    );
+    // blank detail: nothing wrong, no banner
+    rerender(
+      <FaultBanner arms={[makeArm()]} sessionState="running" hardware={false} sessionDetail="  " />,
+    );
+    expect(screen.queryByTestId("fault-banner")).toBeNull();
+    // an arm fault row + the notice: BOTH rows (the runtime never sends the arm rows'
+    // own text as the notice, so this is the faulted arm AND what to do next), red as before
+    rerender(
+      <FaultBanner
+        arms={[makeArm({ error_code: 24, fault_detail: SPEED })]}
+        sessionState="fault"
+        hardware={false}
+        sessionDetail={detail}
+      />,
+    );
+    expect(screen.getByTestId("fault-row-grip")).toBeInTheDocument();
+    expect(screen.getByTestId("fault-row-session-detail").textContent).toBe(`SESSION — ${detail}`);
+    expect(screen.queryByTestId("fault-row-session")).toBeNull();
+    expect(screen.getByTestId("fault-banner").className).toContain("banner-red");
+    // the halted-session row already shows the detail: no second row
+    rerender(
+      <FaultBanner arms={[]} sessionState="fault" hardware={false} sessionDetail={detail} />,
+    );
+    expect(screen.getByTestId("fault-row-session").textContent).toBe(
+      `CONTROLLER FAULT — ${detail}`,
+    );
+    expect(screen.queryByTestId("fault-row-session-detail")).toBeNull();
+    // a halted session with no arm rows shows the detail instead of the generic text
+    rerender(
+      <FaultBanner
+        arms={[]}
+        sessionState="fault"
+        hardware={false}
+        sessionDetail="start_from plan failed: blocked"
+      />,
+    );
+    expect(screen.getByTestId("fault-row-session").textContent).toBe(
+      "CONTROLLER FAULT — start_from plan failed: blocked",
+    );
+  });
+
+  it("sessionFaultDetail reads the typed telemetry.session.fault_detail (absent → '', trimmed)", () => {
+    expect(sessionFaultDetail(null)).toBe("");
+    expect(sessionFaultDetail(undefined)).toBe("");
+    expect(sessionFaultDetail({ state: "running" })).toBe("");
+    expect(sessionFaultDetail({ state: "running", fault_detail: "" })).toBe("");
+    expect(sessionFaultDetail({ state: "running", fault_detail: " start_from refused: x " })).toBe(
+      "start_from refused: x",
+    );
+    expect(
+      sessionFaultDetail({ state: "running", fault_detail: 5 } as unknown as SessionTelemetry),
+    ).toBe("");
   });
 });

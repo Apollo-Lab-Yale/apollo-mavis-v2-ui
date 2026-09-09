@@ -9,10 +9,15 @@ export type Name =
   | "episode_new"
   | "episode_save"
   | "episode_discard"
+  | "reset_to_initial"
   | "save_profile"
   | "set_initial_condition"
   | "joint_target"
-  | "tracker_settings";
+  | "tracker_settings"
+  | "takeover"
+  | "handback"
+  | "train_now"
+  | "goto_profile";
 export type Ok = boolean;
 export type T = "ack";
 export type Name1 =
@@ -22,10 +27,15 @@ export type Name1 =
   | "episode_new"
   | "episode_save"
   | "episode_discard"
+  | "reset_to_initial"
   | "save_profile"
   | "set_initial_condition"
   | "joint_target"
-  | "tracker_settings";
+  | "tracker_settings"
+  | "takeover"
+  | "handback"
+  | "train_now"
+  | "goto_profile";
 export type T1 = "action";
 export type DryRun = boolean;
 export type Op = "clear_errors" | "apply_backstops" | "recover" | "home_rail";
@@ -126,9 +136,74 @@ export type Pairs = [string, string][];
 export type CommandSource = "teleop" | "joint_jog" | "policy" | "takeover" | "planner";
 export type T2 = "collision_event";
 export type Ts = number;
+export type At = string | null;
+export type Detail5 = string;
+export type Episodes = number;
+export type Format = string;
+export type Path1 = string | null;
+export type State1 = "none" | "stale" | "fresh" | "running" | "failed";
+export type Format1 = "lerobot_v3";
+export type Out = string | null;
+export type Arms = string[];
+export type Cameras = string[];
+export type Fps1 = number;
+export type InUse = boolean;
+export type Kind2 = ("hardware" | "sim") | null;
+export type Layout = "episode_dirs" | "lerobot_v3";
+export type ModifiedAt = string;
+export type Namespace = string;
+export type Path2 = string;
+export type RepoId = string;
+export type RobotType = string | null;
+export type Root = string;
+export type Task = string | null;
+export type TotalEpisodes = number;
+export type TotalFrames = number;
+export type DefaultNamespace = string;
+export type GenericRoot = string;
+export type Root1 = string;
+export type Subdir = string | null;
+export type Auth = boolean;
+export type BindHost = string;
+export type CoordinatorAddr = string;
+export type CoordinatorPort = number;
+export type DaemonPort = number;
+export type DataflowId = string | null;
+export type DataflowName = string;
+export type DataflowRestarts = number;
+export type DataflowYaml = string | null;
+export type Detail6 = string;
+export type Enabled = boolean;
+export type MachineId = string;
+export type Detail7 = string;
+export type Id = string;
+export type Joined = boolean;
+export type Placeholders = string[];
+export type Registered = boolean;
+export type Machines = DoraMachineInfo[];
+export type MavisSchema = number;
+export type NodeId = string;
+export type Placeholders1 = string[];
+export type ReattachCount = number;
+export type State2 = "disabled" | "unavailable" | "attached" | "detached" | "closed";
+export type ZenohConnect = string;
+export type ZenohPort = number;
+export type Audio = boolean;
+export type DurationS1 = number;
+export type EpisodeId = string;
+export type ExportNote = string | null;
+export type ExportOk = boolean;
+export type Frames = number;
+export type FramesDropped = number;
+export type Index = number;
+export type Open = boolean;
+export type RecordedAt = string | null;
+export type SessionId = string | null;
+export type Task1 = string | null;
+export type ProfileId = string;
 export type Epoch = string;
 export type Role = "controller" | "observer";
-export type SessionId = string | null;
+export type SessionId1 = string | null;
 export type T3 = "hello";
 export type ArmId3 = string;
 export type Mode1 = "jog" | "goto";
@@ -137,7 +212,7 @@ export type Action = string;
 export type Code = string;
 export type Gamepad = string | null;
 export type Group = "translate" | "rotate" | "gripper" | "rail" | "session" | "episode" | "tracker";
-export type Kind2 = "held" | "discrete";
+export type Kind3 = "held" | "discrete";
 export type Label1 = string;
 export type RequiresRail = boolean;
 export type Held = string[];
@@ -145,52 +220,134 @@ export type Seq1 = number;
 export type T4 = "keys";
 export type Ts1 = number;
 export type Channels = number;
-export type Detail5 = string;
-export type Kind3 = "pulse" | "fake" | "none";
+export type Detail8 = string;
+export type Kind4 = "pulse" | "fake" | "none";
 export type Label2 = string;
 export type Live1 = boolean;
 export type MicId = string;
 export type SampleRate = number;
 export type Source1 = string | null;
 export type Status2 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
+export type RolloutsDir = string;
+export type SessionDir = string;
+export type SessionName = string;
+export type PauseWhileTraining = boolean;
+export type Resume = boolean;
+export type SessionName1 = string;
+export type WaitForTrainerReady = boolean;
+export type CreatedAt = string;
+export type LastUsedAt = string | null;
+export type Path3 = string;
+export type Rollouts = number;
+export type SessionName2 = string;
+export type Task2 = string | null;
 export type ActionFrame = string;
 export type ActionSpace = "delta_ee" | "abs_ee" | "joint";
-export type Path1 = string;
+export type Path4 = string;
 export type PolicyId = string;
 export type PolicyVersion = number;
 export type Promoted = boolean;
-export type Arms = string[];
-export type CreatedAt = string;
+export type ActsTotal = number;
+export type Capabilities = string[];
+export type ChunkDtS = number | null;
+export type ChunkLen = number;
+export type Detail9 = string;
+export type Device = string;
+export type ExtrinsicsSha = string | null;
+export type Health = "ok" | "degraded" | "error";
+export type LastComputeMs = number | null;
+export type Loader = string;
+export type MavisSchema1 = number;
+export type NodeVersion = string;
+export type PolicyId1 = string;
+export type PolicyVersion1 = number;
+export type RateHz = number;
+export type ActionFrame1 = string;
+export type ActionNames = string[];
+export type ActionSpace1 = "delta_ee" | "abs_ee" | "joint";
+export type CameraKeys = string[];
+export type StateNames = string[];
+export type Version = number;
+export type SupportsReload = boolean;
+export type UptimeS = number;
+export type Arms1 = string[];
+export type CreatedAt1 = string;
 export type IsInitialCondition = boolean;
 export type Name2 = string;
 export type Notes = string;
-export type ProfileId = string;
+export type ProfileId1 = string;
+export type WorkcellKind = ("hardware" | "sim") | null;
+export type Arms2 = string[];
+export type Detail10 = string;
+export type Ok2 = boolean;
+export type ProfileId2 = string | null;
+export type Status3 = "done" | "skipped" | "failed" | "cancelled" | "timeout" | "refused";
 export type Name3 = string;
 export type Notes1 = string;
-export type Cameras = string[];
-export type Kind4 = "sim" | "twin";
+export type SetInitial = boolean;
+export type Cameras1 = string[];
+export type Kind5 = "sim" | "twin";
 export type Label3 = string;
 export type NumArms = number;
 export type RailFlags = boolean[];
 export type SceneId1 = string;
-export type Arms1 = string[];
+export type ActionNames1 = string[];
+export type ActionSpace2 = string | null;
+export type ArmIds1 = string[];
+export type CameraIds = string[];
+export type TEC = number[] | null;
+export type TWC = number[] | null;
+export type Depth = boolean;
+export type Distortion = number[];
+export type Fps2 = number;
+export type FrameRef = string;
+export type Intrinsics = number[] | null;
+export type Mount = string;
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
+export type Resolution1 = [number, number];
+export type DatasetRoot = string | null;
+export type DeprecatedKeys = string[];
 export type Epoch1 = string;
-export type Kind5 = "hardware" | "sim";
-export type Mode2 = "teleop" | "collect" | "dagger" | "inference";
-export type SessionId1 = string;
-export type SpeedScale = number;
-export type State1 = string;
-export type Streams = string[];
-export type Arms2 = string[];
+export type Kind6 = ("hardware" | "sim") | null;
+export type MavisSchema2 = number;
+export type PolicySource = ("checkpoint" | "external") | null;
+export type RunId = string | null;
+export type SessionId2 = string | null;
+export type Enabled1 = boolean;
+export type GripperContextS = number;
+export type GripperEpsFrac = number;
+export type PosEpsM = number;
+export type RailEpsM = number;
+export type RotEpsRad = number;
+export type Arms3 = string[];
+export type Dataset = string | null;
+export type DatasetResume = boolean;
 export type DigitalTwinScene = string | null;
-export type Kind6 = "hardware" | "sim";
-export type Mode3 = "teleop" | "collect" | "dagger" | "inference";
+export type Kind7 = "hardware" | "sim";
+export type Mode2 = "teleop" | "collect" | "dagger" | "inference";
 export type Policy = string | null;
+export type PolicySource1 = "checkpoint" | "external";
+export type ReturnToStart = boolean;
 export type SimScene = string | null;
-export type SpeedScale1 = number;
+export type SpeedScale = number;
 export type StartFrom = string;
-export type Task = string | null;
-export type ProfileId1 = string | null;
+export type Task3 = string | null;
+export type State3 = string;
+export type StateNames1 = string[];
+export type Arms4 = string[];
+export type Epoch2 = string;
+export type FaultDetail = string;
+export type Kind8 = "hardware" | "sim";
+export type Mode3 = "teleop" | "collect" | "dagger" | "inference";
+export type PolicySource2 = "checkpoint" | "external";
+export type SessionId3 = string;
+export type SpeedScale1 = number;
+export type State4 = string;
+export type Streams = string[];
+export type ProfileId3 = string | null;
 export type GripperOpenFrac1 = number;
 /**
  * @minItems 7
@@ -198,15 +355,16 @@ export type GripperOpenFrac1 = number;
  */
 export type Q1 = [number, number, number, number, number, number, number];
 export type RailPosM1 = number | null;
-export type CreatedAt1 = string;
+export type CreatedAt2 = string;
 export type IsInitialCondition1 = boolean;
 export type Name4 = string;
 export type Notes2 = string;
-export type ProfileId2 = string;
+export type ProfileId4 = string;
 export type SchemaVersion = number;
-export type WorkcellKind = "hardware" | "sim";
+export type WorkcellKind1 = "hardware" | "sim";
+export type ArmId4 = string | null;
 export type ActiveArm = string | null;
-export type ArmId4 = string;
+export type ArmId5 = string;
 export type Connected1 = boolean;
 /**
  * @minItems 4
@@ -219,7 +377,7 @@ export type Orientation = [number, number, number, number];
  */
 export type Position = [number, number, number];
 export type ErrorCode2 = number;
-export type FaultDetail = string;
+export type FaultDetail1 = string;
 export type Goto = ("planning" | "executing" | "failed") | null;
 export type GripperOpenFrac2 = number;
 export type Q2 = number[];
@@ -227,7 +385,7 @@ export type RailPosM2 = number | null;
 export type Recovering = boolean;
 export type Stale = boolean;
 export type WarnCode1 = number;
-export type Arms4 = ArmTelemetry[];
+export type Arms6 = ArmTelemetry[];
 export type DistM = number;
 /**
  * @minItems 2
@@ -247,7 +405,27 @@ export type EngagedArm = string | null;
 export type EpisodesLabeled = number;
 export type FrozenArms = string[];
 export type NewLabelFrames = number;
-export type PolicyVersion1 = string | null;
+export type Detail11 = string;
+export type ExpertFramesSession = number;
+export type NoviceFramesSession = number;
+export type Phase1 = "waiting_trainer" | "rollout" | "training" | "error";
+export type PolicyVersionActing = number | null;
+export type RolloutsSaved = number;
+export type SessionDir1 = string;
+export type SessionName3 = string;
+export type Detail12 = string;
+export type MavisSchema3 = number;
+export type NodeVersion1 = string;
+export type PolicyVersion2 = number;
+export type Progress1 = number;
+export type SessionId4 = string | null;
+export type State5 = "idle" | "preparing" | "training" | "ready" | "error";
+export type TrainerId = string;
+export type UptimeS1 = number;
+export type TrainerAgeS = number | null;
+export type TrainerAlive = boolean;
+export type PolicyStale = boolean;
+export type PolicyVersion3 = string | null;
 export type StagedVersion = string | null;
 export type TakeoverRateEp = number;
 export type TakeoverRateRun = number;
@@ -255,51 +433,83 @@ export type LastBurstLoss = number | null;
 export type LastCheckpointTs = number | null;
 export type LastCheckpointVersion = number | null;
 export type NewLabelFrames1 = number;
-export type State2 = "starting" | "idle" | "training" | "dead";
+export type State6 = "starting" | "idle" | "training" | "dead";
 export type StepsTotal = number;
-export type DurationS1 = number;
-export type Frames1 = number;
-export type Index = number | null;
-export type State3 = "idle" | "recording" | "saving";
-export type Epoch2 = string;
-export type Arms5 = ArmMonitorTelemetry[];
-export type Enabled = boolean;
-export type ArmId5 = string;
+export type Detail13 = string;
+export type Done = number;
+export type Format2 = string;
+export type Phase2 = "scanning" | "videos" | "data" | "meta" | "validating" | "done" | "failed";
+export type RepoId1 = string;
+export type Total = number;
+export type Detail14 = string;
+export type DurationS2 = number;
+export type Frames3 = number;
+export type FramesSkipped = number;
+export type Index1 = number | null;
+export type RepoId2 = string | null;
+export type State7 = "idle" | "recording" | "saving" | "returning";
+export type TotalEpisodes1 = number;
+export type TotalFrames1 = number;
+export type Epoch3 = string;
+export type ActionAgeS = number | null;
+export type ActionsLate = number;
+export type Capabilities1 = string[];
+export type DataflowId1 = string | null;
+export type DataflowRestarts1 = number;
+export type Detail15 = string;
+export type DroppedInputs = number;
+export type Enabled2 = boolean;
+export type IdleReader = "off" | "running" | "paused" | "stale";
+export type NodeId1 = string;
+export type PolicyAttached = boolean;
+export type PolicyId2 = string | null;
+export type PolicyRateHz = number | null;
+export type PolicyVersion4 = number | null;
+export type ReattachCount1 = number;
+export type SpecAgeS = number | null;
+export type State8 = "disabled" | "unavailable" | "attached" | "detached" | "closed";
+export type VersionChangesMidEpisode = number;
+export type Arms7 = ArmMonitorTelemetry[];
+export type Enabled3 = boolean;
+export type ArmId6 = string;
 export type CameraId1 = string;
-export type Detail6 = string;
-export type Fps1 = number;
+export type Detail16 = string;
+export type Fps3 = number;
 export type Joint1OffsetRad = number;
 export type MaskFraction = number;
 export type RailFallbackM = number | null;
-export type Status3 = "off" | "waiting" | "live" | "stale" | "error";
+export type Status4 = "off" | "waiting" | "live" | "stale" | "error";
 export type StreamId = string;
 export type Overlays = TwinOverlayTelemetry[];
 export type Paused = boolean;
 export type EngagedArm1 = string | null;
-export type PolicyVersion2 = string | null;
+export type PolicyStale1 = boolean;
+export type PolicyVersion5 = string | null;
 export type AgeS1 = number | null;
 export type Clipping = boolean;
-export type Detail7 = string;
+export type Detail17 = string;
 export type EnvMax = number[];
 export type EnvMin = number[];
 export type MicId1 = string;
 export type Overruns = number;
 export type PeakDbfs = number | null;
-export type RateHz = number;
+export type RateHz1 = number;
 export type RmsDbfs = number | null;
 export type SampleRate1 = number;
 export type Seq2 = number;
-export type Status4 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
+export type Status5 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
 export type Seq3 = number;
 export type Bringup = ArmBringupTelemetry[] | null;
-export type ArmId6 = string;
-export type Detail8 = string;
-export type Status5 = "pending" | "ok" | "warning" | "error";
+export type ArmId7 = string;
+export type Detail18 = string;
+export type Status6 = "pending" | "ok" | "warning" | "error";
 export type Step = string;
+export type FaultDetail2 = string;
 export type PlanStatus = string | null;
 export type StartFromProgress = number | null;
-export type State4 = string;
-export type TrainerAlive = boolean | null;
+export type State9 = string;
+export type TrainerAlive1 = boolean | null;
+export type TranslateFrame = ("camera" | "world" | "base") | null;
 export type T5 = "telemetry";
 export type AgeS2 = number | null;
 export type Backend = "libsurvive" | "fake" | "none";
@@ -307,21 +517,21 @@ export type AppliedYawDeg = number | null;
 export type BackupPath = string | null;
 export type BaseStationInstalledAt = number | null;
 export type ControllerStill = boolean | null;
-export type Detail9 = string;
+export type Detail19 = string;
 export type ElapsedS = number | null;
 export type FitChecks = string[];
 export type FitResidualDeg = number | null;
 export type FittedYawDeg = number | null;
 export type InstalledPath = string | null;
-export type Kind7 = "none" | "base_station" | "yaw";
+export type Kind9 = "none" | "base_station" | "yaw";
 export type Channel = number | null;
-export type Index1 = number;
+export type Index2 = number;
 export type Reference = boolean;
 export type Scenes = number;
 export type Serial = string | null;
 export type Lighthouses = LighthouseStatus[];
 export type NextPoint = ("start" | "left" | "forward" | "right" | "back" | "up" | "down") | null;
-export type Phase1 =
+export type Phase3 =
   | "idle"
   | "starting"
   | "capturing"
@@ -360,14 +570,14 @@ export type TrackpadY = number;
 export type Trigger = number;
 export type TriggerPressed = boolean;
 export type ControllerAgeS = number | null;
-export type Detail10 = string;
+export type Detail20 = string;
 export type DeviceAction = string | null;
 export type DeviceHeld = string[];
 export type DonglePresent = boolean | null;
 export type EngagedArm2 = string | null;
 export type ObjectName = string;
 export type Objects = string[];
-export type RateHz1 = number;
+export type RateHz2 = number;
 export type Seq4 = number;
 export type FilterBeta = number;
 export type FilterEnabled = boolean;
@@ -375,9 +585,9 @@ export type FilterMinCutoffHz = number;
 export type FollowRotation = boolean;
 export type PosScale = number;
 export type YawDeg = number;
-export type Status6 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
+export type Status7 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
 export type Ts3 = number;
-export type Kind8 = "base_station" | "yaw";
+export type Kind10 = "base_station" | "yaw";
 export type Op3 = "start" | "capture" | "validate" | "install" | "apply" | "abort";
 export type Point = ("start" | "left" | "forward" | "right" | "back" | "up" | "down") | null;
 export type FilterBeta1 = number | null;
@@ -386,11 +596,11 @@ export type FilterMinCutoffHz1 = number | null;
 export type FollowRotation1 = boolean | null;
 export type PosScale1 = number | null;
 export type YawDeg1 = number | null;
-export type Arms6 = ArmStatusInfo[];
+export type Arms8 = ArmStatusInfo[];
 export type AvailableKinds = ("hardware" | "sim")[];
-export type Cameras1 = CameraInfo[];
+export type Cameras3 = CameraInfo[];
 export type HardwareReady = boolean;
-export type Kind9 = "hardware" | "sim";
+export type Kind11 = "hardware" | "sim";
 export type PoliciesAvailable = boolean;
 
 export interface ApolloProtocol {
@@ -401,23 +611,39 @@ export interface ApolloProtocol {
   ArmStatusInfo?: ArmStatusInfo;
   CameraInfo?: CameraInfo;
   CollisionEvent?: CollisionEvent;
+  DatasetExportInfo?: DatasetExportInfo;
+  DatasetExportRequest?: DatasetExportRequest;
+  DatasetInfo?: DatasetInfo;
+  DatasetLayoutInfo?: DatasetLayoutInfo;
+  DatasetNamespaceInfo?: DatasetNamespaceInfo;
+  DoraInfo?: DoraInfo;
+  EpisodeInfo?: EpisodeInfo;
+  GotoProfileArgs?: GotoProfileArgs;
   HelloMsg?: HelloMsg;
   JointTargetArgs?: JointTargetArgs;
   KeymapEntry?: KeymapEntry;
   KeysMsg?: KeysMsg;
   MicrophoneInfo?: MicrophoneInfo;
+  OnlineDaggerAnnounce?: OnlineDaggerAnnounce;
+  OnlineDaggerConfig?: OnlineDaggerConfig;
+  OnlineDaggerSessionInfo?: OnlineDaggerSessionInfo;
   PolicyInfo?: PolicyInfo;
+  PolicySpecAnnounce?: PolicySpecAnnounce;
   ProfileInfo?: ProfileInfo;
+  ReturnHomeResult?: ReturnHomeResult;
   SaveProfileArgs?: SaveProfileArgs;
   SceneInfo?: SceneInfo;
+  SessionAnnounce?: SessionAnnounce;
   SessionInfo?: SessionInfo;
   SessionSpec?: SessionSpec;
   SetInitialConditionArgs?: SetInitialConditionArgs;
   StateProfile?: StateProfile;
+  SwitchArmArgs?: SwitchArmArgs;
   TelemetryMsg?: TelemetryMsg;
   TrackerCalibrationCommand?: TrackerCalibrationCommand;
   TrackerCalibrationStatus?: TrackerCalibrationStatus;
   TrackerSettingsArgs?: TrackerSettingsArgs;
+  TrainerStatusAnnounce?: TrainerStatusAnnounce;
   WorkcellStatus?: WorkcellStatus;
 }
 /**
@@ -667,12 +893,170 @@ export interface CollisionEvent {
   ts: Ts;
 }
 /**
+ * ``manifest.last_export`` as the REST sees it (10-frames §11.5; 04-runtime §10.6).
+ *
+ * ``state``: ``none`` = never exported, ``fresh`` = the export matches the episode
+ * set, ``stale`` = an episode was added / deleted since, ``running`` = the export
+ * job is on it right now (process-local), ``failed`` = the last job failed
+ * (``detail`` carries the reason, until the next success).
+ */
+export interface DatasetExportInfo {
+  at?: At;
+  detail?: Detail5;
+  episodes?: Episodes;
+  format?: Format;
+  path?: Path1;
+  state: State1;
+}
+/**
+ * ``POST /api/datasets/{ns}/{name}/export`` body (04-runtime §13.1).
+ */
+export interface DatasetExportRequest {
+  format?: Format1;
+  out?: Out;
+}
+/**
+ * ``GET /api/datasets`` row (2026-09-07; 04-runtime §10.6, 10-frames §11): one
+ * dataset under ``datasets_root``, read from ``manifest.json`` + the per-episode
+ * ``episode.json`` sidecars — no lerobot import, so the list is cheap. ``layout``
+ * ``episode_dirs`` is the primary per-episode store; ``lerobot_v3`` is a legacy
+ * phase-07 tree (``meta/info.json``), listed read-only. ``kind`` / ``task`` come
+ * from the most recent ``sessions/session_*.json`` sidecar (None without one).
+ * ``in_use`` = the active session records into it (deleting the OPEN episode is
+ * then 409; every other episode can go).
+ *
+ * ``namespace`` / ``path`` (additive, 2026-09-08; 15-online-dagger D5): dataset roots
+ * are per-namespace now (``bc_demo/<name>`` -> ``~/data/bc_demo/<name>``,
+ * ``online_dagger/<s>`` -> ``~/data/online_dagger/<s>/rollouts``, everything else under
+ * ``datasets_root/<ns>/<name>``), so the row spells its namespace and the REAL
+ * folder for the UI to show; both default to "" so an older runtime still
+ * validates (``root`` keeps meaning the absolute dataset directory).
+ */
+export interface DatasetInfo {
+  arms?: Arms;
+  cameras?: Cameras;
+  export?: DatasetExportInfo | null;
+  fps: Fps1;
+  in_use?: InUse;
+  kind?: Kind2;
+  layout?: Layout;
+  modified_at: ModifiedAt;
+  namespace?: Namespace;
+  path?: Path2;
+  repo_id: RepoId;
+  robot_type?: RobotType;
+  root: Root;
+  task?: Task;
+  total_episodes: TotalEpisodes;
+  total_frames: TotalFrames;
+}
+/**
+ * ``GET /api/datasets/layout`` (15-online-dagger §7; 2026-09-08): where datasets live,
+ * so the UI shows the REAL folder in its previews and never hard-codes a
+ * namespace. A bare ``dataset: "<name>"`` resolves into ``default_namespace``;
+ * a namespace absent from ``namespaces`` lives at ``<generic_root>/<ns>/<name>``.
+ */
+export interface DatasetLayoutInfo {
+  default_namespace: DefaultNamespace;
+  generic_root: GenericRoot;
+  namespaces: Namespaces;
+}
+export interface Namespaces {
+  [k: string]: DatasetNamespaceInfo;
+}
+/**
+ * One mapped dataset namespace (``DatasetLayoutInfo.namespaces[ns]``; 15-online-dagger
+ * §7 / D5): its datasets live at ``<root>/<name>`` or, with ``subdir``, at
+ * ``<root>/<name>/<subdir>`` (``online_dagger`` -> ``~/data/online_dagger/<s>/rollouts``).
+ */
+export interface DatasetNamespaceInfo {
+  root: Root1;
+  subdir?: Subdir;
+}
+/**
+ * ``GET /api/dora`` (14-dora §2.6): connection facts for foreign clients. The
+ * auth token is deliberately NOT part of this model (§9).
+ */
+export interface DoraInfo {
+  auth?: Auth;
+  bind_host?: BindHost;
+  coordinator_addr?: CoordinatorAddr;
+  coordinator_port?: CoordinatorPort;
+  daemon_port?: DaemonPort;
+  dataflow_id?: DataflowId;
+  dataflow_name?: DataflowName;
+  dataflow_restarts?: DataflowRestarts;
+  dataflow_yaml?: DataflowYaml;
+  detail?: Detail6;
+  enabled?: Enabled;
+  machine_id?: MachineId;
+  machines?: Machines;
+  mavis_schema?: MavisSchema;
+  node_id?: NodeId;
+  placeholders?: Placeholders1;
+  reattach_count?: ReattachCount;
+  state?: State2;
+  zenoh_connect?: ZenohConnect;
+  zenoh_port?: ZenohPort;
+}
+/**
+ * One configured remote consumer machine (``dora.machines``; 14-dora §2.6/§9, §16.1).
+ *
+ * ``registered`` = its daemon is registered at the coordinator (rescan); ``joined`` = its
+ * placeholders are rendered in the running dataflow (after ``POST /api/dora/machines/
+ * {id}/join`` and the remote consumer's attach cleared dora's multi-machine start barrier);
+ * ``detail`` explains a refused / expired join.
+ */
+export interface DoraMachineInfo {
+  detail?: Detail7;
+  id: Id;
+  joined?: Joined;
+  placeholders?: Placeholders;
+  registered?: Registered;
+}
+/**
+ * ``GET /api/datasets/{ns}/{name}/episodes`` row: one saved episode directory
+ * (10-frames §11.3 / §11.4), read from its ``episode.json`` only.
+ */
+export interface EpisodeInfo {
+  audio?: Audio;
+  duration_s: DurationS1;
+  episode_id: EpisodeId;
+  export_note?: ExportNote;
+  export_ok?: ExportOk;
+  frames: Frames;
+  frames_dropped?: FramesDropped;
+  index: Index;
+  open?: Open;
+  recorded_at?: RecordedAt;
+  session_id?: SessionId;
+  task?: Task1;
+}
+/**
+ * Args for ``name == "goto_profile"`` (2026-09-08).
+ *
+ * Move the session's arms to the SAVED profile ``profile_id`` — operator-
+ * requested motion only: the runtime plans it on the twin and executes it
+ * through the same gated, cancellable path as return-to-initial (04-runtime
+ * §10.5). Unlike ``set_initial_condition`` there is no "current state"
+ * default, so ``profile_id`` is REQUIRED. Its pattern is the ProfileStore id
+ * charset (uuid4 hex; also the ``profile:<id>`` half of ``START_FROM_RE``),
+ * so a malformed id is refused at the wire (``ack.ok == false``) instead of
+ * surfacing as a store error later.
+ *
+ * ``extra="forbid"``: anything but ``profile_id`` is a client bug and is
+ * rejected rather than silently ignored (pydantic's default).
+ */
+export interface GotoProfileArgs {
+  profile_id: ProfileId;
+}
+/**
  * Server -> client, immediately after WS accept.
  */
 export interface HelloMsg {
   epoch: Epoch;
   role: Role;
-  session_id: SessionId;
+  session_id: SessionId1;
   t?: T3;
 }
 /**
@@ -691,7 +1075,7 @@ export interface KeymapEntry {
   code: Code;
   gamepad?: Gamepad;
   group: Group;
-  kind: Kind2;
+  kind: Kind3;
   label: Label1;
   requires_rail?: RequiresRail;
 }
@@ -709,8 +1093,8 @@ export interface KeysMsg {
  */
 export interface MicrophoneInfo {
   channels?: Channels;
-  detail?: Detail5;
-  kind: Kind3;
+  detail?: Detail8;
+  kind: Kind4;
   label: Label2;
   live: Live1;
   mic_id: MicId;
@@ -719,96 +1103,291 @@ export interface MicrophoneInfo {
   status: Status2;
 }
 /**
+ * ``SessionAnnounce.online_dagger`` (15-online-dagger §6): the paths the trainer node
+ * needs — the session directory and the rollouts dataset it reads (a MAVIS
+ * episode-directory dataset with the ``actor`` column). The trainer keeps its own
+ * artefacts wherever it likes (the skill suggests ``<session_dir>/trainer/``; the
+ * runtime never reads them). Field order is the contract (both goldens pin it).
+ */
+export interface OnlineDaggerAnnounce {
+  rollouts_dir: RolloutsDir;
+  session_dir: SessionDir;
+  session_name: SessionName;
+}
+/**
+ * Online DAgger session parameters (15-online-dagger §5; phase-14, 2026-09-08).
+ *
+ * The runtime is the algorithm-agnostic SHELL (operator decision 2026-09-08): it
+ * performs rollouts, exposes take-over / hand-back, labels every step novice /
+ * expert, saves the kept rollouts and reports what the trainer says. Which DAgger
+ * variant runs, its hyper-parameters and every training artefact belong to the
+ * trainer node in the policy repo, so this block carries NO algorithm settings
+ * — only what the shell itself needs: the session directory name, whether an
+ * existing one is continued, and the two generic gates on ``episode_new``.
+ *
+ * ``extra="forbid"``: an unknown key is a 422 at POST, never silently dropped —
+ * a hyper-parameter typed here by mistake would otherwise vanish while the
+ * operator believes it travelled (the trainer configures itself; the runtime
+ * never forwards hyper-parameters).
+ */
+export interface OnlineDaggerConfig {
+  pause_while_training?: PauseWhileTraining;
+  resume?: Resume;
+  session_name: SessionName1;
+  wait_for_trainer_ready?: WaitForTrainerReady;
+}
+/**
+ * ``GET /api/online_dagger/sessions`` row (15-online-dagger §3/§5; 2026-09-08): one
+ * ``session.json`` under the ``online_dagger`` root, for the launch sheet's resume
+ * pill. ``rollouts`` is the session's kept-rollout count (``current.rollouts_saved``,
+ * what a resume continues from); rows come newest ``last_used_at`` first. The runtime
+ * reads nothing of the trainer's own artefacts.
+ */
+export interface OnlineDaggerSessionInfo {
+  created_at: CreatedAt;
+  last_used_at?: LastUsedAt;
+  path: Path3;
+  rollouts: Rollouts;
+  session_name: SessionName2;
+  task: Task2;
+}
+/**
  * GET /api/policies row (04-runtime §13.1).
  */
 export interface PolicyInfo {
   action_frame: ActionFrame;
   action_space: ActionSpace;
-  path: Path1;
+  path: Path4;
   policy_id: PolicyId;
   policy_version: PolicyVersion;
   promoted?: Promoted;
 }
 /**
+ * The ``policy_spec`` input payload (14-dora §6.2), heartbeated at 1 Hz by the
+ * policy node.
+ */
+export interface PolicySpecAnnounce {
+  acts_total?: ActsTotal;
+  capabilities?: Capabilities;
+  chunk_dt_s?: ChunkDtS;
+  chunk_len?: ChunkLen;
+  detail?: Detail9;
+  device?: Device;
+  extrinsics_sha?: ExtrinsicsSha;
+  health?: Health;
+  last_compute_ms?: LastComputeMs;
+  loader?: Loader;
+  mavis_schema?: MavisSchema1;
+  node_version: NodeVersion;
+  policy_id: PolicyId1;
+  policy_version: PolicyVersion1;
+  rate_hz: RateHz;
+  spec: PolicySpecModel;
+  supports_reload?: SupportsReload;
+  uptime_s?: UptimeS;
+}
+/**
+ * Pydantic mirror of core ``interfaces.policy.PolicySpec`` (the dataclass is
+ * not a wire model); the layout the policy node declares.
+ */
+export interface PolicySpecModel {
+  action_frame: ActionFrame1;
+  action_names: ActionNames;
+  action_space: ActionSpace1;
+  camera_keys?: CameraKeys;
+  state_names: StateNames;
+  version?: Version;
+}
+/**
  * GET /api/profiles row (full posture via GET /api/profiles/{id}).
  */
 export interface ProfileInfo {
-  arms: Arms;
-  created_at: CreatedAt;
+  arms: Arms1;
+  created_at: CreatedAt1;
   is_initial_condition: IsInitialCondition;
   name: Name2;
   notes: Notes;
-  profile_id: ProfileId;
+  profile_id: ProfileId1;
+  workcell_kind?: WorkcellKind;
+}
+/**
+ * ``POST /api/session/return_home`` response (04-runtime §10.5; 2026-09-08).
+ *
+ * The synchronous "walk the workcell back to its designated initial condition"
+ * op the Cockpit runs BEFORE it tears a session down, and the same motion the
+ * ``reset_to_initial`` key fires. ``ok`` is what the UI branches on: false ⇒
+ * the arms are NOT at the initial condition and the operator has to be told
+ * (the Cockpit shows a dialog and offers to end the session anyway, after
+ * which the arms may be moved from UFACTORY Studio — never during a session).
+ *
+ * ``status`` distinguishes *why*: ``done`` — arrived; ``skipped`` — nothing to
+ * do (no initial-condition profile for this workcell kind, or already there),
+ * which is a success; ``failed`` — the twin could not plan a collision-free
+ * path (or an arm is faulted); ``cancelled`` — operator input interrupted the
+ * motion; ``timeout`` — the gate held the motion past its budget, the arms
+ * were stopped where they are; ``refused`` — a precondition said no (an
+ * episode is still recording, no session).
+ */
+export interface ReturnHomeResult {
+  arms?: Arms2;
+  detail?: Detail10;
+  ok: Ok2;
+  profile_id?: ProfileId2;
+  status: Status3;
 }
 /**
  * Args for ``name == "save_profile"``.
+ *
+ * ``set_initial`` designates the saved profile as the workcell's initial
+ * condition in the same round trip (2026-09-07): the Cockpit has ONE profile
+ * button now — "Save current state as profile" with a name field and an
+ * optional "use as initial condition" switch — instead of the two buttons
+ * ("Save profile…" / "Set current state as initial condition") whose
+ * difference nobody could see. ``set_initial_condition`` stays on the wire
+ * for designating an EXISTING profile by id.
  */
 export interface SaveProfileArgs {
   name: Name3;
   notes?: Notes1;
+  set_initial?: SetInitial;
 }
 /**
  * GET /api/scenes?kind=sim|twin row.
  */
 export interface SceneInfo {
-  cameras: Cameras;
-  kind: Kind4;
+  cameras: Cameras1;
+  kind: Kind5;
   label: Label3;
   num_arms: NumArms;
   rail_flags: RailFlags;
   scene_id: SceneId1;
 }
 /**
- * POST/GET /api/session response.
+ * The ``session`` stream payload (14-dora §4.2): the contract message a late
+ * joiner learns everything from (sent on every state change + 1 Hz).
  */
-export interface SessionInfo {
-  arms: Arms1;
+export interface SessionAnnounce {
+  action_names?: ActionNames1;
+  action_space?: ActionSpace2;
+  arm_ids?: ArmIds1;
+  camera_ids?: CameraIds;
+  cameras?: Cameras2;
+  dataset_root?: DatasetRoot;
+  deprecated_keys?: DeprecatedKeys;
   epoch: Epoch1;
-  kind?: Kind5;
-  mode: Mode2;
-  session_id: SessionId1;
-  speed_scale?: SpeedScale;
-  state: State1;
-  streams: Streams;
+  frames?: Frames1;
+  has_rail?: HasRail1;
+  kind?: Kind6;
+  mavis_schema?: MavisSchema2;
+  online_dagger?: OnlineDaggerAnnounce | null;
+  policy_source?: PolicySource;
+  run_id?: RunId;
+  session_id: SessionId2;
+  spec?: SessionSpec | null;
+  state: State3;
+  state_names?: StateNames1;
+}
+export interface Cameras2 {
+  [k: string]: CameraAnnounce;
+}
+/**
+ * One camera of the session (``SessionAnnounce.cameras``).
+ */
+export interface CameraAnnounce {
+  T_E_C?: TEC;
+  T_W_C?: TWC;
+  depth?: Depth;
+  distortion?: Distortion;
+  fps: Fps2;
+  frame_ref: FrameRef;
+  intrinsics?: Intrinsics;
+  mount: Mount;
+  resolution: Resolution1;
+}
+export interface Frames1 {
+  [k: string]: string;
+}
+export interface HasRail1 {
+  [k: string]: boolean;
 }
 /**
  * POST /api/session body.
  */
 export interface SessionSpec {
-  arms: Arms2;
+  action_filter?: ActionFilterConfig;
+  arms: Arms3;
+  dataset?: Dataset;
+  dataset_resume?: DatasetResume;
   digital_twin_scene?: DigitalTwinScene;
-  frames: Frames;
-  kind: Kind6;
-  mode: Mode3;
+  frames: Frames2;
+  kind: Kind7;
+  mode: Mode2;
+  online_dagger?: OnlineDaggerConfig | null;
   policy?: Policy;
+  policy_source?: PolicySource1;
+  return_to_start?: ReturnToStart;
   sim_scene?: SimScene;
-  speed_scale?: SpeedScale1;
+  speed_scale?: SpeedScale;
   start_from?: StartFrom;
-  task?: Task;
+  task?: Task3;
 }
-export interface Frames {
+/**
+ * Idle-frame filter parameters (10-frames §11.4; 04-runtime §10.5; 2026-09-07,
+ * operator): the pro-dagger hesitation heuristic ported to the frame stream. A
+ * candidate frame whose commanded TCP (Chebyshev over xyz / geodesic angle),
+ * gripper fraction and rail slot are all within the epsilons of the LAST KEPT
+ * frame — and that has no gripper change within ±``gripper_context_s`` — is not
+ * recorded. Defaults = pro-dagger's 1 mm / 1e-3 / 1 mm per step and its one
+ * H=16 chunk at 10 Hz of gripper context; ``enabled: false`` records every
+ * frame. DAgger filters human-controlled frames only.
+ */
+export interface ActionFilterConfig {
+  enabled?: Enabled1;
+  gripper_context_s?: GripperContextS;
+  gripper_eps_frac?: GripperEpsFrac;
+  pos_eps_m?: PosEpsM;
+  rail_eps_m?: RailEpsM;
+  rot_eps_rad?: RotEpsRad;
+}
+export interface Frames2 {
   [k: string]: string;
+}
+/**
+ * POST/GET /api/session response.
+ */
+export interface SessionInfo {
+  arms: Arms4;
+  epoch: Epoch2;
+  fault_detail?: FaultDetail;
+  kind?: Kind8;
+  mode: Mode3;
+  online_dagger?: OnlineDaggerConfig | null;
+  policy_source?: PolicySource2;
+  session_id: SessionId3;
+  speed_scale?: SpeedScale1;
+  state: State4;
+  streams: Streams;
 }
 /**
  * Args for ``name == "set_initial_condition"``.
  */
 export interface SetInitialConditionArgs {
-  profile_id?: ProfileId1;
+  profile_id?: ProfileId3;
 }
 /**
  * Named workcell posture snapshot; at most one initial condition per kind.
  */
 export interface StateProfile {
-  arms: Arms3;
-  created_at?: CreatedAt1;
+  arms: Arms5;
+  created_at?: CreatedAt2;
   is_initial_condition?: IsInitialCondition1;
   name: Name4;
   notes?: Notes2;
-  profile_id?: ProfileId2;
+  profile_id?: ProfileId4;
   schema_version?: SchemaVersion;
-  workcell_kind: WorkcellKind;
+  workcell_kind: WorkcellKind1;
 }
-export interface Arms3 {
+export interface Arms5 {
   [k: string]: ArmPosture;
 }
 /**
@@ -820,17 +1399,36 @@ export interface ArmPosture {
   rail_pos_m?: RailPosM1;
 }
 /**
+ * Args for ``name == "switch_arm"`` (optional; empty args = cycle).
+ *
+ * ``arm_id`` makes the switch EXPLICIT and idempotent, which is what a UI
+ * control needs: the Cockpit's arm rows are clickable (2026-09-07) and a
+ * click must land on the arm the operator clicked whatever the session's arm
+ * order is. Keyboard Tab / gamepad RB keep sending no args and keep cycling.
+ * An unknown id is refused (``ack.ok == false``) — the active arm never
+ * changes silently. ``switch_arm_prev`` takes no args.
+ *
+ * ``extra="forbid"`` keeps the guarantee this action had before it grew an
+ * args model: anything but ``arm_id`` is a client bug and is rejected rather
+ * than silently ignored (pydantic's default).
+ */
+export interface SwitchArmArgs {
+  arm_id?: ArmId4;
+}
+/**
  * One 25 Hz telemetry frame.
  */
 export interface TelemetryMsg {
   active_arm: ActiveArm;
-  arms: Arms4;
+  arms: Arms6;
   clearances: Clearances;
   collision: CollisionReport;
   controller_connected: ControllerConnected;
   dagger: DaggerStatus | null;
+  datasets?: DatasetsTelemetry | null;
   episode: EpisodeStatus | null;
-  epoch: Epoch2;
+  epoch: Epoch3;
+  external?: ExternalStatus | null;
   hardware_monitor?: HardwareMonitorTelemetry | null;
   inference: InferenceStatus | null;
   microphone?: MicrophoneTelemetry | null;
@@ -844,11 +1442,11 @@ export interface TelemetryMsg {
  * Per-arm telemetry block.
  */
 export interface ArmTelemetry {
-  arm_id: ArmId4;
+  arm_id: ArmId5;
   connected: Connected1;
   ee_pose: PoseMsg;
   error_code: ErrorCode2;
-  fault_detail?: FaultDetail;
+  fault_detail?: FaultDetail1;
   goto?: Goto;
   gripper_open_frac: GripperOpenFrac2;
   q: Q2;
@@ -891,11 +1489,73 @@ export interface DaggerStatus {
   episodes_labeled?: EpisodesLabeled;
   frozen_arms?: FrozenArms;
   new_label_frames?: NewLabelFrames;
-  policy_version: PolicyVersion1;
+  online_dagger?: OnlineDaggerStatus | null;
+  policy_stale?: PolicyStale;
+  policy_version: PolicyVersion3;
   staged_version?: StagedVersion;
   takeover_rate_ep?: TakeoverRateEp;
   takeover_rate_run?: TakeoverRateRun;
   trainer?: TrainerStatus | null;
+}
+/**
+ * ``DaggerStatus.online_dagger`` (additive, phase-14; 15-online-dagger §3/§5): the
+ * runtime's rollout-level shell state as the UI sees it. ``phase`` is
+ * ``waiting_trainer`` (until the trainer reports ``ready`` for THIS session, when
+ * ``wait_for_trainer_ready``) -> ``rollout`` -> ``training`` (the trainer reports
+ * ``training``; ``episode_new`` refused while ``pause_while_training``) -> ``rollout``
+ * ...; ``error`` mirrors a trainer error until a non-error status arrives. The shell
+ * counts kept rollouts and the session's actor split — never iterations, which are
+ * the trainer's business. ``detail`` is the operator-facing reason ``episode_new`` is
+ * refused (or the trainer's detail); ``trainer`` is the last ``TrainerStatusAnnounce``
+ * verbatim and ``trainer_alive`` / ``trainer_age_s`` its freshness (<=
+ * ``dora.policy.spec_stale_s``); ``policy_version_acting`` follows the announced
+ * spec / action version (a change shows as "swapped" in the panel).
+ */
+export interface OnlineDaggerStatus {
+  detail?: Detail11;
+  expert_frames_session?: ExpertFramesSession;
+  novice_frames_session?: NoviceFramesSession;
+  phase: Phase1;
+  policy_version_acting?: PolicyVersionActing;
+  rollouts_saved: RolloutsSaved;
+  session_dir?: SessionDir1;
+  session_name: SessionName3;
+  trainer?: TrainerStatusAnnounce | null;
+  trainer_age_s?: TrainerAgeS;
+  trainer_alive?: TrainerAlive;
+}
+/**
+ * The ``policy_trainer_status`` input payload (15-online-dagger §6): JSON on the
+ * policy node's ``trainer_status`` output, heartbeated at 1 Hz (and on change) while
+ * an Online DAgger session is announced. Generic by design — the runtime knows no
+ * DAgger variant. ``state`` walks idle -> preparing -> ready (the shell lets rollouts
+ * start) -> training (``episode_new`` refused while ``pause_while_training``) ->
+ * ready (weights swapped, ``policy_version`` bumped); ``error`` carries ``detail``.
+ * ``session_id`` MUST echo the served ``SessionAnnounce.session_id``: another
+ * session's id is ignored outright, ``None`` counts as "trainer alive" only.
+ * ``metrics`` is a free-form dict of finite scalars (``loss``, ``proj_rate``, ...)
+ * the Cockpit lists verbatim (a ``loss`` key gets the sparkline). Metadata: the
+ * common inbound keys (``client``, ``seq``, ``t_mono``, ``wallclock_ns``,
+ * ``mavis_schema``), same ``seq`` counter as the node's other outputs. Field order
+ * is the contract (both goldens pin it). Every float refuses inf / nan
+ * (``allow_inf_nan=False``; a diverged loss is reported as ``state: "error"`` +
+ * ``detail``, never as a non-finite number) — that rule leaves the JSON schema
+ * alone.
+ */
+export interface TrainerStatusAnnounce {
+  detail?: Detail12;
+  mavis_schema?: MavisSchema3;
+  metrics?: Metrics;
+  node_version: NodeVersion1;
+  policy_version?: PolicyVersion2;
+  progress?: Progress1;
+  session_id?: SessionId4;
+  state?: State5;
+  trainer_id: TrainerId;
+  uptime_s?: UptimeS1;
+}
+export interface Metrics {
+  [k: string]: number;
 }
 /**
  * Trainer health; pydantic — rides telemetry (§11).
@@ -905,17 +1565,82 @@ export interface TrainerStatus {
   last_checkpoint_ts?: LastCheckpointTs;
   last_checkpoint_version?: LastCheckpointVersion;
   new_label_frames?: NewLabelFrames1;
-  state: State2;
+  state: State6;
   steps_total?: StepsTotal;
 }
 /**
+ * ``TelemetryMsg.datasets`` (additive, 2026-09-07): session-less like the
+ * microphone block; ``export`` is None until an export has run in this process.
+ */
+export interface DatasetsTelemetry {
+  export?: DatasetExportTelemetry | null;
+}
+/**
+ * ``TelemetryMsg.datasets.export`` (additive, 2026-09-07; 04-runtime §10.6):
+ * the running / last LeRobot v3 export job. ``phase`` walks scanning -> videos
+ * -> data -> meta -> validating -> done | failed; ``done`` / ``total`` count the
+ * current phase's units (episodes for videos / data, 1 for meta / validating);
+ * ``detail`` names the file being written or the failure.
+ */
+export interface DatasetExportTelemetry {
+  detail?: Detail13;
+  done?: Done;
+  format: Format2;
+  phase: Phase2;
+  repo_id: RepoId1;
+  total?: Total;
+}
+/**
  * Episode recorder status (collect/DAgger).
+ *
+ * ``returning`` (additive, 2026-09-07; 04-runtime §10.5): after a save or a
+ * discard the arms are being driven back to the session's return profile (the
+ * ``start_from`` profile, else the workcell's initial condition) on the twin
+ * planner; ``episode_new`` is refused meanwhile. The dataset fields are
+ * additive too: ``repo_id`` / ``total_episodes`` / ``total_frames`` mirror the
+ * dataset manifest (saved episodes), ``detail`` is a short human-readable note
+ * ("returning to profile 'ready'", "return cancelled: movement key",
+ * "recorder degraded ..."). Deletion is immediate (one directory, 10-frames
+ * §11.7), so there is no pending-deletion list.
  */
 export interface EpisodeStatus {
-  duration_s: DurationS1;
-  frames: Frames1;
-  index: Index;
-  state: State3;
+  detail?: Detail14;
+  duration_s: DurationS2;
+  frames: Frames3;
+  frames_skipped?: FramesSkipped;
+  index: Index1;
+  repo_id?: RepoId2;
+  state: State7;
+  total_episodes?: TotalEpisodes1;
+  total_frames?: TotalFrames1;
+}
+/**
+ * ``telemetry.external`` (14-dora §13): the bridge + external-policy state.
+ */
+export interface ExternalStatus {
+  action_age_s?: ActionAgeS;
+  actions_late?: ActionsLate;
+  capabilities?: Capabilities1;
+  dataflow_id?: DataflowId1;
+  dataflow_restarts?: DataflowRestarts1;
+  detail?: Detail15;
+  dropped_inputs?: DroppedInputs;
+  enabled?: Enabled2;
+  idle_reader?: IdleReader;
+  node_id?: NodeId1;
+  policy_attached?: PolicyAttached;
+  policy_id?: PolicyId2;
+  policy_rate_hz?: PolicyRateHz;
+  policy_version?: PolicyVersion4;
+  publish_hz?: PublishHz;
+  reattach_count?: ReattachCount1;
+  spec_age_s?: SpecAgeS;
+  state?: State8;
+  trainer_status?: TrainerStatusAnnounce | null;
+  version_changes_mid_episode?: VersionChangesMidEpisode;
+}
+export interface PublishHz {
+  [k: string]: number;
 }
 /**
  * ``TelemetryMsg.hardware_monitor`` block (phase-09a; 04-runtime §13.3), additive.
@@ -926,8 +1651,8 @@ export interface EpisodeStatus {
  * instead of sharing a box between two SDK clients.
  */
 export interface HardwareMonitorTelemetry {
-  arms?: Arms5;
-  enabled?: Enabled;
+  arms?: Arms7;
+  enabled?: Enabled3;
   overlays?: Overlays;
   paused?: Paused;
 }
@@ -942,14 +1667,14 @@ export interface HardwareMonitorTelemetry {
  * this camera).
  */
 export interface TwinOverlayTelemetry {
-  arm_id: ArmId5;
+  arm_id: ArmId6;
   camera_id: CameraId1;
-  detail?: Detail6;
-  fps?: Fps1;
+  detail?: Detail16;
+  fps?: Fps3;
   joint1_offset_rad?: Joint1OffsetRad;
   mask_fraction?: MaskFraction;
   rail_fallback_m?: RailFallbackM;
-  status?: Status3;
+  status?: Status4;
   stream_id: StreamId;
 }
 /**
@@ -958,7 +1683,8 @@ export interface TwinOverlayTelemetry {
 export interface InferenceStatus {
   control_mode: ControlMode;
   engaged_arm?: EngagedArm1;
-  policy_version: PolicyVersion2;
+  policy_stale?: PolicyStale1;
+  policy_version: PolicyVersion5;
 }
 /**
  * Microphone block (phase-11; 04-runtime §13.3), additive.
@@ -977,27 +1703,29 @@ export interface InferenceStatus {
 export interface MicrophoneTelemetry {
   age_s?: AgeS1;
   clipping?: Clipping;
-  detail?: Detail7;
+  detail?: Detail17;
   env_max?: EnvMax;
   env_min?: EnvMin;
   mic_id?: MicId1;
   overruns?: Overruns;
   peak_dbfs?: PeakDbfs;
-  rate_hz?: RateHz;
+  rate_hz?: RateHz1;
   rms_dbfs?: RmsDbfs;
   sample_rate?: SampleRate1;
   seq?: Seq2;
-  status?: Status4;
+  status?: Status5;
 }
 /**
  * Additive session-lifecycle block (04-runtime §13.3).
  */
 export interface SessionTelemetry {
   bringup?: Bringup;
+  fault_detail?: FaultDetail2;
   plan_status?: PlanStatus;
   start_from_progress?: StartFromProgress;
-  state: State4;
-  trainer_alive?: TrainerAlive;
+  state: State9;
+  trainer_alive?: TrainerAlive1;
+  translate_frame?: TranslateFrame;
 }
 /**
  * One hardware bring-up step of one arm (phase-09c; 04-runtime §5).
@@ -1009,9 +1737,9 @@ export interface SessionTelemetry {
  * "Perception Arm frozen at last sample".
  */
 export interface ArmBringupTelemetry {
-  arm_id: ArmId6;
-  detail?: Detail8;
-  status: Status5;
+  arm_id: ArmId7;
+  detail?: Detail18;
+  status: Status6;
   step: Step;
 }
 /**
@@ -1055,7 +1783,7 @@ export interface TrackerTelemetry {
   clutch?: Clutch;
   controller?: ControllerTelemetry | null;
   controller_age_s?: ControllerAgeS;
-  detail?: Detail10;
+  detail?: Detail20;
   device_action?: DeviceAction;
   device_held?: DeviceHeld;
   dongle_present?: DonglePresent;
@@ -1065,10 +1793,10 @@ export interface TrackerTelemetry {
   pose_filtered?: PoseMsg | null;
   pose_raw?: PoseMsg | null;
   pose_world?: PoseMsg | null;
-  rate_hz?: RateHz1;
+  rate_hz?: RateHz2;
   seq?: Seq4;
   settings: TrackerSettingsMsg;
-  status: Status6;
+  status: Status7;
   target_tcp?: PoseMsg | null;
 }
 /**
@@ -1083,16 +1811,16 @@ export interface TrackerCalibrationStatus {
   backup_path?: BackupPath;
   base_station_installed_at?: BaseStationInstalledAt;
   controller_still?: ControllerStill;
-  detail?: Detail9;
+  detail?: Detail19;
   elapsed_s?: ElapsedS;
   fit_checks?: FitChecks;
   fit_residual_deg?: FitResidualDeg;
   fitted_yaw_deg?: FittedYawDeg;
   installed_path?: InstalledPath;
-  kind?: Kind7;
+  kind?: Kind9;
   lighthouses?: Lighthouses;
   next_point?: NextPoint;
-  phase?: Phase1;
+  phase?: Phase3;
   scenes?: Scenes1;
   started_at?: StartedAt1;
   stations_visible?: StationsVisible;
@@ -1106,7 +1834,7 @@ export interface TrackerCalibrationStatus {
  */
 export interface LighthouseStatus {
   channel?: Channel;
-  index: Index1;
+  index: Index2;
   pose?: PoseMsg | null;
   reference?: Reference;
   scenes?: Scenes;
@@ -1171,7 +1899,7 @@ export interface TrackerSettingsMsg {
  * POST /api/tracker/calibration body (illegal transitions -> 409).
  */
 export interface TrackerCalibrationCommand {
-  kind: Kind8;
+  kind: Kind10;
   op: Op3;
   point?: Point;
 }
@@ -1195,10 +1923,10 @@ export interface TrackerSettingsArgs {
  * GET /api/workcell response.
  */
 export interface WorkcellStatus {
-  arms: Arms6;
+  arms: Arms8;
   available_kinds: AvailableKinds;
-  cameras: Cameras1;
+  cameras: Cameras3;
   hardware_ready?: HardwareReady;
-  kind: Kind9;
+  kind: Kind11;
   policies_available?: PoliciesAvailable;
 }

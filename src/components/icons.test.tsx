@@ -28,6 +28,8 @@ describe("icons", () => {
         "close",
         "info",
         "chevron",
+        "project", // Online DAgger launcher: a vector and its projection onto a reference line
+        "copy",
       ]),
     );
   });

@@ -1,9 +1,30 @@
 /** REST client (05-ui §4): `postArmMaintenance` URL / body / error mapping;
  * (phase-09c) the `dry_run` body key and the client deadline of `home_rail`;
- * (phase-09d) `getArmMaintenanceLast` — the asynchronous job's final result. */
+ * (phase-09d) `getArmMaintenanceLast` — the asynchronous job's final result;
+ * (phase-14) the dataset layout, `GET /api/dora` and the Online DAgger routes. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { makeMaintenanceResult } from "../../tests/mocks/fixtures";
-import { ApiError, getArmMaintenanceLast, HOME_RAIL_TIMEOUT_MS, postArmMaintenance } from "./rest";
+import {
+  makeDatasetLayout,
+  makeDoraInfo,
+  makeMaintenanceResult,
+  makeOnlineDaggerSession,
+} from "../../tests/mocks/fixtures";
+import {
+  ApiError,
+  deleteDataset,
+  deleteEpisode,
+  exportDataset,
+  getArmMaintenanceLast,
+  getDatasetEpisodes,
+  getDatasetLayout,
+  getDatasets,
+  getDora,
+  getOnlineDaggerSessions,
+  getOnlineDaggerSkill,
+  HOME_RAIL_TIMEOUT_MS,
+  ONLINE_DAGGER_SKILL_TGZ_PATH,
+  postArmMaintenance,
+} from "./rest";
 
 describe("postArmMaintenance", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -171,5 +192,108 @@ describe("getArmMaintenanceLast (phase-09d)", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
       "/api/hardware/arms/a%20b%2Fc/maintenance/last",
     );
+  });
+});
+
+describe("datasets (2026-09-07)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("builds the /api/datasets paths; episode ids travel verbatim (. and Z kept)", async () => {
+    const calls: { url: string; method?: string; body?: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ url: String(input), method: init?.method, body: init?.body as string });
+        const url = String(input);
+        if (url.endsWith("/export"))
+          return new Response(
+            JSON.stringify({ repo_id: "apollo/x", format: "lerobot_v3", started_at: "t" }),
+            {
+              status: 202,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        if (init?.method === "DELETE") return new Response(null, { status: 204 });
+        return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+      }),
+    );
+    await getDatasets();
+    await getDatasetEpisodes("apollo/pick_cube");
+    await deleteEpisode("apollo/pick_cube", "20260907T141203.512Z-3f9a1c");
+    await deleteDataset("apollo/pick_cube");
+    const started = await exportDataset("apollo/pick_cube");
+    expect(started.format).toBe("lerobot_v3");
+    expect(calls.map((c) => [c.url, c.method ?? "GET"])).toEqual([
+      ["/api/datasets", "GET"],
+      ["/api/datasets/apollo/pick_cube/episodes", "GET"],
+      ["/api/datasets/apollo/pick_cube/episodes/20260907T141203.512Z-3f9a1c", "DELETE"],
+      ["/api/datasets/apollo/pick_cube", "DELETE"],
+      ["/api/datasets/apollo/pick_cube/export", "POST"],
+    ]);
+    expect(JSON.parse(calls[4]!.body!)).toEqual({ format: "lerobot_v3" });
+  });
+
+  it("a 409 on delete surfaces the runtime detail through ApiError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "episode is being recorded" }), {
+            status: 409,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    await expect(deleteEpisode("apollo/x", "20260907T141203.512Z-3f9a1c")).rejects.toMatchObject({
+      status: 409,
+      detail: "episode is being recorded",
+    });
+  });
+});
+
+describe("phase-14: dataset layout, dora, Online DAgger", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("GETs /api/datasets/layout, /api/dora and /api/online_dagger/sessions as JSON", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/datasets/layout")
+        return new Response(JSON.stringify(makeDatasetLayout()), { status: 200 });
+      if (url === "/api/dora") return new Response(JSON.stringify(makeDoraInfo()), { status: 200 });
+      if (url === "/api/online_dagger/sessions")
+        return new Response(JSON.stringify([makeOnlineDaggerSession()]), { status: 200 });
+      return new Response("nope", { status: 404, statusText: "Not Found" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await getDatasetLayout()).namespaces["online_dagger"]?.subdir).toBe("rollouts");
+    expect((await getDora()).zenoh_connect).toBe("tcp/192.168.0.88:7447");
+    const rows = await getOnlineDaggerSessions();
+    expect(rows[0]?.session_name).toBe("pick_cube_v1");
+    expect(rows[0]?.rollouts).toBe(6);
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toEqual([
+      "/api/datasets/layout",
+      "/api/dora",
+      "/api/online_dagger/sessions",
+    ]);
+  });
+
+  it("getOnlineDaggerSkill returns the markdown TEXT (not JSON); errors carry the detail", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("# mavis-online-dagger-trainer\n\nsteps…", {
+            status: 200,
+            headers: { "content-type": "text/markdown" },
+          }),
+      ),
+    );
+    expect(await getOnlineDaggerSkill()).toBe("# mavis-online-dagger-trainer\n\nsteps…");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 })),
+    );
+    await expect(getOnlineDaggerSkill()).rejects.toMatchObject({ name: "ApiError", status: 404 });
+    expect(ONLINE_DAGGER_SKILL_TGZ_PATH).toBe("/api/online_dagger/skill.tgz");
   });
 });

@@ -1,13 +1,16 @@
 /** DAgger side panel shell — renders from telemetry; wiring lands in phase-08. */
-import type { DaggerStatus } from "../gen";
+import type { DaggerStatus, ExternalStatus } from "../gen";
 import type { ActionName } from "../lib/types";
+import { ExternalPolicyChip } from "./externalPolicy";
 
 export interface DaggerPanelProps {
   dagger: DaggerStatus;
+  /** `telemetry.external` (phase-12): drives the additive external-policy chip. */
+  external?: ExternalStatus | null;
   onAction(n: ActionName): void;
 }
 
-export function DaggerPanel({ dagger }: DaggerPanelProps) {
+export function DaggerPanel({ dagger, external }: DaggerPanelProps) {
   const mode = dagger.control_mode;
   return (
     <div className="panel" data-testid="dagger-panel">
@@ -26,6 +29,7 @@ export function DaggerPanel({ dagger }: DaggerPanelProps) {
           TRANSITION — frames unlabeled
         </span>
       )}
+      <ExternalPolicyChip external={external} policyStale={dagger.policy_stale} />
       <div className="kv">
         <span className="dim">policy</span>
         <span className="mono">{dagger.policy_version ?? "—"}</span>
