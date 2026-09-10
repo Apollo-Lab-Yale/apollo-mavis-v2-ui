@@ -2219,6 +2219,22 @@ summary.summary::-webkit-details-marker {
 .episode-row .episode-id {
   font-size: var(--text-caption);
 }
+/* Episode playback dialog (2026-09-10; 05-ui §8.1 item 7). The two motion buttons sit
+   side by side and stretch, so neither reads as the safe default; the reason lines below
+   them are captions. */
+.playback-body {
+  display: grid;
+  gap: var(--space-3);
+}
+.playback-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.playback-actions > button {
+  width: 100%;
+}
+
 .episode-row > button {
   margin-left: auto;
 }

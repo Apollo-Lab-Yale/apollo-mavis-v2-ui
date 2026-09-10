@@ -200,15 +200,30 @@ export type Open = boolean;
 export type RecordedAt = string | null;
 export type SessionId = string | null;
 export type Task1 = string | null;
+export type ArmId3 = string;
+export type GripperOpenFrac1 = number | null;
+export type Q1 = number[];
+export type RailPosM1 = number | null;
+export type Arms1 = EpisodePlaybackArm[];
+export type DurationS2 = number;
+export type EpisodeId1 = string;
+export type Fps2 = number;
+export type Frames1 = number;
+export type Playable = boolean;
+export type Reason = string;
+export type RepoId1 = string;
+export type Action = "goto_initial" | "play" | "stop";
+export type EpisodeId2 = string;
+export type RepoId2 = string;
 export type ProfileId = string;
 export type Epoch = string;
 export type Role = "controller" | "observer";
 export type SessionId1 = string | null;
 export type T3 = "hello";
-export type ArmId3 = string;
+export type ArmId4 = string;
 export type Mode1 = "jog" | "goto";
 export type Positions = number[];
-export type Action = string;
+export type Action1 = string;
 export type Code = string;
 export type Gamepad = string | null;
 export type Group = "translate" | "rotate" | "gripper" | "rail" | "session" | "episode" | "tracker";
@@ -270,14 +285,14 @@ export type StateNames = string[];
 export type Version = number;
 export type SupportsReload = boolean;
 export type UptimeS = number;
-export type Arms1 = string[];
+export type Arms2 = string[];
 export type CreatedAt1 = string;
 export type IsInitialCondition = boolean;
 export type Name2 = string;
 export type Notes = string;
 export type ProfileId1 = string;
 export type WorkcellKind = ("hardware" | "sim") | null;
-export type Arms2 = string[];
+export type Arms3 = string[];
 export type Detail10 = string;
 export type Ok2 = boolean;
 export type ProfileId2 = string | null;
@@ -299,7 +314,7 @@ export type TEC = number[] | null;
 export type TWC = number[] | null;
 export type Depth = boolean;
 export type Distortion = number[];
-export type Fps2 = number;
+export type Fps3 = number;
 export type FrameRef = string;
 export type Intrinsics = number[] | null;
 export type Mount = string;
@@ -322,7 +337,7 @@ export type GripperEpsFrac = number;
 export type PosEpsM = number;
 export type RailEpsM = number;
 export type RotEpsRad = number;
-export type Arms3 = string[];
+export type Arms4 = string[];
 export type Dataset = string | null;
 export type DatasetResume = boolean;
 export type DigitalTwinScene = string | null;
@@ -337,7 +352,7 @@ export type StartFrom = string;
 export type Task3 = string | null;
 export type State3 = string;
 export type StateNames1 = string[];
-export type Arms4 = string[];
+export type Arms5 = string[];
 export type Epoch2 = string;
 export type FaultDetail = string;
 export type Kind8 = "hardware" | "sim";
@@ -348,13 +363,13 @@ export type SpeedScale1 = number;
 export type State4 = string;
 export type Streams = string[];
 export type ProfileId3 = string | null;
-export type GripperOpenFrac1 = number;
+export type GripperOpenFrac2 = number;
 /**
  * @minItems 7
  * @maxItems 7
  */
-export type Q1 = [number, number, number, number, number, number, number];
-export type RailPosM1 = number | null;
+export type Q2 = [number, number, number, number, number, number, number];
+export type RailPosM2 = number | null;
 export type CreatedAt2 = string;
 export type IsInitialCondition1 = boolean;
 export type Name4 = string;
@@ -362,9 +377,9 @@ export type Notes2 = string;
 export type ProfileId4 = string;
 export type SchemaVersion = number;
 export type WorkcellKind1 = "hardware" | "sim";
-export type ArmId4 = string | null;
+export type ArmId5 = string | null;
 export type ActiveArm = string | null;
-export type ArmId5 = string;
+export type ArmId6 = string;
 export type Connected1 = boolean;
 /**
  * @minItems 4
@@ -379,13 +394,13 @@ export type Position = [number, number, number];
 export type ErrorCode2 = number;
 export type FaultDetail1 = string;
 export type Goto = ("planning" | "executing" | "failed") | null;
-export type GripperOpenFrac2 = number;
-export type Q2 = number[];
-export type RailPosM2 = number | null;
+export type GripperOpenFrac3 = number;
+export type Q3 = number[];
+export type RailPosM3 = number | null;
 export type Recovering = boolean;
 export type Stale = boolean;
 export type WarnCode1 = number;
-export type Arms6 = ArmTelemetry[];
+export type Arms7 = ArmTelemetry[];
 export type DistM = number;
 /**
  * @minItems 2
@@ -439,14 +454,14 @@ export type Detail13 = string;
 export type Done = number;
 export type Format2 = string;
 export type Phase2 = "scanning" | "videos" | "data" | "meta" | "validating" | "done" | "failed";
-export type RepoId1 = string;
+export type RepoId3 = string;
 export type Total = number;
 export type Detail14 = string;
-export type DurationS2 = number;
-export type Frames3 = number;
+export type DurationS3 = number;
+export type Frames4 = number;
 export type FramesSkipped = number;
 export type Index1 = number | null;
-export type RepoId2 = string | null;
+export type RepoId4 = string | null;
 export type State7 = "idle" | "recording" | "saving" | "returning";
 export type TotalEpisodes1 = number;
 export type TotalFrames1 = number;
@@ -469,12 +484,12 @@ export type ReattachCount1 = number;
 export type SpecAgeS = number | null;
 export type State8 = "disabled" | "unavailable" | "attached" | "detached" | "closed";
 export type VersionChangesMidEpisode = number;
-export type Arms7 = ArmMonitorTelemetry[];
+export type Arms8 = ArmMonitorTelemetry[];
 export type Enabled3 = boolean;
-export type ArmId6 = string;
+export type ArmId7 = string;
 export type CameraId1 = string;
 export type Detail16 = string;
-export type Fps3 = number;
+export type Fps4 = number;
 export type Joint1OffsetRad = number;
 export type MaskFraction = number;
 export type RailFallbackM = number | null;
@@ -499,13 +514,21 @@ export type SampleRate1 = number;
 export type Seq2 = number;
 export type Status5 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
 export type Seq3 = number;
+export type EndedAt = string;
+export type Kind9 = string;
+export type Mode4 = string;
+export type Reason1 = string;
+export type SessionId5 = string;
 export type Bringup = ArmBringupTelemetry[] | null;
-export type ArmId7 = string;
+export type ArmId8 = string;
 export type Detail18 = string;
 export type Status6 = "pending" | "ok" | "warning" | "error";
 export type Step = string;
 export type FaultDetail2 = string;
+export type Kind10 = string | null;
+export type Mode5 = string | null;
 export type PlanStatus = string | null;
+export type SessionId6 = string | null;
 export type StartFromProgress = number | null;
 export type State9 = string;
 export type TrainerAlive1 = boolean | null;
@@ -523,7 +546,7 @@ export type FitChecks = string[];
 export type FitResidualDeg = number | null;
 export type FittedYawDeg = number | null;
 export type InstalledPath = string | null;
-export type Kind9 = "none" | "base_station" | "yaw";
+export type Kind11 = "none" | "base_station" | "yaw";
 export type Channel = number | null;
 export type Index2 = number;
 export type Reference = boolean;
@@ -587,7 +610,7 @@ export type PosScale = number;
 export type YawDeg = number;
 export type Status7 = "no_backend" | "starting" | "searching" | "tracking" | "stale" | "error";
 export type Ts3 = number;
-export type Kind10 = "base_station" | "yaw";
+export type Kind12 = "base_station" | "yaw";
 export type Op3 = "start" | "capture" | "validate" | "install" | "apply" | "abort";
 export type Point = ("start" | "left" | "forward" | "right" | "back" | "up" | "down") | null;
 export type FilterBeta1 = number | null;
@@ -596,11 +619,11 @@ export type FilterMinCutoffHz1 = number | null;
 export type FollowRotation1 = boolean | null;
 export type PosScale1 = number | null;
 export type YawDeg1 = number | null;
-export type Arms8 = ArmStatusInfo[];
+export type Arms9 = ArmStatusInfo[];
 export type AvailableKinds = ("hardware" | "sim")[];
 export type Cameras3 = CameraInfo[];
 export type HardwareReady = boolean;
-export type Kind11 = "hardware" | "sim";
+export type Kind13 = "hardware" | "sim";
 export type PoliciesAvailable = boolean;
 
 export interface ApolloProtocol {
@@ -618,6 +641,8 @@ export interface ApolloProtocol {
   DatasetNamespaceInfo?: DatasetNamespaceInfo;
   DoraInfo?: DoraInfo;
   EpisodeInfo?: EpisodeInfo;
+  EpisodePlaybackInfo?: EpisodePlaybackInfo;
+  EpisodePlaybackRequest?: EpisodePlaybackRequest;
   GotoProfileArgs?: GotoProfileArgs;
   HelloMsg?: HelloMsg;
   JointTargetArgs?: JointTargetArgs;
@@ -1033,6 +1058,57 @@ export interface EpisodeInfo {
   task?: Task1;
 }
 /**
+ * ``GET /api/datasets/{ns}/{name}/episodes/{id}/playback`` (2026-09-10; operator
+ * request: a **Playback** button on every episode row of the Welcome page's Datasets
+ * panel, 05-ui §8.1 item 7).
+ *
+ * What a playback of this episode WOULD do, read from the episode directory only — no
+ * session needed, so the dialog can open and explain itself before anything moves. The
+ * two motion buttons ride ``POST /api/session/playback`` and do need one.
+ *
+ * ``playable`` false + ``reason`` covers every case the runtime would refuse: no
+ * session, a session whose arms or workcell kind do not match the recording, a legacy
+ * tree, an episode whose parquet is missing or unreadable. The UI shows ``reason``
+ * verbatim instead of letting the operator meet a 409.
+ */
+export interface EpisodePlaybackInfo {
+  arms: Arms1;
+  duration_s: DurationS2;
+  episode_id: EpisodeId1;
+  fps: Fps2;
+  frames: Frames1;
+  playable: Playable;
+  reason?: Reason;
+  repo_id: RepoId1;
+}
+/**
+ * One arm's state at an episode's FIRST recorded frame (2026-09-10).
+ *
+ * Read out of ``frames.parquet``'s ``observation.state`` row 0 by the per-dim names
+ * the dataset's own manifest carries (10-frames §6.1 / §7), so an episode recorded
+ * with a different arm set or without a track still reads correctly.
+ */
+export interface EpisodePlaybackArm {
+  arm_id: ArmId3;
+  gripper_open_frac?: GripperOpenFrac1;
+  q: Q1;
+  rail_pos_m?: RailPosM1;
+}
+/**
+ * ``POST /api/session/playback`` body (2026-09-10).
+ *
+ * ``goto_initial`` walks the arms to the episode's first frame and is SYNCHRONOUS,
+ * like ``return_home``: the dialog awaits it and only then enables **Playback**, which
+ * is the operator's rule — you cannot replay a trajectory from the wrong place.
+ * ``play`` streams the recorded trajectory through the same twin-planned, gated
+ * executor; ``stop`` cancels whatever is in flight.
+ */
+export interface EpisodePlaybackRequest {
+  action: Action;
+  episode_id: EpisodeId2;
+  repo_id: RepoId2;
+}
+/**
  * Args for ``name == "goto_profile"`` (2026-09-08).
  *
  * Move the session's arms to the SAVED profile ``profile_id`` — operator-
@@ -1063,7 +1139,7 @@ export interface HelloMsg {
  * Args for ``name == "joint_target"``.
  */
 export interface JointTargetArgs {
-  arm_id: ArmId3;
+  arm_id: ArmId4;
   mode: Mode1;
   positions: Positions;
 }
@@ -1071,7 +1147,7 @@ export interface JointTargetArgs {
  * One keyboard binding row (optionally mirrored on the gamepad).
  */
 export interface KeymapEntry {
-  action: Action;
+  action: Action1;
   code: Code;
   gamepad?: Gamepad;
   group: Group;
@@ -1202,7 +1278,7 @@ export interface PolicySpecModel {
  * GET /api/profiles row (full posture via GET /api/profiles/{id}).
  */
 export interface ProfileInfo {
-  arms: Arms1;
+  arms: Arms2;
   created_at: CreatedAt1;
   is_initial_condition: IsInitialCondition;
   name: Name2;
@@ -1229,7 +1305,7 @@ export interface ProfileInfo {
  * episode is still recording, no session).
  */
 export interface ReturnHomeResult {
-  arms?: Arms2;
+  arms?: Arms3;
   detail?: Detail10;
   ok: Ok2;
   profile_id?: ProfileId2;
@@ -1275,7 +1351,7 @@ export interface SessionAnnounce {
   dataset_root?: DatasetRoot;
   deprecated_keys?: DeprecatedKeys;
   epoch: Epoch1;
-  frames?: Frames1;
+  frames?: Frames2;
   has_rail?: HasRail1;
   kind?: Kind6;
   mavis_schema?: MavisSchema2;
@@ -1298,13 +1374,13 @@ export interface CameraAnnounce {
   T_W_C?: TWC;
   depth?: Depth;
   distortion?: Distortion;
-  fps: Fps2;
+  fps: Fps3;
   frame_ref: FrameRef;
   intrinsics?: Intrinsics;
   mount: Mount;
   resolution: Resolution1;
 }
-export interface Frames1 {
+export interface Frames2 {
   [k: string]: string;
 }
 export interface HasRail1 {
@@ -1315,11 +1391,11 @@ export interface HasRail1 {
  */
 export interface SessionSpec {
   action_filter?: ActionFilterConfig;
-  arms: Arms3;
+  arms: Arms4;
   dataset?: Dataset;
   dataset_resume?: DatasetResume;
   digital_twin_scene?: DigitalTwinScene;
-  frames: Frames2;
+  frames: Frames3;
   kind: Kind7;
   mode: Mode2;
   online_dagger?: OnlineDaggerConfig | null;
@@ -1349,14 +1425,14 @@ export interface ActionFilterConfig {
   rail_eps_m?: RailEpsM;
   rot_eps_rad?: RotEpsRad;
 }
-export interface Frames2 {
+export interface Frames3 {
   [k: string]: string;
 }
 /**
  * POST/GET /api/session response.
  */
 export interface SessionInfo {
-  arms: Arms4;
+  arms: Arms5;
   epoch: Epoch2;
   fault_detail?: FaultDetail;
   kind?: Kind8;
@@ -1378,7 +1454,7 @@ export interface SetInitialConditionArgs {
  * Named workcell posture snapshot; at most one initial condition per kind.
  */
 export interface StateProfile {
-  arms: Arms5;
+  arms: Arms6;
   created_at?: CreatedAt2;
   is_initial_condition?: IsInitialCondition1;
   name: Name4;
@@ -1387,16 +1463,16 @@ export interface StateProfile {
   schema_version?: SchemaVersion;
   workcell_kind: WorkcellKind1;
 }
-export interface Arms5 {
+export interface Arms6 {
   [k: string]: ArmPosture;
 }
 /**
  * One arm's stored posture; ``q`` NEVER includes the rail slot.
  */
 export interface ArmPosture {
-  gripper_open_frac?: GripperOpenFrac1;
-  q: Q1;
-  rail_pos_m?: RailPosM1;
+  gripper_open_frac?: GripperOpenFrac2;
+  q: Q2;
+  rail_pos_m?: RailPosM2;
 }
 /**
  * Args for ``name == "switch_arm"`` (optional; empty args = cycle).
@@ -1413,14 +1489,14 @@ export interface ArmPosture {
  * than silently ignored (pydantic's default).
  */
 export interface SwitchArmArgs {
-  arm_id?: ArmId4;
+  arm_id?: ArmId5;
 }
 /**
  * One 25 Hz telemetry frame.
  */
 export interface TelemetryMsg {
   active_arm: ActiveArm;
-  arms: Arms6;
+  arms: Arms7;
   clearances: Clearances;
   collision: CollisionReport;
   controller_connected: ControllerConnected;
@@ -1442,15 +1518,15 @@ export interface TelemetryMsg {
  * Per-arm telemetry block.
  */
 export interface ArmTelemetry {
-  arm_id: ArmId5;
+  arm_id: ArmId6;
   connected: Connected1;
   ee_pose: PoseMsg;
   error_code: ErrorCode2;
   fault_detail?: FaultDetail1;
   goto?: Goto;
-  gripper_open_frac: GripperOpenFrac2;
-  q: Q2;
-  rail_pos_m: RailPosM2;
+  gripper_open_frac: GripperOpenFrac3;
+  q: Q3;
+  rail_pos_m: RailPosM3;
   recovering?: Recovering;
   stale?: Stale;
   warn_code?: WarnCode1;
@@ -1587,7 +1663,7 @@ export interface DatasetExportTelemetry {
   done?: Done;
   format: Format2;
   phase: Phase2;
-  repo_id: RepoId1;
+  repo_id: RepoId3;
   total?: Total;
 }
 /**
@@ -1605,11 +1681,11 @@ export interface DatasetExportTelemetry {
  */
 export interface EpisodeStatus {
   detail?: Detail14;
-  duration_s: DurationS2;
-  frames: Frames3;
+  duration_s: DurationS3;
+  frames: Frames4;
   frames_skipped?: FramesSkipped;
   index: Index1;
-  repo_id?: RepoId2;
+  repo_id?: RepoId4;
   state: State7;
   total_episodes?: TotalEpisodes1;
   total_frames?: TotalFrames1;
@@ -1651,7 +1727,7 @@ export interface PublishHz {
  * instead of sharing a box between two SDK clients.
  */
 export interface HardwareMonitorTelemetry {
-  arms?: Arms7;
+  arms?: Arms8;
   enabled?: Enabled3;
   overlays?: Overlays;
   paused?: Paused;
@@ -1667,10 +1743,10 @@ export interface HardwareMonitorTelemetry {
  * this camera).
  */
 export interface TwinOverlayTelemetry {
-  arm_id: ArmId6;
+  arm_id: ArmId7;
   camera_id: CameraId1;
   detail?: Detail16;
-  fps?: Fps3;
+  fps?: Fps4;
   joint1_offset_rad?: Joint1OffsetRad;
   mask_fraction?: MaskFraction;
   rail_fallback_m?: RailFallbackM;
@@ -1719,13 +1795,37 @@ export interface MicrophoneTelemetry {
  * Additive session-lifecycle block (04-runtime §13.3).
  */
 export interface SessionTelemetry {
+  auto_ended?: SessionAutoEndNotice | null;
   bringup?: Bringup;
   fault_detail?: FaultDetail2;
+  kind?: Kind10;
+  mode?: Mode5;
   plan_status?: PlanStatus;
+  session_id?: SessionId6;
   start_from_progress?: StartFromProgress;
   state: State9;
   trainer_alive?: TrainerAlive1;
   translate_frame?: TranslateFrame;
+}
+/**
+ * Why the LAST session ended WITHOUT the operator's click (additive, 2026-09-09
+ * evening; 04-runtime §13.2 "orphaned session", §13.3).
+ *
+ * Filled by the runtime when it ends a session on its own - today only the
+ * orphaned-session watch: the last controller ``/ws/control`` connection was
+ * gone for ``control.orphan_session_grace_s`` (the Cockpit tab was closed,
+ * reloaded for good or navigated back to the Welcome page) - and cleared when
+ * the next session starts. The end is the DELETE teardown: the arms stop and
+ * brake where they are, no motion. ``None`` = the last session ended by DELETE /
+ * never ran. The Welcome page shows it verbatim so the operator learns that the
+ * arms were released while nobody was watching.
+ */
+export interface SessionAutoEndNotice {
+  ended_at: EndedAt;
+  kind: Kind9;
+  mode: Mode4;
+  reason: Reason1;
+  session_id: SessionId5;
 }
 /**
  * One hardware bring-up step of one arm (phase-09c; 04-runtime §5).
@@ -1737,7 +1837,7 @@ export interface SessionTelemetry {
  * "Perception Arm frozen at last sample".
  */
 export interface ArmBringupTelemetry {
-  arm_id: ArmId7;
+  arm_id: ArmId8;
   detail?: Detail18;
   status: Status6;
   step: Step;
@@ -1817,7 +1917,7 @@ export interface TrackerCalibrationStatus {
   fit_residual_deg?: FitResidualDeg;
   fitted_yaw_deg?: FittedYawDeg;
   installed_path?: InstalledPath;
-  kind?: Kind9;
+  kind?: Kind11;
   lighthouses?: Lighthouses;
   next_point?: NextPoint;
   phase?: Phase3;
@@ -1899,7 +1999,7 @@ export interface TrackerSettingsMsg {
  * POST /api/tracker/calibration body (illegal transitions -> 409).
  */
 export interface TrackerCalibrationCommand {
-  kind: Kind10;
+  kind: Kind12;
   op: Op3;
   point?: Point;
 }
@@ -1923,10 +2023,10 @@ export interface TrackerSettingsArgs {
  * GET /api/workcell response.
  */
 export interface WorkcellStatus {
-  arms: Arms8;
+  arms: Arms9;
   available_kinds: AvailableKinds;
   cameras: Cameras3;
   hardware_ready?: HardwareReady;
-  kind: Kind11;
+  kind: Kind13;
   policies_available?: PoliciesAvailable;
 }

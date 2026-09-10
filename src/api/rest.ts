@@ -8,6 +8,8 @@ import type {
   DatasetLayoutInfo,
   DoraInfo,
   EpisodeInfo,
+  EpisodePlaybackInfo,
+  EpisodePlaybackRequest,
   KeymapEntry,
   MicrophoneInfo,
   OnlineDaggerSessionInfo,
@@ -255,6 +257,23 @@ export const deleteEpisode = (repoId: string, episodeId: string): Promise<void> 
   });
 export const deleteDataset = (repoId: string): Promise<void> =>
   request(`/api/datasets/${repoPath(repoId)}`, { method: "DELETE" });
+
+/** `GET /api/datasets/{ns}/{name}/episodes/{id}/playback` (2026-09-10; 04-runtime §10.8):
+ * what a playback of this episode would do — frames, fps, duration, the per-arm INITIAL
+ * state, and `playable` / `reason`. Session-less, so the dialog can open and explain
+ * itself before anything moves. 404 unknown, 409 legacy tree / unreadable parquet. */
+export const getEpisodePlayback = (
+  repoId: string,
+  episodeId: string,
+): Promise<EpisodePlaybackInfo> =>
+  request(`/api/datasets/${repoPath(repoId)}/episodes/${encodeURIComponent(episodeId)}/playback`);
+
+/** `POST /api/session/playback` (2026-09-10). Like `returnHome`, an operational refusal
+ * is a 200 with `ok: false` and a `detail` the dialog shows — a thrown `ApiError` really
+ * is a transport / runtime failure. `goto_initial` resolves only once the arms are at the
+ * episode's first frame, which is what gates the Playback button. */
+export const postSessionPlayback = (body: EpisodePlaybackRequest): Promise<ReturnHomeResult> =>
+  request("/api/session/playback", { method: "POST", body: JSON.stringify(body) });
 
 export interface DatasetExportStarted {
   repo_id: string;

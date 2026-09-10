@@ -17,11 +17,18 @@
  * to act and re-fetches an expanded row's episodes when its dataset row changes. */
 import { useEffect, useState } from "react";
 import { getDatasetEpisodes } from "../api/rest";
-import type { DatasetExportTelemetry, DatasetInfo, DatasetLayoutInfo, EpisodeInfo } from "../gen";
+import type {
+  DatasetExportTelemetry,
+  DatasetInfo,
+  DatasetLayoutInfo,
+  EpisodeInfo,
+  SessionSpec,
+} from "../gen";
 import { ONLINE_DAGGER_NAMESPACE } from "../lib/launch";
 import { useDelayedUnmount } from "../lib/useDelayedUnmount";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Icon } from "./icons";
+import { PlaybackDialog } from "./PlaybackDialog";
 import { Sheet, SHEET_EXIT_MS } from "./Sheet";
 
 export interface DatasetsPanelProps {
@@ -36,6 +43,13 @@ export interface DatasetsPanelProps {
   onDeleteEpisode(repoId: string, episodeId: string): Promise<void>;
   onDeleteDataset(repoId: string): Promise<void>;
   onExport(repoId: string): Promise<void>;
+  /** Episode playback (2026-09-10): a session is needed for the two motions, and the
+   * dialog brings one up ITSELF when none is running — starting one from the launcher
+   * navigates to the Cockpit and away from this panel, which was a dead end. */
+  sessionActive?: boolean;
+  playbackSpec?: SessionSpec | null;
+  playbackReason?: string | null;
+  onSessionEnded?(): void;
 }
 
 export type ExportState = "none" | "stale" | "fresh" | "running" | "failed";
@@ -150,6 +164,13 @@ interface RowProps {
   onDeleteEpisode(repoId: string, episodeId: string): Promise<void>;
   onDeleteDataset(repoId: string): Promise<void>;
   onExport(repoId: string): Promise<void>;
+  /** Episode playback (2026-09-10): a session is needed for the two motions, and the
+   * dialog brings one up ITSELF when none is running — starting one from the launcher
+   * navigates to the Cockpit and away from this panel, which was a dead end. */
+  sessionActive?: boolean;
+  playbackSpec?: SessionSpec | null;
+  playbackReason?: string | null;
+  onSessionEnded?(): void;
 }
 
 function DatasetRow({
@@ -160,12 +181,21 @@ function DatasetRow({
   onDeleteEpisode,
   onDeleteDataset,
   onExport,
+  sessionActive = false,
+  playbackSpec = null,
+  playbackReason = null,
+  onSessionEnded,
 }: RowProps) {
   const [open, setOpen] = useState(false);
   const [episodes, setEpisodes] = useState<EpisodeInfo[] | null>(null);
   const [episodesError, setEpisodesError] = useState<string | null>(null);
   const [confirmEpisode, setConfirmEpisode] = useState<EpisodeInfo | null>(null);
   const confirmEpisodeShown = useDelayedUnmount(confirmEpisode !== null, SHEET_EXIT_MS);
+  // Playback dialog (2026-09-10): the row clicked, held through the Sheet's 160 ms exit.
+  // Unmounting it on close is deliberate — the "at the initial state" unlock must not
+  // survive a close, because we cannot know the arms did not move meanwhile.
+  const [playback, setPlayback] = useState<EpisodeInfo | null>(null);
+  const playbackShown = useDelayedUnmount(playback !== null, SHEET_EXIT_MS);
   const [confirmDataset, setConfirmDataset] = useState(false);
   const confirmDatasetShown = useDelayedUnmount(confirmDataset, SHEET_EXIT_MS);
   const [typed, setTyped] = useState("");
@@ -371,6 +401,21 @@ function DatasetRow({
                   </span>
                 )}
               </span>
+              {/* Playback (2026-09-10, operator request; 05-ui §8.1 item 7): opens the
+                  in-page modal with "return to this episode's initial state" and
+                  "play back the whole episode". Never offered for the episode being
+                  recorded — its parquet does not exist yet. */}
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                disabled={!!ep.open}
+                title={ep.open ? "still recording" : "Return the arms here, then replay it"}
+                onClick={() => setPlayback(ep)}
+                data-testid={`episode-playback-${ep.episode_id}`}
+              >
+                <Icon name="play" size={14} />
+                Playback
+              </button>
               <button
                 type="button"
                 className="btn-ghost btn-sm"
@@ -385,6 +430,18 @@ function DatasetRow({
             </li>
           ))}
         </ul>
+      )}
+      {playbackShown && playback !== null && (
+        <PlaybackDialog
+          repoId={id}
+          episode={playback}
+          open={playback !== null}
+          sessionActive={sessionActive}
+          spec={playbackSpec}
+          specReason={playbackReason}
+          onSessionEnded={onSessionEnded}
+          onRequestClose={() => setPlayback(null)}
+        />
       )}
       {confirmEpisodeShown && confirmEpisode !== null && (
         <ConfirmDialog
@@ -462,6 +519,10 @@ export function DatasetsPanel({
   onDeleteEpisode,
   onDeleteDataset,
   onExport,
+  sessionActive = false,
+  playbackSpec = null,
+  playbackReason = null,
+  onSessionEnded,
 }: DatasetsPanelProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const rows = datasetsForKind(datasets, kind);
@@ -498,6 +559,10 @@ export function DatasetsPanel({
                   onDeleteEpisode={(r, e) => wrap(e, onDeleteEpisode(r, e))}
                   onDeleteDataset={(r) => wrap(r, onDeleteDataset(r))}
                   onExport={(r) => wrap(`export:${r}`, onExport(r))}
+                  sessionActive={sessionActive}
+                  playbackSpec={playbackSpec}
+                  playbackReason={playbackReason}
+                  onSessionEnded={onSessionEnded}
                 />
               ))}
             </ul>

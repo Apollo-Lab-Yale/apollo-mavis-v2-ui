@@ -274,6 +274,11 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
   const exportProgress = useStore((s) => s.telemetry?.datasets?.export ?? null);
   const exportPhase = exportProgress?.phase ?? null;
   const inUseRepoId = useStore((s) => s.telemetry?.episode?.repo_id ?? null);
+  // 2026-09-09 (04-runtime §13.3): the live session's id straight off telemetry. This
+  // page never opens /ws/control and its store `session` is empty on a fresh load, so
+  // this is how it knows a session is running — the Playback dialog needs it to decide
+  // whether to bring one up itself or use the one that is there.
+  const liveSessionId = useStore((s) => s.telemetry?.session?.session_id ?? null);
   useEffect(() => {
     loadDatasets();
   }, [loadDatasets, totalEpisodes, exportPhase]);
@@ -797,6 +802,13 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
               onDeleteEpisode={onDeleteEpisode}
               onDeleteDataset={onDeleteDataset}
               onExport={onExport}
+              // Episode playback (2026-09-10): the dialog owns a session when none is
+              // running. `start_from: keep_current` always — a playback must never
+              // plan a motion at bring-up; the operator's two buttons are the motion.
+              sessionActive={liveSessionId !== null}
+              playbackSpec={{ ...buildSpec("teleop", sel), start_from: "keep_current" }}
+              playbackReason={reasons.teleop}
+              onSessionEnded={loadDatasets}
             />
           </section>
         </>
