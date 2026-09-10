@@ -18,7 +18,7 @@
  * unmounts after `SHEET_EXIT_MS`). The `dagger` mode is still accepted for the
  * legacy in-process path, but the Welcome page routes Online DAgger to
  * `OnlineDaggerSheet` instead (15-online-dagger D1). */
-import { useId, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { ApiError, createSession } from "../api/rest";
 import type { CameraInfo, DatasetInfo, DatasetLayoutInfo, PolicyInfo, SessionInfo } from "../gen";
 import {
@@ -129,6 +129,14 @@ export function LaunchSheet({
 
   const [task, setTask] = useState(sel.task);
   const [taskTouched, setTaskTouched] = useState(false);
+  // Continue existing: the picked dataset's task (`DatasetInfo.task`, its last
+  // session's) is carried into Task until the operator types one — resuming
+  // "Drawer Assembling" must not mean retyping it (operator request 2026-09-09).
+  // `prefilledFrom` is the repo_id the value came from, so the prefill follows the
+  // picked row and clears again on New dataset instead of sticking to another
+  // dataset's task. Same rules as the Online DAgger sheet's resume prefill.
+  const [taskAuto, setTaskAuto] = useState(true);
+  const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
   // DAgger defaults to "Latest" (null → no `policy` in the spec); Inference to
   // the most recently promoted checkpoint.
   const [policyId, setPolicyId] = useState<string | null>(() =>
@@ -148,6 +156,20 @@ export function LaunchSheet({
   const [datasetRepoId, setDatasetRepoId] = useState<string | null>(null);
   const [returnToStart, setReturnToStart] = useState(true); // DEFAULT ON (operator 2026-09-07)
   const slug = slugDataset(datasetName);
+  const picked = useMemo(
+    () =>
+      mode === "collect" && datasetMode === "existing"
+        ? (existing.find((d) => d.repo_id === datasetRepoId) ?? null)
+        : null,
+    [mode, datasetMode, existing, datasetRepoId],
+  );
+  useEffect(() => {
+    if (!taskAuto) return;
+    const source = picked?.repo_id ?? null;
+    if (source === prefilledFrom) return;
+    setTask(picked?.task || sel.task);
+    setPrefilledFrom(source);
+  }, [picked, taskAuto, prefilledFrom, sel.task]);
   // Idle-frame filter (2026-09-07 addendum): checked by default, operator units.
   const [filter, setFilter] = useState<ActionFilterInputs>(DEFAULT_ACTION_FILTER);
   // Where a new dataset lands: the REAL folder of the runtime's default namespace
@@ -246,7 +268,13 @@ export function LaunchSheet({
             <span className="field-label">Task</span>
             <input
               value={task}
-              onChange={(e) => setTask(e.target.value)}
+              onChange={(e) => {
+                setTask(e.target.value);
+                // Typed by hand: keeps over the picked dataset's task; cleared by
+                // hand: the prefill may fill it again from the picked dataset.
+                setTaskAuto(e.target.value === "");
+                if (e.target.value === "") setPrefilledFrom(null);
+              }}
               onBlur={(e) => {
                 // Validate when the operator leaves the field — not when focus is
                 // dropped because the dialog itself closed (dev StrictMode re-open).
@@ -259,6 +287,11 @@ export function LaunchSheet({
               data-autofocus
               autoComplete="off"
             />
+            {taskAuto && prefilledFrom !== null && task.trim() !== "" && (
+              <span className="text-caption fg-3" data-testid="task-prefilled">
+                Carried over from the last session of {prefilledFrom} — edit to change
+              </span>
+            )}
             {taskTouched && taskMissing && (
               <span className="field-error" data-testid="task-error">
                 Task is required

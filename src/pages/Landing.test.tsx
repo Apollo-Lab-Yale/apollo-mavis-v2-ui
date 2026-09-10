@@ -1201,6 +1201,62 @@ describe("Welcome page", () => {
     });
   });
 
+  it("Data Collection (2026-09-09): picking an existing dataset carries its task into Task — resume is one click; typed text wins; New dataset clears it", async () => {
+    await mount({
+      datasets: [makeDataset(), makeDataset({ repo_id: "apollo/no_task", task: null })],
+    });
+    await ready();
+    fireEvent.click(screen.getByTestId("launch-collect"));
+    await screen.findByTestId("launch-sheet-panel");
+    const taskInput = screen.getByTestId("task-input") as HTMLInputElement;
+    expect(taskInput.value).toBe("");
+    fireEvent.click(screen.getByTestId("dataset-mode-existing"));
+    expect(screen.getByTestId("launch-confirm")).toBeDisabled();
+    fireEvent.click(
+      within(screen.getByTestId("dataset-pick")).getByTestId("dataset-pick-apollo/pick_cube"),
+    );
+    expect(taskInput.value).toBe("pick the cube"); // DatasetInfo.task, no typing needed
+    expect(screen.getByTestId("task-prefilled").textContent).toContain("apollo/pick_cube");
+    expect(screen.getByTestId("launch-confirm")).toBeEnabled();
+    // a dataset that never recorded a task leaves the field empty (and Start disabled)
+    fireEvent.click(
+      within(screen.getByTestId("dataset-pick")).getByTestId("dataset-pick-apollo/no_task"),
+    );
+    expect(taskInput.value).toBe("");
+    expect(screen.queryByTestId("task-prefilled")).toBeNull();
+    expect(screen.getByTestId("launch-confirm")).toBeDisabled();
+    fireEvent.click(
+      within(screen.getByTestId("dataset-pick")).getByTestId("dataset-pick-apollo/pick_cube"),
+    );
+    expect(taskInput.value).toBe("pick the cube");
+    // typed by hand: stays, whatever is picked afterwards
+    fireEvent.change(taskInput, { target: { value: "pick it fast" } });
+    fireEvent.click(
+      within(screen.getByTestId("dataset-pick")).getByTestId("dataset-pick-apollo/no_task"),
+    );
+    fireEvent.click(
+      within(screen.getByTestId("dataset-pick")).getByTestId("dataset-pick-apollo/pick_cube"),
+    );
+    expect(taskInput.value).toBe("pick it fast");
+    expect(screen.queryByTestId("task-prefilled")).toBeNull();
+    // cleared by hand: the picked dataset's task comes back
+    fireEvent.change(taskInput, { target: { value: "" } });
+    expect(taskInput.value).toBe("pick the cube");
+    // New dataset: a carried-over task must not stick to a new dataset
+    fireEvent.click(screen.getByTestId("dataset-mode-new"));
+    expect(taskInput.value).toBe("");
+    expect(screen.queryByTestId("task-prefilled")).toBeNull();
+    fireEvent.click(screen.getByTestId("dataset-mode-existing")); // the pick is remembered
+    expect(taskInput.value).toBe("pick the cube");
+    fireEvent.click(screen.getByTestId("launch-confirm"));
+    await screen.findByTestId("mode-page");
+    expect(posts[0]).toMatchObject({
+      task: "pick the cube",
+      dataset: "apollo/pick_cube",
+      dataset_resume: true,
+    });
+  });
+
   it("DatasetsPanel (2026-09-07): rows per tab kind, expand → episodes, delete episode (confirm), export (202), delete dataset (typed name)", async () => {
     const ep0 = makeEpisode();
     const ep1 = makeEpisode({ episode_id: "20260907T141419.008Z-a71e02", index: 1, open: true });
