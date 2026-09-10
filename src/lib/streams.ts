@@ -129,16 +129,12 @@ export const MODE_LABELS: Readonly<Record<Mode, string>> = {
   collect: "Data Collection",
   dagger: "Online DAgger",
   inference: "Inference",
-  gello: "GELLO Manipulation", // 16-gello §11: the fifth card
 };
 export const MODE_DESCRIPTIONS: Readonly<Record<Mode, string>> = {
   teleop: "Drive both arms live",
   collect: "Record episodes for a task",
   dagger: "Novice drives, you correct — your trainer learns between rollouts",
   inference: "Run a promoted checkpoint",
-  gello:
-    "GELLO leader arm drives the Manipulation Arm in joint space; the Perception Arm follows " +
-    "an external viewpoint node or holds its GELLO posture. Kitchen twin.",
 };
 
 /** `document.title` for a page: "APOLLO MAVIS V2" or "APOLLO MAVIS V2 · Teleop". */

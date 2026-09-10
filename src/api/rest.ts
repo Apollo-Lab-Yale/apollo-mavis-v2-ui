@@ -8,11 +8,6 @@ import type {
   DatasetLayoutInfo,
   DoraInfo,
   EpisodeInfo,
-  GelloCalibrateRequest,
-  GelloCalibrateResult,
-  GelloInfo,
-  GelloPreviewRequest,
-  GelloPreviewResult,
   KeymapEntry,
   MicrophoneInfo,
   OnlineDaggerSessionInfo,
@@ -296,37 +291,3 @@ export const ONLINE_DAGGER_SKILL_TGZ_PATH = "/api/online_dagger/skill.tgz";
  * `online_dagger` root (the sheet's resume picker), newest `last_used_at` first. */
 export const getOnlineDaggerSessions = (): Promise<OnlineDaggerSessionInfo[]> =>
   request("/api/online_dagger/sessions");
-
-// GELLO Manipulation (phase-15, 16-gello §5.4 / §9.2): all session-less.
-/** Deadline for the GelloSheet's two POLLS (`GET /api/gello`, `POST /api/gello/preview`;
- * 2026-09-09 review). Each poll is a serial await-then-setTimeout chain, so a request
- * that never settles would stop the chain for good and leave the last verdict (and
- * an enabled Start) on screen while the operator moves GELLO. 3 s = six preview
- * periods; the sheet treats the failure like any other (the chain retries on its next
- * tick) and greys a verdict older than `GELLO_PREVIEW_STALE_FACTOR` periods. */
-export const GELLO_POLL_TIMEOUT_MS = 3000;
-const GELLO_POLL_TIMEOUT_HINT = "the runtime did not answer the GELLO poll; retrying";
-/** `GET /api/gello`: the leader's device status (backend, port, baud, rate, raw /
- * mapped joints, calibration) plus the launch facts — the kitchen twin's scene id
- * and label, the Perception Arm's hold posture, whether hardware admits gello. */
-export const getGello = (): Promise<GelloInfo> =>
-  request("/api/gello", undefined, GELLO_POLL_TIMEOUT_MS, GELLO_POLL_TIMEOUT_HINT);
-/** `POST /api/gello/calibrate {op, kind}`: `match_arm` stores per-joint offsets
- * (nearest π/2) from the leader's raw joints vs the Manipulation Arm's current ones;
- * `gripper_open` / `gripper_closed` store the trigger endpoints; `clear` deletes the
- * file. 409 while a session runs or without a leader sample — the detail surfaces
- * through ApiError. */
-export const postGelloCalibrate = (req: GelloCalibrateRequest): Promise<GelloCalibrateResult> =>
-  request("/api/gello/calibrate", { method: "POST", body: JSON.stringify(req) });
-/** `POST /api/gello/preview {kind, scene?, speed_scale?}`: the launch check on a
- * cached kitchen twin — verdict (`status` / `ok`), the colliding pairs, the goal
- * joints and a PNG of the virtual cell with the colliding bodies tinted red. It never
- * 409s for a bad posture (the status says) and never moves anything; the GelloSheet
- * polls it at 2 Hz while open. */
-export const postGelloPreview = (req: GelloPreviewRequest): Promise<GelloPreviewResult> =>
-  request(
-    "/api/gello/preview",
-    { method: "POST", body: JSON.stringify(req) },
-    GELLO_POLL_TIMEOUT_MS,
-    GELLO_POLL_TIMEOUT_HINT,
-  );

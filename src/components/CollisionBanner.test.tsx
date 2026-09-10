@@ -1,4 +1,4 @@
-/** CollisionBanner + ClearanceReadout (05-ui §8.2; 16-gello §12.4 / operator request
+/** CollisionBanner + ClearanceReadout (05-ui §8.2; operator request
  * 2026-09-09): the readout shows the four closest pairs of the runtime's five, every
  * row is one line (pair label ellipsised with the full text in its title, chip fixed)
  * and the panel is bounded with its own scroll — the CSS rules are pinned textually
@@ -73,7 +73,7 @@ describe("ClearanceReadout", () => {
     );
   });
 
-  it("the stylesheet bounds the panel and keeps each row single-line (16-gello §12.4)", () => {
+  it("the stylesheet bounds the panel and keeps each row single-line", () => {
     const css = readFileSync(resolve(__dirname, "../styles/global.css"), "utf8");
     /** The FIRST declaration block of a selector (`sel {` … `}`), from `from` on. */
     const rule = (selector: string, from = 0) => {
@@ -88,11 +88,11 @@ describe("ClearanceReadout", () => {
     expect(pairRule).toMatch(/overflow:\s*hidden/);
     expect(pairRule).toMatch(/text-overflow:\s*ellipsis/);
     expect(rule(".clearance-row .clearance-chip")).toMatch(/flex:\s*none/);
-    // The five-column launcher grid (16-gello §11) with three columns under 1000 px.
-    expect(rule(".launcher-grid")).toMatch(/repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
+    // The launcher grid: four cards, two columns on a narrow window.
+    expect(rule(".launcher-grid")).toMatch(/repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
     const mq = css.indexOf("@media (max-width: 1000px)");
     expect(mq).toBeGreaterThanOrEqual(0);
-    expect(rule(".launcher-grid", mq)).toMatch(/repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+    expect(rule(".launcher-grid", mq)).toMatch(/repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   });
 });
 

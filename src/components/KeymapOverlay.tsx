@@ -1,14 +1,6 @@
 /** Keybinding hint overlay, driven entirely by the fetched keymap (05-ui §8.2).
  * Glyph columns: keycap, gamepad (`KeymapEntry.gamepad`) and Vive controller
- * (static `CONTROLLER_GLYPHS` keyed by action — 13-tracker §1.1).
- *
- * GELLO Manipulation (phase-15, 16-gello §11 / D9): the leader drives the
- * Manipulation Arm's joints and gripper, so the translate / rotate / gripper /
- * tracker keys do nothing to it and `Tab` / `Z` / `Space` / the episode keys are
- * nacked by the runtime. The overlay therefore shows ONLY the rail rows and the `R`
- * row (the session group without the arm-switch / takeover rows), no translate-frame
- * caption, and the `GELLO_CAPTION` instead. The keymap itself (operator-owned, 24
- * rows) is untouched — Pause / Resume are Cockpit buttons. */
+ * (static `CONTROLLER_GLYPHS` keyed by action — 13-tracker §1.1). */
 import type { KeymapEntry, SessionTelemetry } from "../gen";
 import { controllerGlyph, gamepadGlyph, keycapLabel } from "../input/bindings";
 import type { Mode } from "../lib/types";
@@ -43,19 +35,6 @@ const FRAME_CAPTION: Record<"camera" | "world" | "base", string> = {
     "your view in this cell: forward comes toward you, left goes to your right.",
 };
 
-/** The gello-mode caption (16-gello §11), shown in place of the translate-frame one. */
-export const GELLO_CAPTION =
-  "GELLO drives the Manipulation Arm's joints and gripper; ←/→ move its rail; the " +
-  "Perception Arm follows the viewpoint node.";
-
-/** Rows that survive the gello filter: the rail group and `reset_to_initial` (`R`);
- * the other session rows (`switch_arm`, `switch_arm_prev`, `takeover_toggle`) are
- * nacked in this mode and must not be advertised. */
-export function gelloVisible(e: KeymapEntry): boolean {
-  if (e.group === "rail") return true;
-  return e.group === "session" && e.action === "reset_to_initial";
-}
-
 const GROUP_ORDER: KeymapEntry["group"][] = [
   "translate",
   "rotate",
@@ -82,10 +61,8 @@ export function KeymapOverlay({
   onToggle,
   translateFrame,
 }: KeymapOverlayProps) {
-  const gello = mode === "gello";
   const visible = entries.filter((e) => {
     if (e.requires_rail && !activeArmHasRail) return false;
-    if (gello) return gelloVisible(e);
     if (e.group === "episode" && mode !== "collect" && mode !== "dagger") return false;
     if (e.action === "takeover_toggle" && mode !== "dagger" && mode !== "inference") return false;
     return true;
@@ -95,12 +72,7 @@ export function KeymapOverlay({
       <button onClick={onToggle} data-testid="keymap-toggle">
         Keys ({keycapLabel("Slash")}) {open ? "▾" : "▸"}
       </button>
-      {open && gello && (
-        <p className="dim text-small" data-testid="gello-caption" style={{ margin: 0 }}>
-          {GELLO_CAPTION}
-        </p>
-      )}
-      {open && !gello && translateFrame && (
+      {open && translateFrame && (
         <p className="dim text-small" data-testid="translate-frame-caption" style={{ margin: 0 }}>
           <strong>{translateFrame}</strong> — {FRAME_CAPTION[translateFrame]} Rotations are always
           about the tool (TCP) axes.

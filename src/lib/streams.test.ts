@@ -12,7 +12,6 @@ import {
   MIC_LABEL,
   micSubtitle,
   orderArms,
-  MODE_DESCRIPTIONS,
   MODE_LABELS,
   orderStreams,
   overlayBase,
@@ -36,12 +35,7 @@ describe("streams", () => {
       collect: "Data Collection",
       dagger: "Online DAgger", // 15-online-dagger §8: the middle mode is Online DAgger
       inference: "Inference",
-      gello: "GELLO Manipulation", // 16-gello §11: the fifth card (phase-15)
     });
-    expect(MODE_DESCRIPTIONS.gello).toBe(
-      "GELLO leader arm drives the Manipulation Arm in joint space; the Perception Arm follows " +
-        "an external viewpoint node or holds its GELLO posture. Kitchen twin.",
-    );
     expect(pageTitle()).toBe("APOLLO MAVIS V2");
     expect(pageTitle("Teleop")).toBe("APOLLO MAVIS V2 · Teleop");
     expect(streamLabel("grip_wrist_cam")).toBe("Manipulation · wrist cam");

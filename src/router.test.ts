@@ -43,13 +43,6 @@ describe("sessionLoader guard", () => {
     expect(await makeSessionLoader("teleop")()).toBeNull();
   });
 
-  it("gello (phase-15): the /gello loader passes for a gello session and redirects the others", async () => {
-    useStore.getState().setSession({ ...session, mode: "gello", arms: ["grip", "view"] });
-    expect(await makeSessionLoader("gello")()).toBeNull();
-    const res = await makeSessionLoader("teleop")();
-    expect((res as Response).headers.get("Location")).toBe("/");
-  });
-
   it("adopts a live session found over REST", async () => {
     vi.stubGlobal(
       "fetch",

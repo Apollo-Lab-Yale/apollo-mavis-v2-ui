@@ -11,10 +11,6 @@ import type {
   DatasetLayoutInfo,
   DoraInfo,
   EpisodeInfo,
-  GelloInfo,
-  GelloPreviewResult,
-  GelloTelemetry,
-  GelloViewpointTelemetry,
   OnlineDaggerSessionInfo,
   OnlineDaggerStatus,
   TrainerStatusAnnounce,
@@ -727,104 +723,6 @@ export function makeOnlineDaggerSession(
     task: "pick the cube",
     rollouts: 6,
     last_used_at: "2026-09-08T10:06:00Z",
-    ...over,
-  };
-}
-
-// ---------------------------------------------------------------------------------
-// GELLO Manipulation (phase-15, 16-gello §8.3 / §8.4)
-// ---------------------------------------------------------------------------------
-
-/** The Manipulation Arm's `mavis_v2` keyframe — the fake leader's default posture
- * (16-gello §4), so a sim GELLO session launches already synced. */
-export const GELLO_LEADER_Q: number[] = [Math.PI, 0, 0, 0, 0, 0, 0];
-/** The Perception Arm's GELLO hold posture (16-gello §0 item 3). */
-export const GELLO_VIEW_POSTURE: number[] = [2.646, -1.598, 0.018, 1.637, 0.25, 2.007, 0.029];
-
-/** `GelloTelemetry.viewpoint`: `auto`, nothing attached yet (the arm holds). */
-export function makeGelloViewpoint(
-  over: Partial<GelloViewpointTelemetry> = {},
-): GelloViewpointTelemetry {
-  return { mode: "auto", attached: false, policy_id: null, detail: "", paused: false, ...over };
-}
-
-/** `telemetry.gello` during a sim GELLO session: the fake leader connected at 100 Hz,
- * calibrated (the fake needs no file), the follower `tracking` with a small lag. */
-export function makeGelloTelemetry(over: Partial<GelloTelemetry> = {}): GelloTelemetry {
-  return {
-    backend: "fake",
-    status: "connected",
-    detail: "",
-    port: "",
-    baud: null,
-    seq: 1200,
-    rate_hz: 100,
-    age_s: 0.008,
-    q_raw: GELLO_LEADER_Q,
-    q: GELLO_LEADER_Q,
-    gripper_frac: 1,
-    calibrated: true,
-    joint_offsets_rad: [0, 0, 0, 0, 0, 0, 0],
-    joint_signs: [1, 1, 1, 1, 1, 1, 1],
-    state: "tracking",
-    state_detail: "",
-    lag_rad: [0.01, 0, 0.004, 0, 0, 0.002, 0],
-    max_lag_rad: 0.01,
-    engaged_arm: "grip",
-    paused_latched: false,
-    viewpoint: makeGelloViewpoint(),
-    ...over,
-  };
-}
-
-/** `GET /api/gello` before any session: the device half of `makeGelloTelemetry` plus
- * the launch facts (kitchen scene, hold posture, calibration file, hardware admitted). */
-export function makeGelloInfo(over: Partial<GelloInfo> = {}): GelloInfo {
-  return {
-    backend: "fake",
-    status: "connected",
-    detail: "",
-    port: "",
-    baud: null,
-    seq: 1200,
-    rate_hz: 100,
-    age_s: 0.008,
-    q_raw: GELLO_LEADER_Q,
-    q: GELLO_LEADER_Q,
-    gripper_frac: 1,
-    calibrated: true,
-    joint_offsets_rad: [0, 0, 0, 0, 0, 0, 0],
-    joint_signs: [1, 1, 1, 1, 1, 1, 1],
-    scene_id: "mavis_v2_kitchen",
-    scene_label: "APOLLO MAVIS V2 Kitchen (GELLO)",
-    view_posture_rad: GELLO_VIEW_POSTURE,
-    view_rail_m: 0,
-    calibration_path: "/home/x/apollo/var/gello_calibration.json",
-    hardware_admitted: true,
-    gripper_open_rad: null,
-    gripper_closed_rad: null,
-    ...over,
-  };
-}
-
-/** A 1×1 PNG (the preview's `image_png_b64` stand-in). */
-export const TINY_PNG_B64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-
-/** `POST /api/gello/preview` answer: the GELLO posture is `clear` — the Manipulation
- * Arm at the leader posture with the current rail, the Perception Arm at its hold
- * posture, a PNG of the kitchen twin from `cam_kitchen`. `ok` follows `status`. */
-export function makeGelloPreview(over: Partial<GelloPreviewResult> = {}): GelloPreviewResult {
-  const status = over.status ?? "clear";
-  return {
-    status,
-    ok: status === "clear",
-    detail: "",
-    pairs: [],
-    q_goal: { grip: [...GELLO_LEADER_Q, 0.2], view: [...GELLO_VIEW_POSTURE, 0] },
-    leader_q: GELLO_LEADER_Q,
-    image_png_b64: TINY_PNG_B64,
-    camera: "cam_kitchen",
     ...over,
   };
 }

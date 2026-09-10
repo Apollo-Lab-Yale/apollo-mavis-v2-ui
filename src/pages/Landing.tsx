@@ -1,10 +1,9 @@
 /** Welcome page (05-ui §8.1, phase-11 §4): hero "APOLLO MAVIS V2", the
  * Hardware | Sim tabs (each with its observation grid, status caption and arm
- * cards), Start-from, the single read-only scene, and the five ModeLauncher
+ * cards), Start-from, the single read-only scene, and the four ModeLauncher
  * cards. Teleop launches directly; Data Collection / Inference collect task /
  * policy in a LaunchSheet, Online DAgger opens the two-view `OnlineDaggerSheet`
- * (phase-14; 15-online-dagger §8), GELLO Manipulation the three-view `GelloSheet`
- * (phase-15; 16-gello §11) — all held mounted for their 160 ms exit after
+ * (phase-14; 15-online-dagger §8) — both held mounted for their 160 ms exit after
  * closing. `GET /api/datasets/layout` is read once so the sheets preview the REAL
  * dataset folders. The Hardware tab is always openable: while it
  * is visible `GET /api/workcell?kind=hardware` is polled every 2 s and the four
@@ -120,8 +119,7 @@ import {
   StartFrom,
   type StartFromChoice,
 } from "../components/landing";
-import { GelloSheet } from "../components/GelloSheet";
-import { LaunchSheet } from "../components/LaunchSheet";
+import { LaunchSheet, type SheetMode } from "../components/LaunchSheet";
 import { OnlineDaggerSheet } from "../components/OnlineDaggerSheet";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DatasetsPanel } from "../components/DatasetsPanel";
@@ -147,14 +145,7 @@ export const PANE_LEAVE_MS = 120;
 export interface LandingProps {
   /** Test hook — defaults to HARDWARE_POLL_MS. */
   hardwarePollMs?: number;
-  /** Test hooks — the GelloSheet's two poll periods. */
-  gelloInfoPollMs?: number;
-  gelloPreviewPollMs?: number;
 }
-
-/** Every mode that opens a sheet (Teleop launches directly): `LaunchSheet` for
- * collect / inference, `OnlineDaggerSheet` for dagger, `GelloSheet` for gello. */
-type SheetKey = Exclude<Mode, "teleop">;
 
 // The two workcell tabs plus the device **Setting** tab (2026-09-07). Setting is
 // LAST so the existing keyboard order (ArrowLeft from Sim = Hardware) is intact,
@@ -199,11 +190,7 @@ const storeTab = (tab: TabKey): void => {
   }
 };
 
-export function Landing({
-  hardwarePollMs = HARDWARE_POLL_MS,
-  gelloInfoPollMs,
-  gelloPreviewPollMs,
-}: LandingProps = {}) {
+export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}) {
   useDocumentTitle(pageTitle());
   const navigate = useNavigate();
   const workcell = useStore((s) => s.workcell);
@@ -250,7 +237,7 @@ export function Landing({
   // arm set is not a choice any more — every hardware arm joins the session).
   const [speed, setSpeed] = useState<SpeedValue>(DEFAULT_SPEED_VALUE);
   const [launching, setLaunching] = useState<Mode | null>(null);
-  const [sheet, setSheet] = useState<SheetKey | null>(null);
+  const [sheet, setSheet] = useState<SheetMode | null>(null);
   // The sheet's mode lingers for the exit transition once `sheet` is cleared.
   const sheetShown = useLingeringValue(sheet, SHEET_EXIT_MS);
   // Calibration wizard (phase-10) hosted here too, so the Setting tab reaches the
@@ -830,19 +817,7 @@ export function Landing({
           onClose={() => setSheet(null)}
         />
       )}
-      {sheetShown === "gello" && (
-        <GelloSheet
-          key="gello"
-          open={sheet !== null}
-          sel={sel}
-          external={external}
-          onLaunched={onLaunched}
-          onClose={() => setSheet(null)}
-          infoPollMs={gelloInfoPollMs}
-          previewPollMs={gelloPreviewPollMs}
-        />
-      )}
-      {sheetShown !== null && sheetShown !== "dagger" && sheetShown !== "gello" && (
+      {sheetShown !== null && sheetShown !== "dagger" && (
         <LaunchSheet
           key={sheetShown}
           mode={sheetShown}

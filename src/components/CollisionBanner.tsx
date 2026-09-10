@@ -1,6 +1,6 @@
 /** Collision banner + clearance readout (05-ui §8.2).
  *
- * Clearance readout (16-gello §12.4, operator request 2026-09-09): the runtime sends
+ * Clearance readout (operator request 2026-09-09): the runtime sends
  * at most five pairs and the row COUNT never grew — what grew was row HEIGHT: pair
  * labels such as `grip_right_finger_pad_2 ↔ view_d435_mount` wrapped to two or three
  * lines in the 320 px side column and, with no height bound, pushed the episode
