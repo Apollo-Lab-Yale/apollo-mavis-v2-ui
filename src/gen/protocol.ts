@@ -37,19 +37,22 @@ export type Name1 =
   | "train_now"
   | "goto_profile";
 export type T1 = "action";
+export type CollisionSensitivity = number | null;
 export type DryRun = boolean;
-export type Op = "clear_errors" | "apply_backstops" | "recover" | "home_rail";
+export type Op =
+  "clear_errors" | "apply_backstops" | "recover" | "home_rail" | "set_collision_sensitivity";
 export type AgeS = number | null;
 export type ArmId = string;
 export type BackstopsMatch = boolean | null;
-export type CollisionSensitivity = number | null;
+export type CollisionSensitivity1 = number | null;
 export type Detail1 = string;
 export type ErrorCode = number;
 export type GripperOpenFrac = number | null;
 export type GripperRaw = number | null;
 export type Detail2 = string;
 export type JobId = string;
-export type Op1 = "clear_errors" | "apply_backstops" | "recover" | "home_rail";
+export type Op1 =
+  "clear_errors" | "apply_backstops" | "recover" | "home_rail" | "set_collision_sensitivity";
 export type Phase =
   | "queued"
   | "sweeping"
@@ -78,10 +81,12 @@ export type TcpLoadKg = number | null;
 export type TcpPose = number[];
 export type WarnCode = number;
 export type ArmId1 = string;
+export type CollisionSensitivity2 = number | null;
 export type Detail3 = string;
 export type JobId1 = string | null;
 export type Ok1 = boolean;
-export type Op2 = "clear_errors" | "apply_backstops" | "recover" | "home_rail";
+export type Op2 =
+  "clear_errors" | "apply_backstops" | "recover" | "home_rail" | "set_collision_sensitivity";
 export type Path = "monitor" | "session";
 export type Assumptions = string[];
 export type Clear = boolean;
@@ -200,6 +205,7 @@ export type Open = boolean;
 export type RecordedAt = string | null;
 export type SessionId = string | null;
 export type Task1 = string | null;
+export type ActionSpace = string | null;
 export type ArmId3 = string;
 export type GripperOpenFrac1 = number | null;
 export type Q1 = number[];
@@ -212,9 +218,11 @@ export type Frames1 = number;
 export type Playable = boolean;
 export type Reason = string;
 export type RepoId1 = string;
+export type Sources = string[];
 export type Action = "goto_initial" | "play" | "stop";
 export type EpisodeId2 = string;
 export type RepoId2 = string;
+export type Source1 = "state" | "delta_ee" | "abs_ee";
 export type ProfileId = string;
 export type Epoch = string;
 export type Role = "controller" | "observer";
@@ -241,7 +249,7 @@ export type Label2 = string;
 export type Live1 = boolean;
 export type MicId = string;
 export type SampleRate = number;
-export type Source1 = string | null;
+export type Source2 = string | null;
 export type Status2 = "no_backend" | "starting" | "absent" | "live" | "stalled" | "error";
 export type RolloutsDir = string;
 export type SessionDir = string;
@@ -257,7 +265,7 @@ export type Rollouts = number;
 export type SessionName2 = string;
 export type Task2 = string | null;
 export type ActionFrame = string;
-export type ActionSpace = "delta_ee" | "abs_ee" | "joint";
+export type ActionSpace1 = "delta_ee" | "abs_ee" | "joint";
 export type Path4 = string;
 export type PolicyId = string;
 export type PolicyVersion = number;
@@ -279,20 +287,21 @@ export type PolicyVersion1 = number;
 export type RateHz = number;
 export type ActionFrame1 = string;
 export type ActionNames = string[];
-export type ActionSpace1 = "delta_ee" | "abs_ee" | "joint";
+export type ActionSpace2 = "delta_ee" | "abs_ee" | "joint";
+export type Arms2 = string[];
 export type CameraKeys = string[];
 export type StateNames = string[];
 export type Version = number;
 export type SupportsReload = boolean;
 export type UptimeS = number;
-export type Arms2 = string[];
+export type Arms3 = string[];
 export type CreatedAt1 = string;
 export type IsInitialCondition = boolean;
 export type Name2 = string;
 export type Notes = string;
 export type ProfileId1 = string;
 export type WorkcellKind = ("hardware" | "sim") | null;
-export type Arms3 = string[];
+export type Arms4 = string[];
 export type Detail10 = string;
 export type Ok2 = boolean;
 export type ProfileId2 = string | null;
@@ -307,7 +316,7 @@ export type NumArms = number;
 export type RailFlags = boolean[];
 export type SceneId1 = string;
 export type ActionNames1 = string[];
-export type ActionSpace2 = string | null;
+export type ActionSpace3 = string | null;
 export type ArmIds1 = string[];
 export type CameraIds = string[];
 export type TEC = number[] | null;
@@ -337,7 +346,7 @@ export type GripperEpsFrac = number;
 export type PosEpsM = number;
 export type RailEpsM = number;
 export type RotEpsRad = number;
-export type Arms4 = string[];
+export type Arms5 = string[];
 export type Dataset = string | null;
 export type DatasetResume = boolean;
 export type DigitalTwinScene = string | null;
@@ -352,7 +361,7 @@ export type StartFrom = string;
 export type Task3 = string | null;
 export type State3 = string;
 export type StateNames1 = string[];
-export type Arms5 = string[];
+export type Arms6 = string[];
 export type Epoch2 = string;
 export type FaultDetail = string;
 export type Kind8 = "hardware" | "sim";
@@ -380,6 +389,7 @@ export type WorkcellKind1 = "hardware" | "sim";
 export type ArmId5 = string | null;
 export type ActiveArm = string | null;
 export type ArmId6 = string;
+export type CollisionSensitivity3 = number | null;
 export type Connected1 = boolean;
 /**
  * @minItems 4
@@ -400,7 +410,7 @@ export type RailPosM3 = number | null;
 export type Recovering = boolean;
 export type Stale = boolean;
 export type WarnCode1 = number;
-export type Arms7 = ArmTelemetry[];
+export type Arms8 = ArmTelemetry[];
 export type DistM = number;
 /**
  * @minItems 2
@@ -476,6 +486,7 @@ export type DroppedInputs = number;
 export type Enabled2 = boolean;
 export type IdleReader = "off" | "running" | "paused" | "stale";
 export type NodeId1 = string;
+export type PolicyArms = string[];
 export type PolicyAttached = boolean;
 export type PolicyId2 = string | null;
 export type PolicyRateHz = number | null;
@@ -484,7 +495,7 @@ export type ReattachCount1 = number;
 export type SpecAgeS = number | null;
 export type State8 = "disabled" | "unavailable" | "attached" | "detached" | "closed";
 export type VersionChangesMidEpisode = number;
-export type Arms8 = ArmMonitorTelemetry[];
+export type Arms9 = ArmMonitorTelemetry[];
 export type Enabled3 = boolean;
 export type ArmId7 = string;
 export type CameraId1 = string;
@@ -619,7 +630,7 @@ export type FilterMinCutoffHz1 = number | null;
 export type FollowRotation1 = boolean | null;
 export type PosScale1 = number | null;
 export type YawDeg1 = number | null;
-export type Arms9 = ArmStatusInfo[];
+export type Arms10 = ArmStatusInfo[];
 export type AvailableKinds = ("hardware" | "sim")[];
 export type Cameras3 = CameraInfo[];
 export type HardwareReady = boolean;
@@ -693,8 +704,14 @@ export interface Args {
 }
 /**
  * ``POST /api/hardware/arms/{arm_id}/maintenance`` body.
+ *
+ * ``collision_sensitivity`` (additive, 2026-09-11) is the level the
+ * ``set_collision_sensitivity`` op writes - REQUIRED for that op and 1, 2 or 3
+ * only (the operator's admissible range; 0 = off, 4 and 5 false-trigger under
+ * payload, so they are refused at the wire: 422). Every other op ignores it.
  */
 export interface ArmMaintenanceRequest {
+  collision_sensitivity?: CollisionSensitivity;
   dry_run?: DryRun;
   op: Op;
 }
@@ -718,11 +735,19 @@ export interface ArmMaintenanceRequest {
  * ``ArmMaintenanceResult`` with ``status: done`` and the same ``job_id``,
  * replaces it at ``GET .../maintenance/last``) or ``"refused"`` (nothing ran,
  * ``ok`` False, suggestion in ``detail``).
+ *
+ * 2026-09-11 (additive): ``collision_sensitivity`` is the level the
+ * ``set_collision_sensitivity`` op WROTE (1..3; ``None`` for every other op
+ * and for a refusal) - the session path has no monitor sample to carry the
+ * read-back, so the UI toasts this value; ``ok`` there means the SDK
+ * accepted the write, on the monitor path that the rich-frame read-back
+ * equals it.
  */
 export interface ArmMaintenanceResult {
   after?: ArmMonitorTelemetry | null;
   arm_id: ArmId1;
   before?: ArmMonitorTelemetry | null;
+  collision_sensitivity?: CollisionSensitivity2;
   detail?: Detail3;
   job_id?: JobId1;
   ok: Ok1;
@@ -739,9 +764,12 @@ export interface ArmMaintenanceResult {
  * Every field but ``arm_id`` defaults so an arm the monitor never reached
  * still validates. ``q`` is the controller's 7 joint angles in radians,
  * controller order - an IDENTITY mapping onto the twin's ``<arm>_joint1..7``
- * (verified 2026-09-04: no pi offset). ``tcp_pose`` is the controller flange
+ * (verified 2026-09-04: no pi offset). ``tcp_pose`` is the controller FLANGE
  * pose (``tcp_offset`` zero) in the arm base frame, ``[x, y, z]`` m followed
- * by ``[roll, pitch, yaw]`` rad (mm/deg converted by the hardware package).
+ * by ``[roll, pitch, yaw]`` rad (mm/deg converted by the hardware package); the
+ * RPY is the xArm extrinsic-XYZ convention (``Rz(yaw) . Ry(pitch) . Rx(roll)``).
+ * The twin's ``link_tcp`` = flange (+) (Rz(pi), +0.172 m along tool z) on a
+ * gripper arm - that is ``ArmState.ee_pose``, NOT this field.
  * ``rail_pos_m`` is filled only while the track reports homed (``on_zero ==
  * 1``) AND enabled - the raw register is meaningless otherwise - whereas
  * ``rail_raw_mm`` is always reported when the registers are readable.
@@ -755,7 +783,14 @@ export interface ArmMaintenanceResult {
  * safety parameters; ``backstops_match`` is the runtime's comparison against
  * the arm's ``ArmConfig`` (sensitivity equal, load within 0.05 kg, centre of
  * gravity within 10 mm; ``None`` = not compared) and ``maintenance_busy`` is
- * true while a maintenance op executes on this arm.
+ * true while a maintenance op executes on this arm. Since 2026-09-11 the
+ * sensitivity term of ``backstops_match`` compares against the level the
+ * operator last REQUESTED through the ``set_collision_sensitivity``
+ * maintenance op when one is set (the runtime remembers it per arm until the
+ * next driver connect re-applies the config value), so an intentional
+ * override does not read as a mismatch; ``collision_sensitivity`` itself
+ * stays the raw controller read-back - the UI's sensitivity control shows
+ * exactly this value, never an optimistic one.
  *
  * phase-09d (additive): ``maintenance`` is the live :class:`MaintenanceProgress`
  * of an asynchronous job (rail homing that first needs a planned
@@ -766,7 +801,7 @@ export interface ArmMonitorTelemetry {
   age_s?: AgeS;
   arm_id: ArmId;
   backstops_match?: BackstopsMatch;
-  collision_sensitivity?: CollisionSensitivity;
+  collision_sensitivity?: CollisionSensitivity1;
   detail?: Detail1;
   error_code?: ErrorCode;
   gripper_open_frac?: GripperOpenFrac;
@@ -1072,6 +1107,7 @@ export interface EpisodeInfo {
  * verbatim instead of letting the operator meet a 409.
  */
 export interface EpisodePlaybackInfo {
+  action_space?: ActionSpace;
   arms: Arms1;
   duration_s: DurationS2;
   episode_id: EpisodeId1;
@@ -1080,6 +1116,7 @@ export interface EpisodePlaybackInfo {
   playable: Playable;
   reason?: Reason;
   repo_id: RepoId1;
+  sources?: Sources;
 }
 /**
  * One arm's state at an episode's FIRST recorded frame (2026-09-10).
@@ -1102,11 +1139,19 @@ export interface EpisodePlaybackArm {
  * is the operator's rule — you cannot replay a trajectory from the wrong place.
  * ``play`` streams the recorded trajectory through the same twin-planned, gated
  * executor; ``stop`` cancels whatever is in flight.
+ *
+ * ``source`` (2026-09-11) picks WHAT is replayed on ``play``: ``state`` (the default) is
+ * the joint replay of ``observation.state``; ``delta_ee`` / ``abs_ee`` replay the
+ * recorded ``action`` / ``action.abs_ee`` column through the executor path the policy
+ * uses (``dagger/step.py``) inside the current session's control loop - refused with
+ * ``ok: false`` on hardware sessions until the operator admits it, and when the
+ * column is absent from the episode.
  */
 export interface EpisodePlaybackRequest {
   action: Action;
   episode_id: EpisodeId2;
   repo_id: RepoId2;
+  source?: Source1;
 }
 /**
  * Args for ``name == "goto_profile"`` (2026-09-08).
@@ -1175,7 +1220,7 @@ export interface MicrophoneInfo {
   live: Live1;
   mic_id: MicId;
   sample_rate: SampleRate;
-  source: Source1;
+  source: Source2;
   status: Status2;
 }
 /**
@@ -1232,7 +1277,7 @@ export interface OnlineDaggerSessionInfo {
  */
 export interface PolicyInfo {
   action_frame: ActionFrame;
-  action_space: ActionSpace;
+  action_space: ActionSpace1;
   path: Path4;
   policy_id: PolicyId;
   policy_version: PolicyVersion;
@@ -1268,17 +1313,22 @@ export interface PolicySpecAnnounce {
  */
 export interface PolicySpecModel {
   action_frame: ActionFrame1;
+  action_frames?: ActionFrames;
   action_names: ActionNames;
-  action_space: ActionSpace1;
+  action_space: ActionSpace2;
+  arms?: Arms2;
   camera_keys?: CameraKeys;
   state_names: StateNames;
   version?: Version;
+}
+export interface ActionFrames {
+  [k: string]: string;
 }
 /**
  * GET /api/profiles row (full posture via GET /api/profiles/{id}).
  */
 export interface ProfileInfo {
-  arms: Arms2;
+  arms: Arms3;
   created_at: CreatedAt1;
   is_initial_condition: IsInitialCondition;
   name: Name2;
@@ -1305,7 +1355,7 @@ export interface ProfileInfo {
  * episode is still recording, no session).
  */
 export interface ReturnHomeResult {
-  arms?: Arms3;
+  arms?: Arms4;
   detail?: Detail10;
   ok: Ok2;
   profile_id?: ProfileId2;
@@ -1344,7 +1394,7 @@ export interface SceneInfo {
  */
 export interface SessionAnnounce {
   action_names?: ActionNames1;
-  action_space?: ActionSpace2;
+  action_space?: ActionSpace3;
   arm_ids?: ArmIds1;
   camera_ids?: CameraIds;
   cameras?: Cameras2;
@@ -1391,7 +1441,7 @@ export interface HasRail1 {
  */
 export interface SessionSpec {
   action_filter?: ActionFilterConfig;
-  arms: Arms4;
+  arms: Arms5;
   dataset?: Dataset;
   dataset_resume?: DatasetResume;
   digital_twin_scene?: DigitalTwinScene;
@@ -1432,7 +1482,7 @@ export interface Frames3 {
  * POST/GET /api/session response.
  */
 export interface SessionInfo {
-  arms: Arms5;
+  arms: Arms6;
   epoch: Epoch2;
   fault_detail?: FaultDetail;
   kind?: Kind8;
@@ -1454,7 +1504,7 @@ export interface SetInitialConditionArgs {
  * Named workcell posture snapshot; at most one initial condition per kind.
  */
 export interface StateProfile {
-  arms: Arms6;
+  arms: Arms7;
   created_at?: CreatedAt2;
   is_initial_condition?: IsInitialCondition1;
   name: Name4;
@@ -1463,7 +1513,7 @@ export interface StateProfile {
   schema_version?: SchemaVersion;
   workcell_kind: WorkcellKind1;
 }
-export interface Arms6 {
+export interface Arms7 {
   [k: string]: ArmPosture;
 }
 /**
@@ -1496,7 +1546,7 @@ export interface SwitchArmArgs {
  */
 export interface TelemetryMsg {
   active_arm: ActiveArm;
-  arms: Arms7;
+  arms: Arms8;
   clearances: Clearances;
   collision: CollisionReport;
   controller_connected: ControllerConnected;
@@ -1519,6 +1569,7 @@ export interface TelemetryMsg {
  */
 export interface ArmTelemetry {
   arm_id: ArmId6;
+  collision_sensitivity?: CollisionSensitivity3;
   connected: Connected1;
   ee_pose: PoseMsg;
   error_code: ErrorCode2;
@@ -1704,6 +1755,7 @@ export interface ExternalStatus {
   enabled?: Enabled2;
   idle_reader?: IdleReader;
   node_id?: NodeId1;
+  policy_arms?: PolicyArms;
   policy_attached?: PolicyAttached;
   policy_id?: PolicyId2;
   policy_rate_hz?: PolicyRateHz;
@@ -1727,7 +1779,7 @@ export interface PublishHz {
  * instead of sharing a box between two SDK clients.
  */
 export interface HardwareMonitorTelemetry {
-  arms?: Arms8;
+  arms?: Arms9;
   enabled?: Enabled3;
   overlays?: Overlays;
   paused?: Paused;
@@ -2023,7 +2075,7 @@ export interface TrackerSettingsArgs {
  * GET /api/workcell response.
  */
 export interface WorkcellStatus {
-  arms: Arms9;
+  arms: Arms10;
   available_kinds: AvailableKinds;
   cameras: Cameras3;
   hardware_ready?: HardwareReady;

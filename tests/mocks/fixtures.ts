@@ -118,6 +118,7 @@ export function makeExternal(over: Partial<ExternalStatus> = {}): ExternalStatus
     policy_id: "act_pick_place",
     policy_version: 3,
     policy_rate_hz: 10,
+    policy_arms: [],
     spec_age_s: 0.2,
     action_age_s: 0.05,
     actions_late: 0,

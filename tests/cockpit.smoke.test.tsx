@@ -10,7 +10,9 @@
  * frozen-arm hint for the arm it did not include; (phase-14) a dagger session
  * whose telemetry carries `dagger.online_dagger` renders the Online DAgger title,
  * panel, banner and actor split, and Take over / Hand back / Train now ride the
- * control WS (Train now with its ack toast).
+ * control WS (Train now with its ack toast); (2026-09-11) a hardware session shows
+ * the collision-sensitivity panel under the ArmIndicator and a change posts the
+ * maintenance op; a sim session has no such panel.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WebSocket as MockWebSocket } from "mock-socket";
@@ -28,6 +30,7 @@ import {
   makeExternal,
   makeHardwareMonitor,
   makeHardwareSession,
+  makeMaintenanceResult,
   makeOnlineDagger,
   makeProfile,
   makeTelemetry,
@@ -48,19 +51,42 @@ describe("Cockpit integration smoke", () => {
   let returnHomeCalls = 0;
   // `GET /api/profiles`: what the Profiles panel's Go-to select lists. Reset per test.
   let profilesBody: unknown;
+  // `POST /api/hardware/arms/{arm}/maintenance` bodies (2026-09-11). Reset per test.
+  let maintenancePosts: { url: string; body: Record<string, unknown> }[];
 
   beforeEach(() => {
     returnHomeBody = { ok: true, status: "done", detail: "", arms: ["arm0"] };
     returnHomeCalls = 0;
     profilesBody = [];
+    maintenancePosts = [];
     vi.stubGlobal("WebSocket", MockWebSocket); // singleton clients use the default factory
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.includes("/api/session/return_home")) {
           returnHomeCalls++;
           return new Response(JSON.stringify(returnHomeBody), { status: 200 });
+        }
+        if (url.includes("/maintenance") && init?.method === "POST") {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+          maintenancePosts.push({ url, body });
+          const armId = /\/arms\/([^/]+)\//.exec(url)?.[1] ?? "";
+          return new Response(
+            JSON.stringify(
+              makeMaintenanceResult({
+                arm_id: armId,
+                op: "set_collision_sensitivity",
+                path: "session",
+                detail: `collision sensitivity set to ${body["collision_sensitivity"]}`,
+                sdk_codes: { set_collision_sensitivity: 0 },
+                before: null,
+                after: null,
+                collision_sensitivity: body["collision_sensitivity"] as number,
+              }),
+            ),
+            { status: 200 },
+          );
         }
         if (url.includes("/api/session")) {
           // Hello-resync fetch: serve whatever session the test seeded.
@@ -283,6 +309,83 @@ describe("Cockpit integration smoke", () => {
     fireEvent.click(screen.getByTestId("teleop-surface"));
     expect(screen.queryByTestId("capturing-chip")).toBeNull();
   }, 15000);
+  it("2026-09-11 hardware session: the collision-sensitivity panel sits under the ArmIndicator, shows the read-back and posts the maintenance op", async () => {
+    useStore.getState().setSession(makeHardwareSession());
+    const cams = HARDWARE_GRID_SLOTS.map((id) => new MockVideoServer(`${base}/ws/video/${id}`));
+    try {
+      mount();
+      await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+      act(() =>
+        telemetry.push(
+          makeTelemetry({
+            seq: 2,
+            hardware_monitor: makeHardwareMonitor({
+              paused: true,
+              arms: [
+                makeHardwareMonitor().arms![0]!,
+                { ...makeHardwareMonitor().arms![1]!, collision_sensitivity: 2 },
+              ],
+            }),
+          }),
+        ),
+      );
+      const panel = await screen.findByTestId("sensitivity-panel");
+      // Under the ArmIndicator, in the side panel.
+      const indicator = screen.getByTestId("arm-indicator");
+      expect(
+        indicator.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      const grip = screen.getByTestId("cockpit-sensitivity-grip") as HTMLSelectElement;
+      const view = screen.getByTestId("cockpit-sensitivity-view") as HTMLSelectElement;
+      expect(grip.value).toBe("3");
+      expect(view.value).toBe("2");
+      expect(screen.getByTestId("sensitivity-hint").textContent).toBe(
+        "as written to the controller; the config value 3 returns at the next connect",
+      );
+      fireEvent.change(grip, { target: { value: "2" } });
+      await waitFor(() => expect(maintenancePosts).toHaveLength(1));
+      expect(maintenancePosts[0]).toEqual({
+        url: "/api/hardware/arms/grip/maintenance",
+        body: { op: "set_collision_sensitivity", collision_sensitivity: 2 },
+      });
+      await waitFor(() =>
+        expect(
+          useStore
+            .getState()
+            .toasts.some((t) => t.text === "Manipulation Arm · collision sensitivity set to 2"),
+        ).toBe(true),
+      );
+      expect(grip.value).toBe("3"); // server-authoritative: the read-back has not changed
+      // The in-session ArmTelemetry field (runtime half, additive) is honoured when the
+      // monitor block carries no read-back for the arm.
+      act(() =>
+        telemetry.push(
+          makeTelemetry({
+            seq: 3,
+            arms: [
+              { ...makeArm({ arm_id: "grip" }), collision_sensitivity: 2 } as never,
+              makeArm({ arm_id: "view" }),
+            ],
+            hardware_monitor: makeHardwareMonitor({ paused: true, arms: [] }),
+          }),
+        ),
+      );
+      await waitFor(() => expect(grip.value).toBe("2"));
+      expect(view.value).toBe("");
+      expect(view).toBeDisabled();
+    } finally {
+      cams.forEach((c) => c.stop());
+    }
+  }, 15000);
+
+  it("2026-09-11 sim session: no collision-sensitivity panel", async () => {
+    mount();
+    await waitFor(() => expect(useStore.getState().conn.control).toBe("open"));
+    act(() => telemetry.push(makeTelemetry({ seq: 2 })));
+    await screen.findByTestId("arm-indicator");
+    expect(screen.queryByTestId("sensitivity-panel")).toBeNull();
+  }, 15000);
+
   it("phase-09c hardware session: bring-up rows until running, speed badge, frozen Perception Arm hint", async () => {
     // A phase-09c hardware teleop session at 10 %, here with the Manipulation Arm
     // alone to exercise the D1 frozen-arm hint (phase-09d sessions include every

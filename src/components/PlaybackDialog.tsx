@@ -19,6 +19,18 @@
  * Both are real motion on the real cell, so the dialog states the twin's blind spot
  * (03-sim §4.5: the room is not modelled) rather than leaving it to be remembered.
  *
+ * **Replay source (2026-09-11)** — a `<select>` (`playback-source`) above the buttons picks
+ * WHAT `play` replays, `EpisodePlaybackRequest.source`: `state` (the default; the joint
+ * replay of `observation.state` through the plan executor — what every runtime has),
+ * `delta_ee` (the recorded `action` column) or `abs_ee` (`action.abs_ee`), the last two
+ * driven through the executor path the policy uses, inside the session's control loop.
+ * An option is enabled only when `EpisodePlaybackInfo.sources` lists it — an older
+ * runtime sends no `sources` at all, which means "only `state`" — and the choice resets
+ * to `state` every time the dialog is (re)opened for an episode, like the unlock. Only
+ * `play` carries `source`; `goto_initial` and `stop` never do (the runtime defaults it).
+ * A refusal — hardware session, column absent — comes back as `ok: false` with the
+ * runtime's reason and is shown verbatim, as every other refusal here.
+ *
  * **The dialog OWNS a session when it needs one** (operator request 2026-09-10, the same
  * day: "Start a session first" was a dead end here, because starting one from the
  * launcher navigates to the Cockpit and away from the Datasets panel). So the first
@@ -41,7 +53,7 @@ import {
   getEpisodePlayback,
   postSessionPlayback,
 } from "../api/rest";
-import type { EpisodeInfo, EpisodePlaybackInfo, SessionSpec } from "../gen";
+import type { EpisodeInfo, EpisodePlaybackInfo, EpisodePlaybackRequest, SessionSpec } from "../gen";
 import { armLabel } from "../lib/streams";
 import { Sheet } from "./Sheet";
 
@@ -69,6 +81,64 @@ export const STARTING_SESSION = "Starting a session…";
 export const OWNS_SESSION =
   "This dialog started a session for the playback and ends it when you close — the arms " +
   "stop and brake where they stand, with no return motion.";
+
+/** What `play` replays — `EpisodePlaybackRequest.source` (2026-09-11). */
+export type PlaybackSource = NonNullable<EpisodePlaybackRequest["source"]>;
+
+/** The three replay sources in the order the `<select>` lists them. `label` is the option
+ * text; `phrase` is the plain-words description the playing sentence and the result line
+ * use ("replaying the …"). `state` is what every runtime supports and the default. */
+export const PLAYBACK_SOURCES: ReadonlyArray<{
+  value: PlaybackSource;
+  label: string;
+  phrase: string;
+}> = [
+  {
+    value: "state",
+    label: "Joint trajectory (observation.state)",
+    phrase: "replaying the recorded joint trajectory",
+  },
+  {
+    value: "delta_ee",
+    label: "Delta EE actions (action)",
+    phrase: "replaying the delta EE actions through the executor",
+  },
+  {
+    value: "abs_ee",
+    label: "Absolute EE actions (action.abs_ee)",
+    phrase: "replaying the absolute EE actions through the executor",
+  },
+];
+
+export const DEFAULT_SOURCE: PlaybackSource = "state";
+
+/** Plain-words description of a source, for the playing sentence and the result line. */
+export function sourcePhrase(source: PlaybackSource): string {
+  return PLAYBACK_SOURCES.find((s) => s.value === source)?.phrase ?? `replaying ${source}`;
+}
+
+/** The sentence shown under the buttons while a replay is in flight. */
+export function playingSentence(source: PlaybackSource): string {
+  const phrase = sourcePhrase(source);
+  return (
+    phrase.charAt(0).toUpperCase() +
+    phrase.slice(1) +
+    " — the arms follow it through the safety gate. Any operator input, or Stop, cancels it " +
+    "and the arms hold where they are."
+  );
+}
+
+/** The result line after a replay the runtime reports `ok: true` for. A refusal or a
+ * cancellation keeps the runtime's own `detail`, unprefixed. */
+export function playedSentence(source: PlaybackSource, detail: string): string {
+  const head = `Finished ${sourcePhrase(source)}.`;
+  return detail ? `${head} ${detail}` : head;
+}
+
+/** Sources an `EpisodePlaybackInfo` admits. An older runtime sends none: only `state`. */
+export function availableSources(info: EpisodePlaybackInfo | null): ReadonlySet<string> {
+  return new Set(info?.sources ?? [DEFAULT_SOURCE]);
+}
 
 export interface PlaybackDialogProps {
   repoId: string;
@@ -113,6 +183,13 @@ export function PlaybackDialog({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [outcome, setOutcome] = useState<{ ok: boolean; detail: string } | null>(null);
+  // What `play` replays. Reset to the default whenever the dialog is (re)opened for an
+  // episode, for the same reason the unlock does not survive a close: a fresh look at the
+  // dialog must not inherit a choice made for another moment.
+  const [source, setSource] = useState<PlaybackSource>(DEFAULT_SOURCE);
+  useEffect(() => {
+    if (open) setSource(DEFAULT_SOURCE);
+  }, [open, repoId, episode.episode_id]);
   // Did THIS dialog create the live session? Only then may it tear it down. A ref, not
   // state: the unmount cleanup has to read the current value, not a closed-over one.
   const owned = useRef(false);
@@ -205,11 +282,21 @@ export function PlaybackDialog({
             return null;
           }
           setPhase(action === "goto_initial" ? "returning" : "playing");
-          return runAction({ repo_id: repoId, episode_id: episode.episode_id, action });
+          // Only `play` names a source; the runtime defaults `goto_initial` / `stop`.
+          return runAction(
+            action === "play"
+              ? { repo_id: repoId, episode_id: episode.episode_id, action, source }
+              : { repo_id: repoId, episode_id: episode.episode_id, action },
+          );
         })
         .then((res) => {
           if (!live.current || res == null) return;
-          setOutcome({ ok: res.ok, detail: res.detail ?? "" });
+          const detail = res.detail ?? "";
+          // A finished replay says what was replayed; a refusal keeps the runtime's reason.
+          setOutcome({
+            ok: res.ok,
+            detail: action === "play" && res.ok ? playedSentence(source, detail) : detail,
+          });
           // Only an arrival unlocks Playback. A skipped motion counts: "already at the
           // initial state" IS being there.
           setPhase(action === "goto_initial" && res.ok ? "at-initial" : "idle");
@@ -224,7 +311,7 @@ export function PlaybackDialog({
           setPhase(action === "play" ? "at-initial" : "idle");
         });
     },
-    [ensureSession, runAction, repoId, episode.episode_id],
+    [ensureSession, runAction, repoId, episode.episode_id, source],
   );
 
   // `info.playable` is judged by the runtime against the session that exists WHEN the
@@ -237,6 +324,7 @@ export function PlaybackDialog({
       : null;
   const blockedReason = loadError ?? episodeReason ?? (spec === null ? specReason : null);
   const playReason = blockedReason ?? (phase === "at-initial" ? null : NEEDS_INITIAL);
+  const sources = availableSources(info);
 
   return (
     <Sheet
@@ -298,6 +386,28 @@ export function PlaybackDialog({
             {UNVERIFIED_NOTICE}
           </p>
         )}
+        <label className="field">
+          <span className="field-label">Replay source</span>
+          <select
+            value={source}
+            onChange={(e) => setSource(e.target.value as PlaybackSource)}
+            disabled={busy}
+            aria-label="Replay source"
+            data-testid="playback-source"
+          >
+            {PLAYBACK_SOURCES.map((opt) => (
+              <option
+                key={opt.value}
+                value={opt.value}
+                // `state` is what every runtime replays; the action columns only when the
+                // runtime lists them for this episode (absent list = an older runtime).
+                disabled={opt.value !== DEFAULT_SOURCE && !sources.has(opt.value)}
+              >
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="playback-actions">
           <button
             data-autofocus
@@ -328,8 +438,7 @@ export function PlaybackDialog({
         </div>
         {phase === "playing" && (
           <p className="text-caption fg-3" role="status" data-testid="playback-playing">
-            Replaying the recorded trajectory — the arms follow it through the safety gate. Any
-            operator input, or Stop, cancels it and the arms hold where they are.
+            {playingSentence(source)}
           </p>
         )}
         {playReason !== null && blockedReason === null && (

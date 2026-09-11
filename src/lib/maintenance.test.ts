@@ -21,6 +21,7 @@ import {
   formatMm,
   frozenHint,
   HOME_RAIL_NOTICE,
+  isSensitivityLevel,
   isTerminalPhase,
   isWarningDetail,
   MAINTENANCE_PHASES,
@@ -40,6 +41,8 @@ import {
   REASON_CLEAR_FIRST,
   REASON_HOMING_IN_PROGRESS,
   REASON_USE_COCKPIT,
+  SENSITIVITY_HINT,
+  SENSITIVITY_LEVELS,
   sessionGate,
   sessionGateReason,
   sweepSummary,
@@ -720,5 +723,177 @@ describe("maintenanceToast", () => {
       "Perception Arm · Failed to fetch",
     );
     expect(maintenanceErrorText("x", "boom")).toBe("x · boom");
+  });
+});
+
+// -- 2026-09-11: the operator's collision-sensitivity control -------------------------------
+describe("collision sensitivity (2026-09-11)", () => {
+  const arm = makeArmStatus({ arm_id: "grip", ip: "192.168.1.201", reachable: "open" });
+
+  it("levels: exactly 1 / 2 / 3 (0 = off, 4 / 5 false-trigger under payload)", () => {
+    expect(SENSITIVITY_LEVELS).toEqual([1, 2, 3]);
+    for (const ok of [1, 2, 3]) expect(isSensitivityLevel(ok)).toBe(true);
+    for (const bad of [0, 4, 5, -1, 2.5, null, undefined, "2", NaN]) {
+      expect(isSensitivityLevel(bad)).toBe(false);
+    }
+    expect(SENSITIVITY_HINT).toBe(
+      "as written to the controller; the config value 3 returns at the next connect",
+    );
+  });
+
+  it("view: sensitivity is the raw read-back; enabled iff selectable + monitor live + not locked + not busy", () => {
+    // The default row: read-back 3, running, no session -> the dropdown is live.
+    expect(maintenanceView(makeArmMonitor(), arm, false)).toMatchObject({
+      sensitivity: 3,
+      sensitivityEnabled: true,
+    });
+    // The read-back is shown whatever it is; only 1..3 is selectable.
+    expect(maintenanceView(makeArmMonitor({ collision_sensitivity: 5 }), arm, false)).toMatchObject(
+      { sensitivity: 5, sensitivityEnabled: false },
+    );
+    expect(maintenanceView(makeArmMonitor({ collision_sensitivity: 0 }), arm, false)).toMatchObject(
+      { sensitivity: 0, sensitivityEnabled: false },
+    );
+    expect(
+      maintenanceView(makeArmMonitor({ collision_sensitivity: null }), arm, false),
+    ).toMatchObject({ sensitivity: null, sensitivityEnabled: false });
+    expect(maintenanceView(null, arm, false)).toMatchObject({
+      sensitivity: null,
+      sensitivityEnabled: false,
+    });
+    // Monitor not live (paused / off / connecting / error): read-back kept, control off.
+    for (const status of ["paused", "off", "connecting", "error"] as const) {
+      expect(maintenanceView(makeArmMonitor({ status }), arm, false)).toMatchObject({
+        sensitivity: 3,
+        sensitivityEnabled: false,
+      });
+    }
+    expect(
+      maintenanceView(makeArmMonitor({ status: "stale" }), arm, false).sensitivityEnabled,
+    ).toBe(true);
+    // Same lock matrix as the buttons: a session, a homing elsewhere, an op on this arm.
+    expect(maintenanceView(makeArmMonitor(), arm, true)).toMatchObject({
+      sensitivityEnabled: false,
+      reason: REASON_USE_COCKPIT,
+    });
+    expect(maintenanceView(makeArmMonitor(), arm, false, true)).toMatchObject({
+      sensitivityEnabled: false,
+      reason: REASON_HOMING_IN_PROGRESS,
+    });
+    expect(maintenanceView(makeArmMonitor({ maintenance_busy: true }), arm, false)).toMatchObject({
+      sensitivityEnabled: false,
+      busy: true,
+    });
+    // Unlike Apply, a matching read-back does not disable it (the operator overrides
+    // the config on purpose); a mismatch does not enable it either.
+    expect(
+      maintenanceView(makeArmMonitor({ backstops_match: true }), arm, false).sensitivityEnabled,
+    ).toBe(true);
+    expect(
+      maintenanceView(
+        makeArmMonitor({ collision_sensitivity: 2, backstops_match: false }),
+        arm,
+        false,
+      ),
+    ).toMatchObject({ sensitivity: 2, sensitivityEnabled: true, applyEnabled: true });
+  });
+
+  it("toast: 'collision sensitivity set to N' from the result level, else the after read-back, else the detail; refusals use the detail", () => {
+    // Session path: no samples, the result carries the level written.
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "set_collision_sensitivity",
+          path: "session",
+          detail: "collision sensitivity set to 2",
+          sdk_codes: { set_collision_sensitivity: 0 },
+          before: null,
+          after: null,
+          collision_sensitivity: 2,
+        }),
+      ),
+    ).toEqual({ text: "Manipulation Arm · collision sensitivity set to 2", tone: "success" });
+    // Monitor path: the field wins over the after read-back and the detail.
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "view",
+          op: "set_collision_sensitivity",
+          detail:
+            "collision sensitivity set to 1 (was 3; the config value 3 is re-applied at the next connect)",
+          sdk_codes: { set_collision_sensitivity: 0 },
+          after: makeArmMonitor({ arm_id: "view", collision_sensitivity: 1 }),
+          collision_sensitivity: 1,
+        }),
+      ),
+    ).toEqual({ text: "Perception Arm · collision sensitivity set to 1", tone: "success" });
+    // An older result without the field: the after read-back, then the detail.
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "set_collision_sensitivity",
+          detail: "",
+          after: makeArmMonitor({ collision_sensitivity: 2 }),
+        }),
+      ).text,
+    ).toBe("Manipulation Arm · collision sensitivity set to 2");
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "set_collision_sensitivity",
+          detail:
+            "collision sensitivity set to 3 (was 2; the config value 3 is re-applied at the next connect)",
+          before: null,
+          after: null,
+        }),
+      ).text,
+    ).toBe("Manipulation Arm · collision sensitivity set to 3");
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "set_collision_sensitivity",
+          detail: "",
+          before: null,
+          after: null,
+        }),
+      ).text,
+    ).toBe("Manipulation Arm · collision sensitivity set");
+    // A status echo the driver reported as a warning: amber, appended.
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "set_collision_sensitivity",
+          path: "session",
+          before: null,
+          after: null,
+          collision_sensitivity: 2,
+          warnings: ["set_collision_sensitivity returned 1 (status echo)"],
+        }),
+      ),
+    ).toEqual({
+      text: "Manipulation Arm · collision sensitivity set to 2 — set_collision_sensitivity returned 1 (status echo)",
+      tone: "warning",
+    });
+    // Refusals: the runtime's detail, error tone (the generic ok:false path).
+    expect(
+      maintenanceToast(
+        makeMaintenanceResult({
+          arm_id: "grip",
+          op: "set_collision_sensitivity",
+          ok: false,
+          detail: "collision sensitivity still reads 3 after writing 2",
+          before: null,
+          after: null,
+        }),
+      ),
+    ).toEqual({
+      text: "Manipulation Arm · collision sensitivity still reads 3 after writing 2",
+      tone: "error",
+    });
   });
 });

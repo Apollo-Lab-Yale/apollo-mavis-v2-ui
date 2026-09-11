@@ -1,9 +1,10 @@
 /** Pure launch logic shared by the Welcome page, the LaunchSheet and the
  * OnlineDaggerSheet (05-ui §8.1, phase-11 §4; phase-09c hardware gating; phase-09d:
  * every hardware arm joins the session; phase-14 Online DAgger, 15-online-dagger §5 /
- * §8): the selection → blocking reason matrix, the SessionSpec serializer, the
- * Hardware-tab speed default and the Online DAgger form defaults. No React, no I/O —
- * unit-tested in Landing.test.tsx and launch.test.ts. */
+ * §8; 2026-09-11: Inference from the attached external policy node): the selection →
+ * blocking reason matrix, the SessionSpec serializer, the Hardware-tab speed default
+ * and the Online DAgger form defaults. No React, no I/O — unit-tested in
+ * Landing.test.tsx and launch.test.ts. */
 import onlineDaggerSchema from "../../schemas/OnlineDaggerConfig.json";
 import sessionSpecSchema from "../../schemas/SessionSpec.json";
 import type {
@@ -129,6 +130,11 @@ export interface LandingSelection {
   profileId: string | null;
   task: string;
   policyId: string | null;
+  /** Inference only (2026-09-11): where the policy comes from — a promoted
+   * `checkpoint` of the runtime's registry (the default; `policyId` names it) or the
+   * `external` policy node attached over the dora bus (`policy_source: "external"`,
+   * no `policy`). Undefined = "checkpoint". */
+  policySource?: "checkpoint" | "external";
   keymapOk: boolean;
   policiesAvailable: boolean;
   /** `WorkcellStatus.hardware_ready`: every configured hardware arm answers on :502. */
@@ -173,6 +179,11 @@ export interface LandingSelection {
    * `enabled && state === "attached" && policy_attached`). Undefined = unknown
    * (not judged); false = `REASON.noTrainer`. */
   trainerAttached?: boolean;
+  /** The same attachment, judged policy-neutrally (`externalPolicyAttached`,
+   * `components/externalPolicy.tsx`) for an Inference launch with
+   * `policySource: "external"` (2026-09-11): undefined = not judged; false =
+   * `REASON.noExternalPolicy`. `validateLaunch` reads either flag. */
+  externalAttached?: boolean;
   /** The attached node reports the `online_dagger` capability
    * (`telemetry.external.capabilities`, the fresh spec's list — session-less since
    * phase-14). `null` / undefined = the runtime predates the field (not judged — it
@@ -270,6 +281,9 @@ export const REASON = {
   noTask: "Task is required",
   noPolicies: "No policies available",
   noPromoted: "No promoted checkpoint",
+  // Inference from the external policy node (2026-09-11)
+  noExternalPolicy:
+    "Attach an external policy node first (dora bridge attached with a fresh policy spec)",
   // Data Collection (2026-09-07; 05-ui §8.1 item 6)
   datasetName: "Dataset name is required",
   datasetPick: "Pick a dataset to continue, or start a new one",
@@ -384,15 +398,33 @@ export function validateLaunch(mode: Mode, sel: LandingSelection): string | null
   }
   // Online DAgger (phase-14) runs the EXTERNAL policy node: checkpoints in the
   // runtime's registry (`policies_available`) do not gate it any more (D1).
-  if (mode === "inference" && (!sel.policiesAvailable || !sel.policyId)) return REASON.noPromoted;
+  if (mode === "inference") {
+    if (sel.policySource === "external") {
+      // 2026-09-11: the attached policy node drives — the registry gates nothing;
+      // the attachment does (either flag; undefined = not judged, the runtime 409s
+      // "no external policy attached" on its own).
+      if (externalAttachedOf(sel) === false) return REASON.noExternalPolicy;
+    } else if (!sel.policiesAvailable || !sel.policyId) return REASON.noPromoted;
+  }
   return null;
 }
 
+/** The attachment flag an Inference / Online DAgger selection carries:
+ * `externalAttached` (policy-neutral) or the older `trainerAttached`; undefined when
+ * neither was judged. */
+export const externalAttachedOf = (sel: LandingSelection): boolean | undefined =>
+  sel.externalAttached ?? sel.trainerAttached;
+
 /** Card-level gate for the ModeLauncher: what the sheets collect later (task,
  * policy, the Online DAgger form, the trainer attachment) is assumed satisfiable —
- * Inference only when a promoted checkpoint exists (the sheet lists promoted
- * checkpoints only). Online DAgger on the Sim tab always reads "Set up and start"
- * (15-online-dagger §8); the Hardware tab keeps its teleop / collect-only refusal (D7). */
+ * Inference when a promoted checkpoint exists (the sheet lists promoted checkpoints)
+ * OR, since 2026-09-11, when an external policy node is attached (`sel.externalAttached`
+ * / `trainerAttached` from `telemetry.external`; the sheet's "External policy (dora)"
+ * row): the probe picks the source the sheet would default to — checkpoint when one is
+ * promoted, else external — so a promoted checkpoint keeps its `No promoted checkpoint`
+ * reason only while no node is attached. Online DAgger on the Sim tab always reads
+ * "Set up and start" (15-online-dagger §8); the Hardware tab keeps its teleop /
+ * collect-only refusal (D7) for both. */
 export function launcherReason(
   mode: Mode,
   sel: LandingSelection,
@@ -403,6 +435,9 @@ export function launcherReason(
     task: mode === "collect" || mode === "dagger" ? sel.task || "pending" : sel.task,
     policyId:
       mode === "inference" ? (promoted[promoted.length - 1]?.policy_id ?? null) : sel.policyId,
+    ...(mode === "inference"
+      ? { policySource: promoted.length ? ("checkpoint" as const) : ("external" as const) }
+      : {}),
     // the sheet collects the dataset and can untick return-to-start: assume satisfiable
     ...(mode === "collect"
       ? {
@@ -413,7 +448,12 @@ export function launcherReason(
       : {}),
     // the OnlineDaggerSheet collects the form and shows the trainer state itself
     ...(mode === "dagger"
-      ? { onlineDagger: undefined, trainerAttached: undefined, trainerCapability: undefined }
+      ? {
+          onlineDagger: undefined,
+          trainerAttached: undefined,
+          externalAttached: undefined,
+          trainerCapability: undefined,
+        }
       : {}),
   };
   return validateLaunch(mode, probe);
@@ -460,7 +500,16 @@ export function buildSpec(mode: Mode, sel: LandingSelection): SessionSpec {
           return_to_start: sel.returnToStart ?? true,
         }
       : {}),
-    ...(mode === "inference" && sel.policyId ? { policy: sel.policyId } : {}),
+    // Inference (2026-09-11): the attached policy node (`policy_source: "external"`,
+    // NO `policy`) or a promoted checkpoint (`policy: <id>`, no `policy_source`) —
+    // never both.
+    ...(mode === "inference"
+      ? sel.policySource === "external"
+        ? { policy_source: "external" as const }
+        : sel.policyId
+          ? { policy: sel.policyId }
+          : {}
+      : {}),
   };
 }
 

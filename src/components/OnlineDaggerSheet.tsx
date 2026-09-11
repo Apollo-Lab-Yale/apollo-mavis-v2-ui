@@ -73,7 +73,7 @@ import { currentRuntimeOrigin, type RuntimeOrigin } from "../lib/runtimeOrigin";
 import { armLabel, MODE_LABELS } from "../lib/streams";
 import type { FrameRef } from "../lib/types";
 import { CopyButton } from "./CopyButton";
-import { externalPolicyChip, ExternalPolicyChip } from "./externalPolicy";
+import { externalPolicyAttached, ExternalPolicyStatus } from "./externalPolicy";
 import { Icon } from "./icons";
 import { FrameSelector } from "./landing";
 import { launchContext } from "./LaunchSheet";
@@ -142,12 +142,10 @@ const VIEW_OPTIONS = [
 export const skillInstallCommand = (origin: string): string =>
   `curl -s ${origin}${ONLINE_DAGGER_SKILL_TGZ_PATH} | tar xz -C ~/.claude/skills/`;
 
-/** An external policy node is attached and its spec heartbeat is fresh. */
-export const trainerAttached = (external: ExternalStatus | null | undefined): boolean =>
-  !!external &&
-  external.enabled === true &&
-  external.state === "attached" &&
-  external.policy_attached === true;
+/** An external policy node is attached and its spec heartbeat is fresh — the shared
+ * `externalPolicyAttached` (`components/externalPolicy.tsx`, since 2026-09-11 the
+ * Inference sheet judges the same thing), kept under its trainer name here. */
+export const trainerAttached = externalPolicyAttached;
 
 /** The attached node's `online_dagger` capability: `true` while an Online DAgger
  * session's trainer status is flowing, else from `telemetry.external.capabilities`
@@ -423,7 +421,6 @@ export function OnlineDaggerSheet({
   const origin = runtime ?? currentRuntimeOrigin();
   const oneLiner = skillInstallCommand(origin.origin);
   const pill = trainerPill(external, onlineDaggerStatus);
-  const extChip = externalPolicyChip(external, false);
   const doraInfo = dora !== null && dora !== "error" ? dora : null;
   const facts: { key: string; label: string; value: string | null }[] = [
     { key: "bind_host", label: "Bind host", value: doraInfo?.bind_host ?? null },
@@ -545,42 +542,26 @@ export function OnlineDaggerSheet({
         hidden={view !== "connect"}
         data-testid="od-view-connect"
       >
-        <div className="card od-status" data-testid="od-status">
-          <div className="od-status-row">
-            {extChip ? (
-              <ExternalPolicyChip external={external} policyStale={false} />
+        <ExternalPolicyStatus
+          external={external}
+          testId="od-status"
+          detailTestId="od-external-detail"
+        >
+          <span
+            className={PILL_CLASS[pill.tone]}
+            data-testid="od-trainer-pill"
+            data-tone={pill.tone}
+          >
+            {pill.tone === "ok" ? (
+              <Icon name="check" size={12} />
+            ) : pill.tone === "warn" ? (
+              <Icon name="warning" size={12} />
             ) : (
-              <span className="chip chip-grey" data-testid="external-policy-chip-none">
-                EXTERNAL POLICY none
-              </span>
+              <Icon name="info" size={12} />
             )}
-            <span
-              className={PILL_CLASS[pill.tone]}
-              data-testid="od-trainer-pill"
-              data-tone={pill.tone}
-            >
-              {pill.tone === "ok" ? (
-                <Icon name="check" size={12} />
-              ) : pill.tone === "warn" ? (
-                <Icon name="warning" size={12} />
-              ) : (
-                <Icon name="info" size={12} />
-              )}
-              {pill.label}
-            </span>
-          </div>
-          {!extChip && (
-            <span className="text-caption fg-3" data-testid="od-external-detail">
-              {!external
-                ? "The runtime reports no Dora bridge (telemetry.external absent)."
-                : external.enabled !== true
-                  ? "Dora bridge disabled in this runtime config (dora.enabled: false) — the lab render turns it on."
-                  : external.state !== "attached"
-                    ? `Dataflow ${external.state ?? "unknown"}${external.detail ? ` — ${external.detail}` : ""}.`
-                    : "Dataflow attached, but no policy spec heartbeat yet — start the policy node."}
-            </span>
-          )}
-        </div>
+            {pill.label}
+          </span>
+        </ExternalPolicyStatus>
 
         <div className="od-facts" data-testid="od-facts">
           <span className="text-label fg-3">Connection facts</span>

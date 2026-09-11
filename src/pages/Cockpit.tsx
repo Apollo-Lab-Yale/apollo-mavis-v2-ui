@@ -9,7 +9,10 @@
  * "Online DAgger · <session_name>", `OnlineDaggerPanel` replaces `DaggerPanel`
  * (it owns the session's actor split), the trainer banner joins the main column
  * and `EpisodeControls` takes only the new-episode reason from the phase; a legacy
- * dagger session (no block) keeps the old panel. */
+ * dagger session (no block) keeps the old panel. 2026-09-11: a hardware session
+ * gets the `SensitivityPanel` under the `ArmIndicator` — the operator's
+ * collision-sensitivity control on the SESSION path (the runtime routes the same
+ * maintenance op to the session driver). */
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
@@ -50,6 +53,7 @@ import {
 } from "../components/OnlineDaggerPanel";
 import { ProfileActions } from "../components/ProfileActions";
 import { ProximityFrame } from "../components/proximity";
+import { SensitivityPanel } from "../components/SensitivityPanel";
 import { SHEET_EXIT_MS } from "../components/Sheet";
 import { StreamGrid } from "../components/StreamGrid";
 import { TeleopSurface } from "../components/TeleopSurface";
@@ -342,6 +346,16 @@ export function Cockpit({ mode }: { mode: Mode }) {
             // was clicked whatever the session's arm order is. Re-selecting the
             // active arm is a no-op server-side (it must not drop a live clutch).
             onSelect={(arm_id) => control.sendAction("switch_arm", { arm_id })}
+          />
+        )}
+        {/* 2026-09-11: collision sensitivity on the session path — hardware sessions
+            only (a sim arm has no controller); disabled for observers / with the
+            control link down like every other control here. */}
+        {telemetry && hardwareSession && (
+          <SensitivityPanel
+            arms={telemetry.arms}
+            monitor={telemetry.hardware_monitor}
+            disabled={controlDown || role === "observer"}
           />
         )}
         {frozenArms.length > 0 && (

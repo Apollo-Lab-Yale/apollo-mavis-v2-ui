@@ -134,7 +134,7 @@ export const MODE_DESCRIPTIONS: Readonly<Record<Mode, string>> = {
   teleop: "Drive both arms live",
   collect: "Record episodes for a task",
   dagger: "Novice drives, you correct — your trainer learns between rollouts",
-  inference: "Run a promoted checkpoint",
+  inference: "Run a promoted checkpoint or an attached policy node",
 };
 
 /** `document.title` for a page: "APOLLO MAVIS V2" or "APOLLO MAVIS V2 · Teleop". */

@@ -9,8 +9,12 @@
  * kind and `layout: episode_dirs`) plus the shared **Return to start after save /
  * discard** row (checked by default — operator decision; Start is disabled with
  * the reason while neither a start profile nor an initial condition exists) and
- * idle-frame filter fieldset (`recordingFields.tsx`), Policy (Inference: promoted
- * checkpoints only) and, under "Advanced", the per-arm recording frame. The
+ * idle-frame filter fieldset (`recordingFields.tsx`), **Policy** (Inference: the
+ * promoted checkpoints plus, since 2026-09-11, one **External policy (dora)** row for
+ * the policy node attached over the dora bus — `policy_source: "external"`, no
+ * `policy`; pre-selected when nothing is promoted, its help text is the attached
+ * spec's id / version / rate / driven arms and the shared `ExternalPolicyStatus` card
+ * sits under it) and, under "Advanced", the per-arm recording frame. The
  * primary button reads "Start <mode>"; when disabled its reason sits underneath. A
  * rejected POST (409 "a session already exists", "no promoted deploy checkpoint",
  * "tracker calibration in progress", …) shows its detail inside the sheet, which
@@ -20,7 +24,14 @@
  * `OnlineDaggerSheet` instead (15-online-dagger D1). */
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { ApiError, createSession } from "../api/rest";
-import type { CameraInfo, DatasetInfo, DatasetLayoutInfo, PolicyInfo, SessionInfo } from "../gen";
+import type {
+  CameraInfo,
+  DatasetInfo,
+  DatasetLayoutInfo,
+  ExternalStatus,
+  PolicyInfo,
+  SessionInfo,
+} from "../gen";
 import {
   buildSpec,
   datasetFolderPreview,
@@ -33,6 +44,11 @@ import {
 } from "../lib/launch";
 import { armLabel, MODE_LABELS, SCENE_DISPLAY_NAME, TAB_LABELS } from "../lib/streams";
 import type { FrameRef, Mode } from "../lib/types";
+import {
+  externalPolicyAttached,
+  externalPolicySummary,
+  ExternalPolicyStatus,
+} from "./externalPolicy";
 import { Icon } from "./icons";
 import { FrameSelector } from "./landing";
 import { ActionFilterFieldset, ReturnToStartRow } from "./recordingFields";
@@ -57,11 +73,22 @@ export interface LaunchSheetProps {
   /** `GET /api/datasets/layout` (15-online-dagger §7): the real dataset folders for the
    * preview; null while loading / on an older runtime (falls back to `<ns>/<slug>`). */
   layout?: DatasetLayoutInfo | null;
+  /** `telemetry.external` (Inference, 2026-09-11): the "External policy (dora)" row's
+   * help text + status card, and the attachment `validateLaunch` judges for it. */
+  external?: ExternalStatus | null;
   onLaunched(info: SessionInfo): void;
   onClose(): void;
   /** Default true; `false` runs the Sheet exit while the owner keeps it mounted. */
   open?: boolean;
 }
+
+/** The "External policy (dora)" row's help text: the attached spec's summary
+ * (`act_pick_place v3 · 10 Hz · drives: Manipulation Arm`) or, without one, what
+ * the row means. */
+export const EXTERNAL_POLICY_HELP_NONE =
+  "Policy node attached over the dora bus — none attached yet";
+export const externalPolicyHelp = (external: ExternalStatus | null | undefined): string =>
+  externalPolicySummary(external) || EXTERNAL_POLICY_HELP_NONE;
 
 /** "Sim · APOLLO MAVIS V2 Digital Twin · Keep current state" */
 export function launchContext(sel: LandingSelection, profileName?: string | null): string {
@@ -116,6 +143,7 @@ export function LaunchSheet({
   datasets = [],
   hasInitialCondition = false,
   layout = null,
+  external = null,
   onLaunched,
   onClose,
   open = true,
@@ -138,10 +166,15 @@ export function LaunchSheet({
   const [taskAuto, setTaskAuto] = useState(true);
   const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
   // DAgger defaults to "Latest" (null → no `policy` in the spec); Inference to
-  // the most recently promoted checkpoint.
+  // the most recently promoted checkpoint — or, with none promoted, to the external
+  // policy node (2026-09-11; the checkpoint rows re-select "checkpoint").
   const [policyId, setPolicyId] = useState<string | null>(() =>
     mode === "inference" ? (promoted[promoted.length - 1]?.policy_id ?? null) : null,
   );
+  const [policySource, setPolicySource] = useState<"checkpoint" | "external">(() =>
+    mode === "inference" && promoted.length === 0 ? "external" : "checkpoint",
+  );
+  const externalSelected = mode === "inference" && policySource === "external";
   const [frames, setFrames] = useState<Record<string, FrameRef>>(sel.frames);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,6 +214,9 @@ export function LaunchSheet({
     task,
     policyId,
     frames,
+    ...(mode === "inference"
+      ? { policySource, externalAttached: externalPolicyAttached(external) }
+      : {}),
     ...(mode === "collect"
       ? { datasetMode, datasetName, datasetRepoId, returnToStart, hasInitialCondition }
       : {}),
@@ -426,16 +462,31 @@ export function LaunchSheet({
                 key={p.policy_id}
                 label={p.policy_id}
                 help={`v${p.policy_version} · ${p.action_space} · ${p.action_frame}`}
-                checked={policyId === p.policy_id}
+                checked={!externalSelected && policyId === p.policy_id}
                 promoted={p.promoted}
                 testId={`policy-${p.policy_id}`}
-                onSelect={() => setPolicyId(p.policy_id)}
+                onSelect={() => {
+                  setPolicyId(p.policy_id);
+                  setPolicySource("checkpoint");
+                }}
               />
             ))}
-            {options.length === 0 && (
+            {options.length === 0 && !externalSelected && (
               <span className="text-callout fg-3" data-testid="policy-empty">
                 {mode === "inference" ? "No promoted checkpoint" : "No checkpoints yet"}
               </span>
+            )}
+            {mode === "inference" && (
+              <>
+                <PolicyRow
+                  label="External policy (dora)"
+                  help={externalPolicyHelp(external)}
+                  checked={externalSelected}
+                  testId="policy-external"
+                  onSelect={() => setPolicySource("external")}
+                />
+                {externalSelected && <ExternalPolicyStatus external={external} />}
+              </>
             )}
           </fieldset>
         )}

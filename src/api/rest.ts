@@ -196,17 +196,28 @@ export const postTrackerCalibration = (
 // current state (session owns the boxes while an `apply_backstops` /
 // `home_rail` arrives, monitor off / paused, `recover` without a session, rail
 // homing in progress, …) — the `detail` surfaces through ApiError for the toast.
+// `set_collision_sensitivity` (2026-09-11, operator decision): the level rides the
+// body as `collision_sensitivity` (1 | 2 | 3 — 422 for anything else, the schema
+// bounds it); it is the one op that works on BOTH paths — session-less on the
+// monitor (Hardware-tab arm card) and inside a hardware session on the session
+// driver (the Cockpit's sensitivity control) — writes exactly one SDK call, moves
+// nothing, and is volatile (the config value 3 returns at the next connect). The
+// UI never shows the chosen level optimistically: the dropdown re-reads the
+// controller's read-back from telemetry.
 export interface MaintenanceOptions {
   /** `home_rail` only: sweep verdict without motion. Sent as `dry_run` when given. */
   dryRun?: boolean;
   /** Client deadline; a timeout surfaces as `ApiError{status: 0}`. */
   timeoutMs?: number;
+  /** `set_collision_sensitivity` only: the level to write. Sent as
+   * `collision_sensitivity` when given (the runtime refuses the op without it). */
+  collisionSensitivity?: 1 | 2 | 3;
 }
 
 export const postArmMaintenance = (
   armId: string,
   op: ArmMaintenanceRequest["op"],
-  { dryRun, timeoutMs }: MaintenanceOptions = {},
+  { dryRun, timeoutMs, collisionSensitivity }: MaintenanceOptions = {},
 ): Promise<ArmMaintenanceResult> =>
   request(
     `/api/hardware/arms/${encodeURIComponent(armId)}/maintenance`,
@@ -215,6 +226,7 @@ export const postArmMaintenance = (
       body: JSON.stringify({
         op,
         ...(dryRun != null ? { dry_run: dryRun } : {}),
+        ...(collisionSensitivity != null ? { collision_sensitivity: collisionSensitivity } : {}),
       } satisfies ArmMaintenanceRequest),
     },
     timeoutMs,
@@ -271,7 +283,16 @@ export const getEpisodePlayback = (
 /** `POST /api/session/playback` (2026-09-10). Like `returnHome`, an operational refusal
  * is a 200 with `ok: false` and a `detail` the dialog shows — a thrown `ApiError` really
  * is a transport / runtime failure. `goto_initial` resolves only once the arms are at the
- * episode's first frame, which is what gates the Playback button. */
+ * episode's first frame, which is what gates the Playback button.
+ *
+ * `source` (2026-09-11) picks what `play` replays: `state` (the default when omitted — the
+ * joint replay of `observation.state` through the plan executor), `delta_ee` (the recorded
+ * `action` column) or `abs_ee` (`action.abs_ee`), the last two driven through the
+ * executor path the policy uses inside the current teleop / collect session's control
+ * loop. Only send a source the episode's `EpisodePlaybackInfo.sources` lists; an action
+ * replay is admitted in sim only and the runtime answers `ok: false` (hardware session,
+ * dagger / inference session, column absent — the reason names the backfill tool) rather
+ * than a 4xx. `goto_initial` and `stop` ignore `source`. */
 export const postSessionPlayback = (body: EpisodePlaybackRequest): Promise<ReturnHomeResult> =>
   request("/api/session/playback", { method: "POST", body: JSON.stringify(body) });
 

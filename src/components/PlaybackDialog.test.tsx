@@ -10,7 +10,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/rest";
 import type { EpisodeInfo, EpisodePlaybackInfo, ReturnHomeResult } from "../gen";
-import { NEEDS_INITIAL, PLAY_NOT_READY, PlaybackDialog, UNVERIFIED_NOTICE } from "./PlaybackDialog";
+import {
+  NEEDS_INITIAL,
+  PLAY_NOT_READY,
+  PlaybackDialog,
+  UNVERIFIED_NOTICE,
+  playedSentence,
+  playingSentence,
+} from "./PlaybackDialog";
 
 const EPISODE: EpisodeInfo = {
   episode_id: "20260909T091000.433Z-d66aaf",
@@ -31,6 +38,8 @@ const INFO: EpisodePlaybackInfo = {
   ],
   playable: true,
   reason: "",
+  sources: ["state", "delta_ee", "abs_ee"],
+  action_space: "delta_ee",
 };
 
 const ARRIVED: ReturnHomeResult = { ok: true, status: "done", detail: "" };
@@ -45,6 +54,8 @@ const SPEC = {
 
 function setup(
   overrides: {
+    /** Replaces INFO wholesale (a plain merge cannot DELETE `sources`). */
+    infoExact?: EpisodePlaybackInfo;
     info?: Partial<EpisodePlaybackInfo> | Error;
     action?: (body: { action: string }) => Promise<ReturnHomeResult>;
     sessionActive?: boolean;
@@ -57,18 +68,18 @@ function setup(
   const fetchInfo = vi.fn(() =>
     overrides.info instanceof Error
       ? Promise.reject(overrides.info)
-      : Promise.resolve({ ...INFO, ...(overrides.info ?? {}) }),
+      : Promise.resolve(overrides.infoExact ?? { ...INFO, ...(overrides.info ?? {}) }),
   );
   const runAction = vi.fn(overrides.action ?? (() => Promise.resolve(ARRIVED)));
   const onRequestClose = vi.fn();
   const onSessionEnded = vi.fn();
   const startSession = vi.fn(overrides.start ?? (() => Promise.resolve({}) as never));
   const stopSession = vi.fn(overrides.stop ?? (() => Promise.resolve()));
-  render(
+  const tree = (open: boolean) => (
     <PlaybackDialog
       repoId="bc_demo/drawer_assembling"
       episode={EPISODE}
-      open
+      open={open}
       sessionActive={overrides.sessionActive ?? true}
       spec={overrides.spec === undefined ? SPEC : overrides.spec}
       specReason={overrides.specReason ?? null}
@@ -78,13 +89,39 @@ function setup(
       runAction={runAction as never}
       startSession={startSession as never}
       stopSession={stopSession as never}
-    />,
+    />
   );
-  return { fetchInfo, runAction, onRequestClose, startSession, stopSession, onSessionEnded };
+  const { rerender } = render(tree(true));
+  return {
+    fetchInfo,
+    runAction,
+    onRequestClose,
+    startSession,
+    stopSession,
+    onSessionEnded,
+    /** Toggle the `open` prop without unmounting, as the owner does through the Sheet. */
+    setOpen: (open: boolean) => rerender(tree(open)),
+  };
 }
 
 const goto = () => screen.getByTestId("playback-goto-initial");
 const play = () => screen.getByTestId("playback-play");
+const sourceSelect = () => screen.getByTestId("playback-source") as HTMLSelectElement;
+const option = (value: string) =>
+  screen.getByRole("option", { name: SOURCE_LABELS[value] }) as HTMLOptionElement;
+
+const SOURCE_LABELS: Record<string, string> = {
+  state: "Joint trajectory (observation.state)",
+  delta_ee: "Delta EE actions (action)",
+  abs_ee: "Absolute EE actions (action.abs_ee)",
+};
+
+/** Return, wait for the unlock: the precondition of every `play`. */
+async function returned(user: ReturnType<typeof userEvent.setup>) {
+  await screen.findByTestId("playback-meta");
+  await user.click(goto());
+  await waitFor(() => expect(play()).toBeEnabled());
+}
 
 describe("PlaybackDialog", () => {
   it("shows the episode's facts and both actions, with Playback gated on the return", async () => {
@@ -335,5 +372,165 @@ describe("PlaybackDialog", () => {
     const host = screen.getByTestId("playback-dialog-host");
     expect(host.tagName).toBe("DIALOG");
     expect(screen.getByTestId("playback-dialog")).toHaveAttribute("aria-modal", "true");
+  });
+
+  // -- Replay source (2026-09-11) ---------------------------------------------------
+
+  it("the replay source defaults to the joint trajectory and `play` says so on the wire", async () => {
+    const user = userEvent.setup();
+    const { runAction } = setup();
+    await returned(user);
+    expect(sourceSelect()).toHaveValue("state");
+    expect(option("state")).toBeEnabled();
+    expect(option("delta_ee")).toBeEnabled();
+    expect(option("abs_ee")).toBeEnabled();
+    await user.click(play());
+    expect(runAction).toHaveBeenLastCalledWith({
+      repo_id: "bc_demo/drawer_assembling",
+      episode_id: EPISODE.episode_id,
+      action: "play",
+      source: "state",
+    });
+    // The return never carries a source — the runtime defaults it.
+    expect(runAction.mock.calls[0]?.[0]).toEqual({
+      repo_id: "bc_demo/drawer_assembling",
+      episode_id: EPISODE.episode_id,
+      action: "goto_initial",
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("playback-outcome")).toHaveTextContent(playedSentence("state", "")),
+    );
+    expect(screen.getByTestId("playback-outcome")).toHaveTextContent(
+      "Finished replaying the recorded joint trajectory.",
+    );
+  });
+
+  it("choosing the delta EE actions sends source 'delta_ee' and names it in the result", async () => {
+    const user = userEvent.setup();
+    const { runAction } = setup();
+    await returned(user);
+    await user.selectOptions(sourceSelect(), "delta_ee");
+    expect(sourceSelect()).toHaveValue("delta_ee");
+    await user.click(play());
+    expect(runAction).toHaveBeenLastCalledWith({
+      repo_id: "bc_demo/drawer_assembling",
+      episode_id: EPISODE.episode_id,
+      action: "play",
+      source: "delta_ee",
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("playback-outcome")).toHaveTextContent(
+        "Finished replaying the delta EE actions through the executor.",
+      ),
+    );
+  });
+
+  it("choosing the absolute EE actions sends source 'abs_ee'", async () => {
+    const user = userEvent.setup();
+    const { runAction } = setup();
+    await returned(user);
+    await user.selectOptions(sourceSelect(), "abs_ee");
+    await user.click(play());
+    expect(runAction).toHaveBeenLastCalledWith(
+      expect.objectContaining({ action: "play", source: "abs_ee" }),
+    );
+  });
+
+  it("a source the episode does not offer is a disabled option", async () => {
+    setup({ info: { sources: ["state", "delta_ee"] } });
+    await screen.findByTestId("playback-meta");
+    expect(option("state")).toBeEnabled();
+    expect(option("delta_ee")).toBeEnabled();
+    expect(option("abs_ee")).toBeDisabled();
+  });
+
+  it("an older runtime (no `sources`) offers the joint trajectory only", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { sources: _dropped, ...legacy } = INFO;
+    setup({ infoExact: legacy });
+    await screen.findByTestId("playback-meta");
+    expect(sourceSelect()).toHaveValue("state");
+    expect(option("state")).toBeEnabled();
+    expect(option("delta_ee")).toBeDisabled();
+    expect(option("abs_ee")).toBeDisabled();
+  });
+
+  it("the source control is disabled while a motion is in flight and while replaying", async () => {
+    const user = userEvent.setup();
+    let resolveReturn: (r: ReturnHomeResult) => void = () => undefined;
+    setup({
+      action: (body) => {
+        if (body.action === "goto_initial")
+          return new Promise<ReturnHomeResult>((r) => (resolveReturn = r));
+        return new Promise<ReturnHomeResult>(() => undefined); // play never resolves
+      },
+    });
+    await screen.findByTestId("playback-meta");
+    expect(sourceSelect()).toBeEnabled();
+    await user.click(goto());
+    expect(sourceSelect()).toBeDisabled();
+    resolveReturn(ARRIVED);
+    await waitFor(() => expect(play()).toBeEnabled());
+    expect(sourceSelect()).toBeEnabled();
+    await user.selectOptions(sourceSelect(), "abs_ee");
+    await user.click(play());
+    await screen.findByTestId("playback-playing");
+    expect(sourceSelect()).toBeDisabled();
+  });
+
+  it("the playing sentence names the source in plain words", async () => {
+    const user = userEvent.setup();
+    setup({
+      action: (body) =>
+        body.action === "play"
+          ? new Promise<ReturnHomeResult>(() => undefined)
+          : Promise.resolve(ARRIVED),
+    });
+    await returned(user);
+    await user.selectOptions(sourceSelect(), "delta_ee");
+    await user.click(play());
+    await screen.findByTestId("playback-playing");
+    expect(screen.getByTestId("playback-playing")).toHaveTextContent(
+      "Replaying the delta EE actions through the executor",
+    );
+    expect(screen.getByTestId("playback-playing")).toHaveTextContent(playingSentence("delta_ee"));
+    expect(playingSentence("state")).toMatch(/^Replaying the recorded joint trajectory/);
+    expect(playingSentence("abs_ee")).toMatch(
+      /^Replaying the absolute EE actions through the executor/,
+    );
+  });
+
+  it("a refused action replay shows the runtime's reason, unprefixed", async () => {
+    const user = userEvent.setup();
+    setup({
+      action: (body) =>
+        body.action === "play"
+          ? Promise.resolve({
+              ok: false,
+              status: "refused",
+              detail: "action replay is admitted in sim only",
+            })
+          : Promise.resolve(ARRIVED),
+    });
+    await returned(user);
+    await user.selectOptions(sourceSelect(), "abs_ee");
+    await user.click(play());
+    await waitFor(() =>
+      expect(screen.getByTestId("playback-outcome")).toHaveTextContent(
+        "action replay is admitted in sim only",
+      ),
+    );
+    expect(screen.getByTestId("playback-outcome")).not.toHaveTextContent("Finished");
+  });
+
+  it("the selection resets to the joint trajectory when the dialog reopens", async () => {
+    const user = userEvent.setup();
+    const { setOpen } = setup();
+    await screen.findByTestId("playback-meta");
+    await user.selectOptions(sourceSelect(), "abs_ee");
+    expect(sourceSelect()).toHaveValue("abs_ee");
+    setOpen(false);
+    setOpen(true);
+    await waitFor(() => expect(sourceSelect()).toHaveValue("state"));
   });
 });

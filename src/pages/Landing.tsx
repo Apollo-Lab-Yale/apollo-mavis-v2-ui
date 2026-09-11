@@ -119,6 +119,7 @@ import {
   StartFrom,
   type StartFromChoice,
 } from "../components/landing";
+import { externalPolicyAttached } from "../components/externalPolicy";
 import { LaunchSheet, type SheetMode } from "../components/LaunchSheet";
 import { OnlineDaggerSheet } from "../components/OnlineDaggerSheet";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -504,6 +505,10 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     // Both wizards are reachable from the Setting tab now, and the runtime 409s
     // any session while one is live — say so on the launcher instead.
     calibrationActive: isCalibrationActive(tracker?.calibration),
+    // 2026-09-11: an attached external policy node makes Inference launchable with
+    // no promoted checkpoint (`launcherReason` probes the source the sheet defaults
+    // to); the Online DAgger sheet judges the same telemetry as `trainerAttached`.
+    externalAttached: externalPolicyAttached(external),
     ...(hardwareTab
       ? {
           speedScale,
@@ -841,6 +846,7 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
           datasets={datasets}
           hasInitialCondition={hasInitialCondition}
           layout={layout}
+          external={external}
           onLaunched={onLaunched}
           onClose={() => setSheet(null)}
         />

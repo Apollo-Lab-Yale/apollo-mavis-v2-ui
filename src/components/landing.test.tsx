@@ -1535,3 +1535,226 @@ describe("StartFrom: the tab's profiles only (2026-09-08)", () => {
     expect(screen.getByTestId("profile-picker").textContent).not.toMatch(/safe/i);
   });
 });
+
+// -- 2026-09-11: the collision-sensitivity dropdown on the arm card (monitor path) ---------
+describe("ArmStatusCard collision sensitivity (2026-09-11)", () => {
+  let posts: { url: string; body: unknown }[];
+  let answer: (armId: string, body: Record<string, unknown>) => Response;
+  let release: (() => void) | null;
+  const grip = makeArmStatus({ arm_id: "grip", ip: "192.168.1.201", reachable: "open" });
+  const setMonitorArms = (arms: ArmMonitorTelemetry[], paused = false) =>
+    setMonitor(makeHardwareMonitor({ paused, arms }));
+  const ok = (r: Partial<ArmMaintenanceResult>) =>
+    new Response(JSON.stringify(makeMaintenanceResult(r)), { status: 200 });
+
+  beforeEach(() => {
+    posts = [];
+    release = null;
+    answer = (armId, body) =>
+      ok({
+        arm_id: armId,
+        op: "set_collision_sensitivity",
+        detail: `collision sensitivity set to ${body["collision_sensitivity"]} (was 3; the config value 3 is re-applied at the next connect)`,
+        sdk_codes: { set_collision_sensitivity: 0 },
+        before: makeArmMonitor({ arm_id: armId }),
+        after: makeArmMonitor({
+          arm_id: armId,
+          collision_sensitivity: body["collision_sensitivity"] as number,
+        }),
+        collision_sensitivity: body["collision_sensitivity"] as number,
+      });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST") {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+          posts.push({ url, body });
+          const armId = /\/arms\/([^/]+)\//.exec(url)?.[1] ?? "";
+          if (release !== null) {
+            await new Promise<void>((r) => {
+              release = r;
+            });
+          }
+          return answer(armId, body);
+        }
+        return new Response("{}", { status: 200 });
+      }),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    act(() => useStore.getState().resetForEpochChange());
+    useStore.setState({ toasts: [] });
+  });
+
+  const select = (armId = "grip") =>
+    screen.getByTestId(`arm-sensitivity-${armId}`) as HTMLSelectElement;
+
+  it("renders the labelled 1 / 2 / 3 select with the controller's read-back as its value; placeholder + disabled when unknown or out of range", () => {
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    // No telemetry yet: the select exists (the strip does), disabled, "—" placeholder.
+    let sel = select();
+    expect(sel.getAttribute("aria-label")).toBe("Collision sensitivity");
+    expect(screen.getByLabelText("Collision sensitivity")).toBe(sel);
+    expect(screen.getByTestId("arm-sensitivity-field-grip").textContent).toContain(
+      "Collision sensitivity",
+    );
+    expect(sel).toBeDisabled();
+    expect(sel.value).toBe("");
+    expect(sel.dataset["readback"]).toBe("none");
+    const placeholder = sel.options[0]!;
+    expect(placeholder.textContent).toBe("—");
+    expect(placeholder.disabled).toBe(true);
+    expect(Array.from(sel.options).map((o) => o.value)).toEqual(["", "1", "2", "3"]);
+    // Read-back 3 (the default): enabled, value 3, no placeholder.
+    setMonitorArms([makeArmMonitor()]);
+    sel = select();
+    expect(sel).not.toBeDisabled();
+    expect(sel.value).toBe("3");
+    expect(sel.dataset["readback"]).toBe("3");
+    expect(Array.from(sel.options).map((o) => o.textContent)).toEqual(["1", "2", "3"]);
+    expect(screen.getByTestId("arm-sensitivity-field-grip").getAttribute("title")).toBe(
+      "as written to the controller; the config value 3 returns at the next connect",
+    );
+    // Read-back 5 (a value Studio can set): shown raw as the disabled placeholder.
+    setMonitorArms([makeArmMonitor({ collision_sensitivity: 5 })]);
+    expect(sel).toBeDisabled();
+    expect(sel.value).toBe("");
+    expect(sel.options[0]!.textContent).toBe("5");
+    expect(sel.dataset["readback"]).toBe("5");
+    // null read-back (before the first slow poll): "—" again.
+    setMonitorArms([makeArmMonitor({ collision_sensitivity: null })]);
+    expect(sel).toBeDisabled();
+    expect(sel.options[0]!.textContent).toBe("—");
+    // The meta line stays a pure read-back (unchanged by the control).
+    setMonitorArms([makeArmMonitor({ collision_sensitivity: 2 })]);
+    expect(screen.getByTestId("arm-safety-grip").textContent).toBe(
+      "sensitivity 2 · payload 0.95 kg",
+    );
+    expect(sel.value).toBe("2");
+  });
+
+  it("disabled matrix: session → 'Use the Cockpit' title; homing on the other arm; op running; monitor not live", () => {
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    const sel = select();
+    expect(sel).not.toBeDisabled();
+    // A hardware session (monitor paused, nothing running): disabled, reason as title.
+    setMonitorArms([makeArmMonitor({ status: "paused" })], true);
+    expect(sel).toBeDisabled();
+    expect(screen.getByTestId("arm-sensitivity-field-grip").getAttribute("title")).toBe(
+      "Use the Cockpit",
+    );
+    expect(screen.getByTestId("arm-actions-reason-grip").textContent).toBe("Use the Cockpit");
+    // A RailHomingJob on the OTHER arm (paused + busy elsewhere): disabled, homing reason.
+    setMonitorArms(
+      [
+        makeArmMonitor({ status: "stale" }),
+        makeArmMonitor({ arm_id: "view", status: "stale", maintenance_busy: true }),
+      ],
+      true,
+    );
+    expect(sel).toBeDisabled();
+    expect(screen.getByTestId("arm-sensitivity-field-grip").getAttribute("title")).toBe(
+      "Rail homing in progress — wait for it to finish",
+    );
+    // An op running on THIS arm: disabled, the shared indicator says so.
+    setMonitorArms([makeArmMonitor({ maintenance_busy: true })]);
+    expect(sel).toBeDisabled();
+    expect(sel.getAttribute("aria-busy")).toBeNull();
+    expect(screen.getByTestId("arm-actions-busy-grip")).toBeInTheDocument();
+    // Monitor off / error: no sample to trust, disabled.
+    setMonitorArms([makeArmMonitor({ status: "error", detail: "connect failed" })]);
+    expect(sel).toBeDisabled();
+    // Live again: enabled.
+    setMonitorArms([makeArmMonitor()]);
+    expect(sel).not.toBeDisabled();
+  });
+
+  it("choosing 2 → POST {op: set_collision_sensitivity, collision_sensitivity: 2}; busy until the toast; never optimistic — the value follows the read-back", async () => {
+    release = () => undefined;
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    const sel = select();
+    const clear = screen.getByTestId("arm-clear-errors-grip");
+    fireEvent.change(sel, { target: { value: "2" } });
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toEqual({
+      url: "/api/hardware/arms/grip/maintenance",
+      body: { op: "set_collision_sensitivity", collision_sensitivity: 2 },
+    });
+    // In flight: only the select is busy; every control of the strip is disabled.
+    expect(sel.getAttribute("aria-busy")).toBe("true");
+    expect(sel).toBeDisabled();
+    expect(clear).toBeDisabled();
+    expect(clear.getAttribute("aria-busy")).toBeNull();
+    expect(
+      screen.getByTestId("arm-sensitivity-field-grip").querySelector(".spinner"),
+    ).not.toBeNull();
+    // NOT optimistic: the read-back still says 3, so the select still says 3.
+    expect(sel.value).toBe("3");
+    act(() => release?.());
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · collision sensitivity set to 2",
+      tone: "success",
+    });
+    await waitFor(() => expect(sel.getAttribute("aria-busy")).toBeNull());
+    expect(sel).not.toBeDisabled();
+    expect(sel.value).toBe("3"); // still the read-back
+    // The next telemetry read-back moves it.
+    setMonitorArms([makeArmMonitor({ collision_sensitivity: 2 })]);
+    expect(sel.value).toBe("2");
+    // Re-selecting the current level posts nothing.
+    fireEvent.change(sel, { target: { value: "2" } });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(posts).toHaveLength(1);
+    // The body never carries dry_run and never a level outside 1..3 (the options).
+    expect(Object.keys(posts[0]!.body as object)).toEqual(["op", "collision_sensitivity"]);
+  });
+
+  it("failures: ok:false → error toast with the runtime detail; 422 / 409 → error toast with the server detail; the value never moves", async () => {
+    answer = (armId) =>
+      ok({
+        arm_id: armId,
+        op: "set_collision_sensitivity",
+        ok: false,
+        detail: "collision sensitivity still reads 3 after writing 1",
+        sdk_codes: { set_collision_sensitivity: 0 },
+        before: null,
+        after: null,
+      });
+    render(<ArmStatusCard arm={grip} kind="hardware" />);
+    setMonitorArms([makeArmMonitor()]);
+    const sel = select();
+    fireEvent.change(sel, { target: { value: "1" } });
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+    expect(useStore.getState().toasts[0]).toMatchObject({
+      text: "Manipulation Arm · collision sensitivity still reads 3 after writing 1",
+      tone: "error",
+    });
+    expect(sel.value).toBe("3");
+    answer = () =>
+      new Response(
+        JSON.stringify({ detail: "monitor paused - a hardware session owns the boxes" }),
+        { status: 409 },
+      );
+    await waitFor(() => expect(sel).not.toBeDisabled());
+    fireEvent.change(sel, { target: { value: "2" } });
+    await waitFor(() => expect(useStore.getState().toasts).toHaveLength(2));
+    expect(useStore.getState().toasts[1]).toMatchObject({
+      text: "Manipulation Arm · monitor paused - a hardware session owns the boxes",
+      tone: "error",
+    });
+    expect(
+      posts.map((p) => (p.body as { collision_sensitivity: number }).collision_sensitivity),
+    ).toEqual([1, 2]);
+  });
+
+  it("sim cards carry no sensitivity control", () => {
+    render(<ArmStatusCard arm={makeArmStatus({ arm_id: "grip" })} kind="sim" />);
+    setMonitorArms([makeArmMonitor()]);
+    expect(screen.queryByTestId("arm-sensitivity-grip")).toBeNull();
+  });
+});

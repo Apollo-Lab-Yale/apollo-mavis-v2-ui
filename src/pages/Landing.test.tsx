@@ -35,6 +35,7 @@ import {
   makeDatasetLayout,
   makeDoraInfo,
   makeEpisode,
+  makeExternal,
   makeOnlineDaggerSession,
   makeTelemetry,
   makeTracker,
@@ -486,14 +487,32 @@ describe("validateLaunch (matrix)", () => {
     ).toBeNull();
   });
 
-  it("launcherReason assumes the sheet collects task/policy; inference needs a promoted one", () => {
+  it("launcherReason assumes the sheet collects task/policy; inference needs a promoted checkpoint OR an attached external policy node", () => {
     expect(launcherReason("collect", simSel, [])).toBeNull();
-    expect(launcherReason("inference", { ...simSel, policiesAvailable: true }, [])).toBe(
-      "No promoted checkpoint",
-    );
+    // No promoted checkpoint: the probe takes the sheet's default — the external
+    // policy node — and judges its attachment (2026-09-11); unjudged = satisfiable.
+    expect(launcherReason("inference", { ...simSel, policiesAvailable: true }, [])).toBeNull();
+    expect(
+      launcherReason(
+        "inference",
+        { ...simSel, policiesAvailable: true, externalAttached: false },
+        [],
+      ),
+    ).toBe(REASON.noExternalPolicy);
+    expect(launcherReason("inference", { ...simSel, externalAttached: true }, [])).toBeNull();
+    // A promoted checkpoint keeps the card open whatever the bridge says.
     expect(
       launcherReason("inference", { ...simSel, policiesAvailable: true }, [makePolicy()]),
     ).toBeNull();
+    expect(
+      launcherReason("inference", { ...simSel, policiesAvailable: true, externalAttached: false }, [
+        makePolicy(),
+      ]),
+    ).toBeNull();
+    // The Hardware tab refuses Inference before either source is looked at (D7).
+    expect(launcherReason("inference", { ...hwSel, externalAttached: true }, [])).toBe(
+      REASON.hardwareTeleopOnly,
+    );
     expect(launcherReason("teleop", { ...hwSel, hardwareReady: false }, [])).toBe(
       "Requires real arms — none detected",
     );
@@ -1400,7 +1419,7 @@ describe("Welcome page", () => {
     });
   });
 
-  it("Inference stays disabled with 'No promoted checkpoint' when nothing is promoted", async () => {
+  it("Inference stays disabled when nothing is promoted and no external policy node is attached (the reason names the node)", async () => {
     await mount({
       workcell: makeWorkcell({ policies_available: true }),
       policies: [makePolicy({ policy_id: "ckpt-8", promoted: false })],
@@ -1408,7 +1427,87 @@ describe("Welcome page", () => {
     await ready();
     expect(enabled("launch-dagger")).toBe(true);
     expect(enabled("launch-inference")).toBe(false);
-    expect(reasonOf("inference")).toContain("No promoted checkpoint");
+    expect(reasonOf("inference")).toBe(REASON.noExternalPolicy);
+    expect(reasonOf("inference")).toContain("Attach an external policy node first");
+  });
+
+  it("Inference from the attached external policy node (2026-09-11): no promoted checkpoint + telemetry.external attached → the card opens, the sheet pre-selects 'External policy (dora)' and Start posts policy_source external with no policy", async () => {
+    await mount({ policies: [makePolicy({ policy_id: "ckpt-8", promoted: false })] });
+    await ready();
+    expect(enabled("launch-inference")).toBe(false);
+    expect(screen.getByTestId("launch-inference").textContent).toContain(
+      "Run a promoted checkpoint or an attached policy node",
+    );
+    await pushTelemetry(makeTelemetry({ external: makeExternal({ policy_arms: ["grip"] }) }));
+    await waitFor(() => expect(enabled("launch-inference")).toBe(true));
+    expect(reasonOf("inference")).toBe("");
+    fireEvent.click(screen.getByTestId("launch-inference"));
+    const group = await screen.findByTestId("policy-select");
+    expect(within(group).queryByTestId("policy-ckpt-8")).toBeNull(); // not promoted
+    expect(within(group).queryByTestId("policy-empty")).toBeNull(); // external is selected
+    const external = within(group).getByTestId("policy-external") as HTMLInputElement;
+    expect(external.checked).toBe(true);
+    expect(group.textContent).toContain("External policy (dora)");
+    expect(group.textContent).toContain("act_pick_place v3 · 10 Hz · drives: Manipulation Arm");
+    // The shared status card under the row: green chip + the driven arms.
+    const status = within(group).getByTestId("external-policy-status");
+    expect(within(status).getByTestId("external-policy-chip").textContent).toBe(
+      "EXTERNAL POLICY attached",
+    );
+    expect(within(status).getByTestId("external-policy-drives").textContent).toBe(
+      "drives: Manipulation Arm",
+    );
+    const confirm = screen.getByTestId("launch-confirm");
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    await screen.findByTestId("mode-page");
+    expect(posts[0]).toEqual({
+      mode: "inference",
+      kind: "sim",
+      arms: ["grip", "view"],
+      frames: { view: "arm_base:view", grip: "arm_base:grip" },
+      sim_scene: "mavis_v2",
+      start_from: "keep_current",
+      policy_source: "external",
+    });
+    expect(posts[0]).not.toHaveProperty("policy");
+  });
+
+  it("Inference sheet with a promoted checkpoint defaults to it; picking 'External policy (dora)' without a node disables Start with the node reason", async () => {
+    await mount({
+      workcell: makeWorkcell({ policies_available: true }),
+      policies: [makePolicy({ policy_id: "ckpt-9" })],
+    });
+    await ready();
+    await waitFor(() => expect(enabled("launch-inference")).toBe(true));
+    fireEvent.click(screen.getByTestId("launch-inference"));
+    const group = await screen.findByTestId("policy-select");
+    expect((within(group).getByTestId("policy-ckpt-9") as HTMLInputElement).checked).toBe(true);
+    const external = within(group).getByTestId("policy-external") as HTMLInputElement;
+    expect(external.checked).toBe(false);
+    expect(within(group).queryByTestId("external-policy-status")).toBeNull();
+    fireEvent.click(external);
+    expect(external.checked).toBe(true);
+    expect((within(group).getByTestId("policy-ckpt-9") as HTMLInputElement).checked).toBe(false);
+    expect(group.textContent).toContain(
+      "Policy node attached over the dora bus — none attached yet",
+    );
+    expect(within(group).getByTestId("external-policy-chip-none").textContent).toBe(
+      "EXTERNAL POLICY none",
+    );
+    expect(within(group).getByTestId("external-policy-detail").textContent).toContain(
+      "telemetry.external absent",
+    );
+    expect(screen.getByTestId("launch-confirm")).toBeDisabled();
+    expect(screen.getByTestId("launch-reason").textContent).toBe(REASON.noExternalPolicy);
+    // Back to the checkpoint: Start is possible again and the body names it.
+    fireEvent.click(within(group).getByTestId("policy-ckpt-9"));
+    expect(external.checked).toBe(false);
+    expect(screen.getByTestId("launch-confirm")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("launch-confirm"));
+    await screen.findByTestId("mode-page");
+    expect(posts[0]).toMatchObject({ mode: "inference", policy: "ckpt-9" });
+    expect(posts[0]).not.toHaveProperty("policy_source");
   });
 
   it("Online DAgger sheet (phase-14): Connect view → Configure; the exact SessionSpec with policy_source external + online_dagger, no dataset / policy / hyper-parameter", async () => {
@@ -1499,13 +1598,13 @@ describe("Welcome page", () => {
     expect(posts).toHaveLength(0);
   });
 
-  it("dagger stays enabled without checkpoints (external trainer); inference still needs a promoted one", async () => {
+  it("dagger stays enabled without checkpoints (external trainer); inference still needs a promoted one or an attached node", async () => {
     await mount();
     await ready();
     expect(enabled("launch-dagger")).toBe(true);
     expect(reasonOf("dagger")).toBe("");
     expect(enabled("launch-inference")).toBe(false);
-    expect(reasonOf("inference")).toContain("No promoted checkpoint");
+    expect(reasonOf("inference")).toBe(REASON.noExternalPolicy);
   });
 
   it("a 409 from POST /api/session shows its detail inside the sheet, which stays open", async () => {

@@ -5,7 +5,9 @@
  * (reason order; an erroring trainer is a caption, never a refusal) and `buildSpec`
  * for dagger —
  * which carries `policy_source: "external"` + `online_dagger` + `action_filter` +
- * `return_to_start` and never `dataset` / `policy` / a hyper-parameter. */
+ * `return_to_start` and never `dataset` / `policy` / a hyper-parameter. 2026-09-11:
+ * the inference branch — a promoted checkpoint (`policy`) or the attached external
+ * policy node (`policy_source: "external"`, no `policy`), never both. */
 import { describe, expect, it } from "vitest";
 import onlineDaggerSchema from "../../schemas/OnlineDaggerConfig.json";
 import { makeDatasetLayout } from "../../tests/mocks/fixtures";
@@ -274,6 +276,102 @@ describe("validateLaunch — dagger (Online DAgger)", () => {
     expect(launcherReason("dagger", simSel, [])).toBeNull();
     expect(launcherReason("dagger", { ...simSel, trainerAttached: false }, [])).toBeNull();
     expect(launcherReason("dagger", hwSel, [])).toBe(REASON.hardwareTeleopOnly);
+  });
+});
+
+describe("validateLaunch — inference (checkpoint or external policy node, 2026-09-11)", () => {
+  it("checkpoint (the default source) keeps the promoted-checkpoint rule", () => {
+    expect(validateLaunch("inference", simSel)).toBe(REASON.noPromoted);
+    expect(validateLaunch("inference", { ...simSel, policySource: "checkpoint" })).toBe(
+      REASON.noPromoted,
+    );
+    expect(
+      validateLaunch("inference", { ...simSel, policiesAvailable: true, policyId: "ckpt-9" }),
+    ).toBeNull();
+    // the registry does not matter for the checkpoint rule when a node happens to be attached
+    expect(validateLaunch("inference", { ...simSel, externalAttached: true })).toBe(
+      REASON.noPromoted,
+    );
+  });
+  it("external: judged on the attachment only — false refuses, true / unjudged pass; either flag counts", () => {
+    const ext: LandingSelection = { ...simSel, policySource: "external" };
+    expect(validateLaunch("inference", { ...ext, externalAttached: false })).toBe(
+      REASON.noExternalPolicy,
+    );
+    expect(REASON.noExternalPolicy).toBe(
+      "Attach an external policy node first (dora bridge attached with a fresh policy spec)",
+    );
+    expect(validateLaunch("inference", { ...ext, externalAttached: true })).toBeNull();
+    expect(validateLaunch("inference", ext)).toBeNull();
+    expect(validateLaunch("inference", { ...ext, trainerAttached: false })).toBe(
+      REASON.noExternalPolicy,
+    );
+    expect(validateLaunch("inference", { ...ext, trainerAttached: true })).toBeNull();
+    // the policy-neutral flag wins over the trainer one when both are set
+    expect(
+      validateLaunch("inference", { ...ext, externalAttached: true, trainerAttached: false }),
+    ).toBeNull();
+    // no checkpoint is needed, whatever the registry says
+    expect(
+      validateLaunch("inference", { ...ext, externalAttached: true, policiesAvailable: false }),
+    ).toBeNull();
+  });
+  it("hardware refuses Inference first for both sources (D7)", () => {
+    expect(
+      validateLaunch("inference", { ...hwSel, policySource: "external", externalAttached: true }),
+    ).toBe(REASON.hardwareTeleopOnly);
+    expect(
+      validateLaunch("inference", { ...hwSel, policiesAvailable: true, policyId: "ckpt-9" }),
+    ).toBe(REASON.hardwareTeleopOnly);
+    expect(launcherReason("inference", { ...hwSel, externalAttached: true }, [])).toBe(
+      REASON.hardwareTeleopOnly,
+    );
+  });
+  it("launcherReason probes the sheet's default source: external when nothing is promoted", () => {
+    expect(launcherReason("inference", simSel, [])).toBeNull(); // unjudged attachment
+    expect(launcherReason("inference", { ...simSel, externalAttached: false }, [])).toBe(
+      REASON.noExternalPolicy,
+    );
+    expect(launcherReason("inference", { ...simSel, externalAttached: true }, [])).toBeNull();
+  });
+});
+
+describe("buildSpec — inference (2026-09-11)", () => {
+  it("external: the exact body carries policy_source external and NO policy", () => {
+    const spec = buildSpec("inference", {
+      ...simSel,
+      policySource: "external",
+      externalAttached: true,
+      policyId: "ckpt-9", // a stale pick is dropped
+    });
+    expect(spec).toEqual({
+      mode: "inference",
+      kind: "sim",
+      arms: ["grip", "view"],
+      frames: { grip: "arm_base:grip", view: "arm_base:view" },
+      sim_scene: "mavis_v2",
+      start_from: "keep_current",
+      policy_source: "external",
+    });
+    expect(spec).not.toHaveProperty("policy");
+    expect(spec).not.toHaveProperty("online_dagger");
+    expect(spec).not.toHaveProperty("task");
+  });
+  it("checkpoint: `policy` only, never `policy_source`", () => {
+    const spec = buildSpec("inference", {
+      ...simSel,
+      policySource: "checkpoint",
+      policyId: "ckpt-9",
+    });
+    expect(spec).toMatchObject({ policy: "ckpt-9" });
+    expect(spec).not.toHaveProperty("policy_source");
+    expect(buildSpec("inference", { ...simSel, policyId: "ckpt-9" })).not.toHaveProperty(
+      "policy_source",
+    );
+    // no pick at all: neither key (the runtime picks its promoted checkpoint or 409s)
+    const none = buildSpec("inference", simSel);
+    expect(none).not.toHaveProperty("policy");
+    expect(none).not.toHaveProperty("policy_source");
   });
 });
 

@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { ExternalStatus, InferenceStatus } from "../gen";
 import { useDelayedUnmount } from "../lib/useDelayedUnmount";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { ExternalPolicyChip } from "./externalPolicy";
+import { drivenArmsLabel, ExternalPolicyChip } from "./externalPolicy";
 import { SHEET_EXIT_MS } from "./Sheet";
 
 export interface InferencePanelProps {
@@ -17,6 +17,9 @@ export function InferencePanel({ inference, external, onTerminate }: InferencePa
   const [confirming, setConfirming] = useState(false);
   const confirmMounted = useDelayedUnmount(confirming, SHEET_EXIT_MS);
   const takeover = inference.control_mode === "human";
+  // 2026-09-11: which arms the attached policy node drives (`external.policy_arms`,
+  // the fresh spec's list) — shown beside the chip only when the spec names them.
+  const driven = drivenArmsLabel(external);
   return (
     <div className="panel" data-testid="inference-panel">
       {takeover ? (
@@ -33,6 +36,11 @@ export function InferencePanel({ inference, external, onTerminate }: InferencePa
         </span>
       )}
       <ExternalPolicyChip external={external} policyStale={inference.policy_stale} />
+      {driven !== "" && (
+        <span className="text-caption fg-3" data-testid="inference-drives">
+          drives: {driven}
+        </span>
+      )}
       <div className="kv">
         <span className="dim">policy</span>
         <span className="mono">{inference.policy_version ?? "—"}</span>

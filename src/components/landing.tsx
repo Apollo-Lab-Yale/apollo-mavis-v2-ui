@@ -9,7 +9,7 @@
  * ../lib/streams, the maintenance copy/enablement in ../lib/maintenance. */
 import { useState, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { postArmMaintenance } from "../api/rest";
+import { postArmMaintenance, type MaintenanceOptions } from "../api/rest";
 import type {
   ArmMonitorTelemetry,
   ArmStatusInfo,
@@ -36,9 +36,12 @@ import {
   TAB_LABELS,
 } from "../lib/streams";
 import {
+  isSensitivityLevel,
   maintenanceErrorText,
   maintenanceToast,
   maintenanceView,
+  SENSITIVITY_HINT,
+  SENSITIVITY_LEVELS,
   TITLE_DIFFERS,
   type MaintenanceOp,
   type MaintenanceView,
@@ -323,6 +326,17 @@ export function ArmStatusCard({ arm, kind }: ArmStatusCardProps) {
 // client (`maintenance_busy` with nothing pending here) disables every button
 // and shows one shared "maintenance running…" indicator instead of marking a
 // button busy (only one op can run on an arm).
+// **Collision sensitivity** (2026-09-11, operator decision): a labelled <select>
+// 1 / 2 / 3 at the end of the strip whose value is the controller's READ-BACK
+// (`collision_sensitivity` from the monitor row — server-authoritative, never
+// optimistic, no browser persistence; a refresh only re-reads). A read-back that
+// is null / outside 1..3 shows a disabled placeholder ("—" / the raw value) and
+// the select stays disabled. Choosing another level POSTs {op:
+// "set_collision_sensitivity", collision_sensitivity: n} at once (one write, no
+// motion, volatile — the config value returns at the next connect), marks only
+// the select busy until the result toast, and the dropdown follows the next
+// telemetry read-back. Same disabled matrix as the buttons ("Use the Cockpit"
+// during a session — the Cockpit has its own control on the session path).
 interface ArmMaintenanceActionsProps {
   armId: string;
   view: MaintenanceView;
@@ -332,6 +346,7 @@ const OP_LABEL: Readonly<Record<Exclude<MaintenanceOp, "recover">, string>> = {
   clear_errors: "Clear errors",
   apply_backstops: "Apply safety settings",
   home_rail: "Home rail",
+  set_collision_sensitivity: "Collision sensitivity",
 };
 
 function ArmMaintenanceActions({ armId, view }: ArmMaintenanceActionsProps) {
@@ -339,11 +354,11 @@ function ArmMaintenanceActions({ armId, view }: ArmMaintenanceActionsProps) {
   const [pending, setPending] = useState<MaintenanceOp | null>(null);
   const [homeRail, setHomeRail] = useState(false);
   const homeRailMounted = useDelayedUnmount(homeRail, SHEET_EXIT_MS);
-  const run = async (op: MaintenanceOp) => {
+  const run = async (op: MaintenanceOp, opts?: MaintenanceOptions) => {
     if (pending !== null) return;
     setPending(op);
     try {
-      const { text, tone } = maintenanceToast(await postArmMaintenance(armId, op));
+      const { text, tone } = maintenanceToast(await postArmMaintenance(armId, op, opts));
       addToast(text, tone);
     } catch (e) {
       addToast(maintenanceErrorText(armId, e), "error");
@@ -352,6 +367,8 @@ function ArmMaintenanceActions({ armId, view }: ArmMaintenanceActionsProps) {
     }
   };
   const serverBusy = view.busy && pending === null; // another client's op is running
+  const sensitivityKnown = isSensitivityLevel(view.sensitivity);
+  const sensitivityBusy = pending === "set_collision_sensitivity";
   const button = (op: Exclude<MaintenanceOp, "recover">, enabled: boolean, testId: string) => {
     const busy = pending === op;
     return (
@@ -388,6 +405,39 @@ function ArmMaintenanceActions({ armId, view }: ArmMaintenanceActionsProps) {
           {OP_LABEL.home_rail}
         </button>
       )}
+      <label
+        className="arm-sensitivity"
+        data-testid={`arm-sensitivity-field-${armId}`}
+        title={view.reason ?? SENSITIVITY_HINT}
+      >
+        <span className="arm-sensitivity-label">{OP_LABEL.set_collision_sensitivity}</span>
+        <select
+          data-testid={`arm-sensitivity-${armId}`}
+          aria-label="Collision sensitivity"
+          aria-busy={sensitivityBusy ? "true" : undefined}
+          data-readback={view.sensitivity ?? "none"}
+          value={sensitivityKnown ? String(view.sensitivity) : ""}
+          disabled={!view.sensitivityEnabled || pending !== null}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            // the read-back is the value; the POST is the only way it changes
+            if (isSensitivityLevel(n) && n !== view.sensitivity)
+              void run("set_collision_sensitivity", { collisionSensitivity: n });
+          }}
+        >
+          {!sensitivityKnown && (
+            <option value="" disabled>
+              {view.sensitivity == null ? "—" : String(view.sensitivity)}
+            </option>
+          )}
+          {SENSITIVITY_LEVELS.map((n) => (
+            <option key={n} value={String(n)}>
+              {n}
+            </option>
+          ))}
+        </select>
+        {sensitivityBusy && <span className="spinner" aria-hidden="true" />}
+      </label>
       {serverBusy && (
         <span className="btn-reason" data-testid={`arm-actions-busy-${armId}`} role="status">
           <span className="spinner" aria-hidden="true" /> maintenance running…

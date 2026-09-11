@@ -1,6 +1,7 @@
 /** Pure helpers for the phase-09b/09c/09d maintenance UI (05-ui §8.1 / §8.2):
  * the Hardware-tab arm-card read-back line + button enablement (Clear errors /
- * Apply safety settings / Home rail), the rail read-back, the per-arm session
+ * Apply safety settings / Home rail / the collision-sensitivity dropdown,
+ * 2026-09-11), the rail read-back, the per-arm session
  * eligibility (every hardware arm joins the session since phase-09d, so the
  * gate only explains why Teleop is blocked), the `RailSweepVerdict` and
  * `PrePositionPlan` copy of the `HomeRailSheet`, the `RailHomingJob` phase
@@ -20,6 +21,18 @@ import type { ToastTone } from "../store";
 import { armLabel } from "./streams";
 
 export type MaintenanceOp = ArmMaintenanceRequest["op"];
+
+/** The operator's admissible collision-sensitivity levels (operator decision
+ * 2026-09-11): 0 turns detection off, 4 / 5 false-trigger under payload, so the
+ * dropdowns offer exactly these and the runtime answers 422 for anything else. */
+export const SENSITIVITY_LEVELS = [1, 2, 3] as const;
+export type SensitivityLevel = (typeof SENSITIVITY_LEVELS)[number];
+export const isSensitivityLevel = (v: unknown): v is SensitivityLevel =>
+  typeof v === "number" && (SENSITIVITY_LEVELS as readonly number[]).includes(v);
+/** Under every sensitivity control: the value is the controller's read-back, and
+ * the override is volatile (the config value is re-applied at every connect). */
+export const SENSITIVITY_HINT =
+  "as written to the controller; the config value 3 returns at the next connect";
 
 /** Visible reason under the disabled card buttons while a hardware session
  * owns the control boxes (the runtime routes `clear_errors` to the session
@@ -174,6 +187,14 @@ export interface MaintenanceView {
   homingInProgress: boolean;
   clearEnabled: boolean;
   applyEnabled: boolean;
+  /** The controller's collision-sensitivity READ-BACK (`collision_sensitivity`,
+   * 0..5 or null before the first slow poll) — what the dropdown shows, never an
+   * optimistic value (2026-09-11). */
+  sensitivity: number | null;
+  /** The dropdown is live iff the read-back is a selectable level (1..3), the
+   * monitor holds a sample (`monitorLive`), no session / homing locks the card
+   * (same matrix as `applyEnabled` minus the mismatch condition) and no op runs. */
+  sensitivityEnabled: boolean;
   /** Visible text beside the buttons when they are disabled for a reason the
    * card itself does not show: `REASON_USE_COCKPIT` (session) or
    * `REASON_HOMING_IN_PROGRESS` (a homing on ANOTHER arm; the busy arm's own
@@ -221,6 +242,7 @@ export function maintenanceView(
   const rail = railState(monitor);
   const homeRailShown = rail === "unhomed";
   const gate = sessionGate(monitor, arm);
+  const sensitivity = monitor?.collision_sensitivity ?? null;
   return {
     meta: parts.length > 0 ? parts.join(" · ") : null,
     mismatch,
@@ -230,6 +252,8 @@ export function maintenanceView(
     homingInProgress,
     clearEnabled: hasErrors && !locked && !busy,
     applyEnabled: mismatch && !locked && !busy,
+    sensitivity,
+    sensitivityEnabled: isSensitivityLevel(sensitivity) && monitorLive(monitor) && !locked && !busy,
     reason: sessionActive
       ? REASON_USE_COCKPIT
       : homingInProgress && !busy
@@ -454,6 +478,10 @@ const WRITTEN_BACKSTOPS = /sensitivity (\d+), payload (\d+(?:\.\d+)?) kg/;
 /** The monitor's note when the rich report frame had not echoed the new
  * values within its 0.5 s settle window: `"(read-back not yet reflected: …)"`. */
 const READBACK_LAG = /\((read-back[^)]*)\)/;
+/** The level `set_collision_sensitivity` wrote, from the runtime's detail
+ * (`"collision sensitivity set to 2 (was 3; …)"`) — the fallback when the result
+ * carries neither `collision_sensitivity` nor an `after` read-back. */
+const WRITTEN_SENSITIVITY = /collision sensitivity set to (\d)/;
 
 /** Toast for a 200 `ArmMaintenanceResult` (the runtime answers 200 whether or
  * not `ok`): `Manipulation Arm · errors cleared`, `Manipulation Arm · rail
@@ -468,7 +496,12 @@ const READBACK_LAG = /\((read-back[^)]*)\)/;
  * false` too). A `status: "accepted"` (202 — the asynchronous `RailHomingJob`
  * started) is not a result yet: the sheet renders the progress instead and
  * toasts the job's FINAL result from `/maintenance/last`; if toasted anyway it
- * reads `Manipulation Arm · rail homing started — pre-positioning first`. */
+ * reads `Manipulation Arm · rail homing started — pre-positioning first`.
+ * `set_collision_sensitivity` (2026-09-11): `Manipulation Arm · collision
+ * sensitivity set to 2` — the level is the result's `collision_sensitivity`
+ * (the session path has no read-back), else the `after` read-back, else parsed
+ * from the detail; a refusal is the generic `ok: false` error toast with the
+ * runtime's detail (`… · collision sensitivity still reads 3 after writing 2`). */
 export function maintenanceToast(result: ArmMaintenanceResult): { text: string; tone: ToastTone } {
   const label = armLabel(result.arm_id);
   if (!result.ok) {
@@ -504,6 +537,20 @@ export function maintenanceToast(result: ArmMaintenanceResult): { text: string; 
     }
     case "recover":
       return { text: `${label} · ${REGRIP_HINT}`, tone: "success" };
+    case "set_collision_sensitivity": {
+      const level =
+        result.collision_sensitivity ??
+        result.after?.collision_sensitivity ??
+        WRITTEN_SENSITIVITY.exec(result.detail ?? "")?.[1] ??
+        null;
+      let text = `${label} · collision sensitivity set${level != null ? ` to ${level}` : ""}`;
+      const notes = result.warnings ?? [];
+      if (notes.length > 0) {
+        text += ` — ${notes.join("; ")}`;
+        return { text, tone: "warning" };
+      }
+      return { text, tone: "success" };
+    }
     case "home_rail": {
       // Dry runs are rendered by the HomeRailSheet, never toasted; a real op
       // reports the homed position from the `after` sample when it has one.
