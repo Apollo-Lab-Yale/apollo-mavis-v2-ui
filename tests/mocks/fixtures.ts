@@ -570,6 +570,7 @@ export function makeWorkcell(over: Partial<WorkcellStatus> = {}): WorkcellStatus
     cameras: makeSimCameras(),
     policies_available: false,
     hardware_ready: false,
+    policy_modes: true, // sim: always admitted (2026-09-12)
     ...over,
   };
 }
@@ -584,6 +585,7 @@ export function makeHardwareWorkcell(over: Partial<WorkcellStatus> = {}): Workce
     cameras: makeHardwareCameras(),
     policies_available: false,
     hardware_ready: false,
+    policy_modes: false, // the repo config's hardware_session.policy_modes (2026-09-12)
     ...over,
   };
 }

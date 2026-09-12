@@ -141,6 +141,11 @@ export interface LandingSelection {
   hardwareReady: boolean;
   /** `available_kinds` includes "hardware" (the runtime config has a hardware block). */
   hardwareConfigured: boolean;
+  /** `WorkcellStatus.policy_modes` of the HARDWARE workcell (2026-09-12): the runtime
+   * admits inference / dagger sessions on the real arms (`hardware_session.policy_modes`
+   * in the rendered config). Undefined / false = a pre-2026-09-12 runtime or the knob off
+   * → `REASON.hardwareTeleopOnly`. Ignored on the Sim tab. */
+  policyModes?: boolean;
   // -- phase-09c, Hardware tab only (all optional: sim / older callers omit them) --
   /** `SessionSpec.speed_scale` (0 < s ≤ 1); `DEFAULT_SPEED_SCALE` when omitted. */
   speedScale?: number;
@@ -269,7 +274,11 @@ export function actionFilterToSpec(inputs: ActionFilterInputs): ActionFilterConf
 export const REASON = {
   keymap: "Keymap unavailable — retry",
   hardwareNotConfigured: "Hardware workcell not configured",
-  hardwareTeleopOnly: "Hardware sessions support teleop and data collection only for now",
+  // 2026-09-12: the runtime admits inference / dagger on the real arms behind the RENDERED
+  // config's `hardware_session.policy_modes` (`WorkcellStatus.policy_modes`); off / older
+  // runtime = the phase-09c refusal, now naming the knob.
+  hardwareTeleopOnly:
+    "Hardware sessions run teleop and data collection only (hardware_session.policy_modes is off)",
   noArmsDetected: "Requires real arms — none detected",
   noWorkcellArms: "No arms in the workcell",
   railNotHomed: "rail not homed — use Home rail",
@@ -345,15 +354,17 @@ export const DEFAULT_SPEED_SCALE = 1;
 export const speedLabel = (scale: number): string => `${Math.round(scale * 100)}%`;
 
 /** Validation matrix — returns the first blocking reason or null.
- * Hardware tab: teleop only (phase-09c), then gated on `hardwareConfigured &&
- * hardwareReady` before anything else about the workcell, then the phase-09c
+ * Hardware tab: DAgger / Inference only with `policyModes` (phase-09c refused them
+ * outright; since 2026-09-12 `WorkcellStatus.policy_modes` opens them), then gated on
+ * `hardwareConfigured && hardwareReady` before anything else about the workcell, then the phase-09c
  * arm rules over EVERY arm (phase-09d: rails homed, no homing in flight, every
  * arm eligible — the reason names the arm(s)); Sim tab: the classic rules. */
 export function validateLaunch(mode: Mode, sel: LandingSelection): string | null {
   if (!sel.keymapOk) return REASON.keymap;
   if (sel.calibrationActive) return REASON.calibrationActive;
   if (sel.tab === "hardware") {
-    if (mode === "dagger" || mode === "inference") return REASON.hardwareTeleopOnly;
+    if ((mode === "dagger" || mode === "inference") && !sel.policyModes)
+      return REASON.hardwareTeleopOnly;
     if (!sel.hardwareConfigured) return REASON.hardwareNotConfigured;
     if (!sel.hardwareReady) return REASON.noArmsDetected;
   }
@@ -424,7 +435,8 @@ export const externalAttachedOf = (sel: LandingSelection): boolean | undefined =
  * promoted, else external — so a promoted checkpoint keeps its `No promoted checkpoint`
  * reason only while no node is attached. Online DAgger on the Sim tab always reads
  * "Set up and start" (15-online-dagger §8); the Hardware tab keeps its teleop /
- * collect-only refusal (D7) for both. */
+ * collect-only refusal for both until `sel.policyModes` says the runtime admits them
+ * (`hardware_session.policy_modes`, 2026-09-12). */
 export function launcherReason(
   mode: Mode,
   sel: LandingSelection,

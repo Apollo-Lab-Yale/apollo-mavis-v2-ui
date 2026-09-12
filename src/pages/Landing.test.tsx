@@ -378,10 +378,24 @@ describe("validateLaunch (matrix)", () => {
         REASON.hardwareTeleopOnly,
       );
       expect(validateLaunch(m, { ...hwSel, hardwareReady: false })).toBe(REASON.hardwareTeleopOnly);
+      // 2026-09-12: `WorkcellStatus.policy_modes` (the runtime's hardware_session.policy_modes)
+      // lifts the refusal; the arm gates then apply exactly as for teleop.
+      expect(validateLaunch(m, { ...hwSel, hardwareReady: false, policyModes: true })).toBe(
+        REASON.noArmsDetected,
+      );
     }
     expect(REASON.hardwareTeleopOnly).toBe(
-      "Hardware sessions support teleop and data collection only for now",
+      "Hardware sessions run teleop and data collection only (hardware_session.policy_modes is off)",
     );
+    expect(validateLaunch("dagger", { ...hwSel, task: "t", policyModes: true })).toBeNull();
+    expect(
+      validateLaunch("inference", {
+        ...hwSel,
+        policyModes: true,
+        policySource: "external",
+        externalAttached: true,
+      }),
+    ).toBeNull();
     expect(
       validateLaunch("collect", {
         ...hwSel,
@@ -509,10 +523,14 @@ describe("validateLaunch (matrix)", () => {
         makePolicy(),
       ]),
     ).toBeNull();
-    // The Hardware tab refuses Inference before either source is looked at (D7).
+    // The Hardware tab refuses Inference before either source is looked at while the
+    // runtime's hardware_session.policy_modes is off (D7); on, the source is judged.
     expect(launcherReason("inference", { ...hwSel, externalAttached: true }, [])).toBe(
       REASON.hardwareTeleopOnly,
     );
+    expect(
+      launcherReason("inference", { ...hwSel, externalAttached: true, policyModes: true }, []),
+    ).toBeNull();
     expect(launcherReason("teleop", { ...hwSel, hardwareReady: false }, [])).toBe(
       "Requires real arms — none detected",
     );
@@ -683,11 +701,12 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-card-placeholder").textContent).toContain("192.168.1.201");
     for (const m of MODES) {
       expect(screen.getByTestId(`launch-${m}`).getAttribute("aria-disabled")).toBe("true");
-      // Teleop and Data Collection report the arms; DAgger / Inference stay hardware-refused.
+      // Teleop and Data Collection report the arms; DAgger / Inference stay hardware-refused
+      // (the fixture's `policy_modes: false` = the repo config's hardware_session.policy_modes).
       expect(reasonOf(m)).toContain(
         m === "teleop" || m === "collect"
           ? "Requires real arms — none detected"
-          : "Hardware sessions support teleop and data collection only for now",
+          : "Hardware sessions run teleop and data collection only (hardware_session.policy_modes is off)",
       );
     }
     // Disabled cards stay reachable by keyboard and ignore activation.
@@ -749,7 +768,7 @@ describe("Welcome page", () => {
     expect(screen.getByTestId("arm-session-reason-view")).toBeInTheDocument();
     for (const m of ["dagger", "inference"]) {
       expect(enabled(`launch-${m}`)).toBe(false);
-      expect(reasonOf(m)).toBe("Hardware sessions support teleop and data collection only for now");
+      expect(reasonOf(m)).toBe("Hardware sessions run teleop and data collection only (hardware_session.policy_modes is off)");
     }
     expect(enabled("launch-collect")).toBe(false); // the same arm gates as teleop
     // The monitor reports both arms homed and clean → launchable, reason lines gone.
@@ -770,6 +789,38 @@ describe("Welcome page", () => {
       speed_scale: 1,
       start_from: "keep_current",
     });
+  });
+
+  it("policy_modes: true on the hardware workcell opens DAgger / Inference behind the arm gates (2026-09-12)", async () => {
+    await mount({
+      hardware: makeHardwareWorkcell({
+        hardware_ready: true,
+        arms: makeHardwareArms("open"),
+        policy_modes: true, // the lab render's HARDWARE_POLICY_MODES=true
+      }),
+      cameras: [...makeSimCameras(), ...makeHardwareCameras(true)],
+    });
+    await ready();
+    await switchTab("hardware");
+    await waitFor(() =>
+      expect(screen.getByTestId("arm-state-grip").textContent).toContain("Reachable"),
+    );
+    // No monitor sample yet: the two cards wait on the SAME arm gate as Teleop — the knob
+    // no longer masks it.
+    for (const m of ["dagger", "inference"]) {
+      expect(enabled(`launch-${m}`)).toBe(false);
+      expect(reasonOf(m)).toBe("Manipulation Arm, Perception Arm: not ready — see the arm card");
+    }
+    await pushTelemetry(makeTelemetry({ hardware_monitor: eligibleMonitor() }));
+    await waitFor(() => expect(enabled("launch-teleop")).toBe(true));
+    // Online DAgger: the sheet collects the form and judges the trainer → launchable.
+    expect(enabled("launch-dagger")).toBe(true);
+    expect(reasonOf("dagger")).toBe("");
+    // Inference: nothing promoted and no external node attached → its own reason, not the knob.
+    expect(enabled("launch-inference")).toBe(false);
+    expect(reasonOf("inference")).toBe(REASON.noExternalPolicy);
+    fireEvent.click(screen.getByTestId("launch-dagger"));
+    expect(await screen.findByTestId("online-dagger-sheet")).toBeInTheDocument();
   });
 
   it("phase-09c speed: pick 10 % → speed_scale 0.1 with both arms (phase-09d)", async () => {

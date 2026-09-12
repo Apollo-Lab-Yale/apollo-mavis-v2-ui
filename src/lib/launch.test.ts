@@ -194,10 +194,28 @@ describe("validateLaunch — dagger (Online DAgger)", () => {
   it("a complete selection with an attached trainer launches", () => {
     expect(validateLaunch("dagger", odSel)).toBeNull();
   });
-  it("hardware stays refused first (D7)", () => {
+  it("hardware is refused first unless the runtime admits policy modes (D7 → hardware_session.policy_modes, 2026-09-12)", () => {
     expect(validateLaunch("dagger", { ...odSel, ...hwSel, task: "t" })).toBe(
       REASON.hardwareTeleopOnly,
     );
+    expect(validateLaunch("dagger", { ...odSel, ...hwSel, task: "t", policyModes: false })).toBe(
+      REASON.hardwareTeleopOnly,
+    );
+    // `WorkcellStatus.policy_modes: true` on the hardware workcell: judged like sim from here
+    expect(
+      validateLaunch("dagger", { ...odSel, ...hwSel, task: "t", policyModes: true }),
+    ).toBeNull();
+    expect(
+      validateLaunch("dagger", {
+        ...odSel,
+        ...hwSel,
+        task: "t",
+        policyModes: true,
+        trainerAttached: false,
+      }),
+    ).toBe(REASON.noTrainer);
+    // the flag speaks on the Hardware tab only
+    expect(validateLaunch("dagger", { ...odSel, policyModes: false })).toBeNull();
   });
   it("task, then session name (required, then the schema's maxLength)", () => {
     expect(validateLaunch("dagger", { ...odSel, task: " " })).toBe(REASON.noTask);
@@ -276,6 +294,7 @@ describe("validateLaunch — dagger (Online DAgger)", () => {
     expect(launcherReason("dagger", simSel, [])).toBeNull();
     expect(launcherReason("dagger", { ...simSel, trainerAttached: false }, [])).toBeNull();
     expect(launcherReason("dagger", hwSel, [])).toBe(REASON.hardwareTeleopOnly);
+    expect(launcherReason("dagger", { ...hwSel, policyModes: true }, [])).toBeNull();
   });
 });
 
@@ -316,7 +335,7 @@ describe("validateLaunch — inference (checkpoint or external policy node, 2026
       validateLaunch("inference", { ...ext, externalAttached: true, policiesAvailable: false }),
     ).toBeNull();
   });
-  it("hardware refuses Inference first for both sources (D7)", () => {
+  it("hardware refuses Inference first for both sources while policy modes are off (D7 → hardware_session.policy_modes)", () => {
     expect(
       validateLaunch("inference", { ...hwSel, policySource: "external", externalAttached: true }),
     ).toBe(REASON.hardwareTeleopOnly);
@@ -326,6 +345,30 @@ describe("validateLaunch — inference (checkpoint or external policy node, 2026
     expect(launcherReason("inference", { ...hwSel, externalAttached: true }, [])).toBe(
       REASON.hardwareTeleopOnly,
     );
+    expect(REASON.hardwareTeleopOnly).toBe(
+      "Hardware sessions run teleop and data collection only (hardware_session.policy_modes is off)",
+    );
+    // 2026-09-12: `WorkcellStatus.policy_modes: true` opens both sources on the real arms …
+    const hwOn: LandingSelection = { ...hwSel, policyModes: true };
+    expect(
+      validateLaunch("inference", { ...hwOn, policySource: "external", externalAttached: true }),
+    ).toBeNull();
+    expect(
+      validateLaunch("inference", { ...hwOn, policiesAvailable: true, policyId: "ckpt-9" }),
+    ).toBeNull();
+    expect(launcherReason("inference", { ...hwOn, externalAttached: true }, [])).toBeNull();
+    // … and the real gates speak instead of the knob: attachment, then the arms
+    expect(launcherReason("inference", { ...hwOn, externalAttached: false }, [])).toBe(
+      REASON.noExternalPolicy,
+    );
+    expect(
+      validateLaunch("inference", {
+        ...hwOn,
+        hardwareReady: false,
+        policySource: "external",
+        externalAttached: true,
+      }),
+    ).toBe(REASON.noArmsDetected);
   });
   it("launcherReason probes the sheet's default source: external when nothing is promoted", () => {
     expect(launcherReason("inference", simSel, [])).toBeNull(); // unjudged attachment

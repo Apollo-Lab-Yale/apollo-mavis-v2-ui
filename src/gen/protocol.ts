@@ -636,6 +636,7 @@ export type Cameras3 = CameraInfo[];
 export type HardwareReady = boolean;
 export type Kind13 = "hardware" | "sim";
 export type PoliciesAvailable = boolean;
+export type PolicyModes = boolean;
 
 export interface ApolloProtocol {
   AckMsg?: AckMsg;
@@ -2081,4 +2082,5 @@ export interface WorkcellStatus {
   hardware_ready?: HardwareReady;
   kind: Kind13;
   policies_available?: PoliciesAvailable;
+  policy_modes?: PolicyModes;
 }

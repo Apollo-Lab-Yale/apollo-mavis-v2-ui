@@ -502,6 +502,9 @@ export function Landing({ hardwarePollMs = HARDWARE_POLL_MS }: LandingProps = {}
     policiesAvailable: workcell?.policies_available ?? hardware?.policies_available ?? false,
     hardwareReady,
     hardwareConfigured,
+    // 2026-09-12: the HARDWARE workcell's `policy_modes` (never the default / sim
+    // response, which is always true) opens DAgger / Inference on the Hardware tab.
+    policyModes: hardware?.policy_modes ?? false,
     // Both wizards are reachable from the Setting tab now, and the runtime 409s
     // any session while one is live — say so on the launcher instead.
     calibrationActive: isCalibrationActive(tracker?.calibration),
